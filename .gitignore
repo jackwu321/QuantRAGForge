@@ -1,0 +1,40 @@
+# Python
+__pycache__/
+*.py[cod]
+*$py.class
+*.egg-info/
+dist/
+build/
+.eggs/
+
+# Virtual environments
+.venv/
+venv/
+ENV/
+
+# API keys and secrets
+zhipu_api_key.txt
+*.api_key
+.env
+
+# IDE
+.vscode/
+.idea/
+*.swp
+*.swo
+
+# Obsidian
+.obsidian/
+
+# Data directories (user-generated, not tracked)
+articles/
+vector_store/
+sources/processed/
+outputs/
+
+# OS
+.DS_Store
+Thumbs.db
+
+# Claude Code
+.claude/
