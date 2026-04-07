@@ -14,6 +14,7 @@ ENV/
 
 # API keys and secrets
 llm_api_key.txt
+zhipu_api_key.txt
 *.api_key
 .env
 
@@ -32,9 +33,14 @@ vector_store/
 sources/processed/
 outputs/
 
+# Personal / local HTML article files
+html list/
+=1.0.0
+
 # OS
 .DS_Store
 Thumbs.db
 
 # Claude Code
 .claude/
+CLAUDE.md
