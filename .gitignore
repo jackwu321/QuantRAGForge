@@ -13,7 +13,7 @@ venv/
 ENV/
 
 # API keys and secrets
-zhipu_api_key.txt
+llm_api_key.txt
 *.api_key
 .env
 

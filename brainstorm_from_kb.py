@@ -19,7 +19,7 @@ from kb_shared import (
     build_blocks,
     call_zhipu_chat,
     filter_notes,
-    get_zhipu_config,
+    get_llm_config,
     load_notes,
     parse_csv_arg,
     parse_frontmatter,

@@ -14,8 +14,12 @@ try:
 except ImportError:  # pragma: no cover - runtime dependency
     requests = None
 
+from dotenv import load_dotenv
 
 ROOT = Path(__file__).resolve().parent
+
+# Auto-load .env from project root (does not override existing env vars)
+load_dotenv(ROOT / ".env")
 DEFAULT_SOURCE_DIRS = ("reviewed", "high-value")
 
 # ---------------------------------------------------------------------------
@@ -37,17 +41,13 @@ DEFAULT_SOURCE_DIRS = ("reviewed", "high-value")
 
 DEFAULT_LLM_BASE_URL = "https://open.bigmodel.cn/api/paas/v4"
 DEFAULT_LLM_MODEL = "glm-4.7"
-DEFAULT_LLM_KEY_FILE = ROOT / "zhipu_api_key.txt"
+DEFAULT_LLM_KEY_FILE = ROOT / "llm_api_key.txt"
 DEFAULT_EMBEDDING_MODEL = "embedding-3"
 DEFAULT_CONNECT_TIMEOUT = 15
 DEFAULT_READ_TIMEOUT = 180
 DEFAULT_MAX_RETRIES = 2
 PLACEHOLDER_TEXTS = {"待补充。", "待生成。"}
 
-# Backward-compatible aliases
-DEFAULT_ZHIPU_BASE_URL = DEFAULT_LLM_BASE_URL
-DEFAULT_ZHIPU_MODEL = DEFAULT_LLM_MODEL
-DEFAULT_ZHIPU_KEY_FILE = DEFAULT_LLM_KEY_FILE
 
 
 @dataclass
@@ -238,7 +238,7 @@ def get_llm_config() -> tuple[str, str, str]:
         api_key = _env_with_fallback("LLM_API_KEY", "ZHIPU_API_KEY")
     if not api_key:
         raise RuntimeError(
-            "LLM API key is required. Set LLM_API_KEY env var, or put it in zhipu_api_key.txt, "
+            "LLM API key is required. Set LLM_API_KEY in .env, or put it in llm_api_key.txt, "
             "or set LLM_API_KEY_FILE to point to a key file."
         )
     base_url = _env_with_fallback("LLM_BASE_URL", "ZHIPU_BASE_URL", DEFAULT_LLM_BASE_URL).rstrip("/")
@@ -246,9 +246,6 @@ def get_llm_config() -> tuple[str, str, str]:
     return api_key, base_url, model
 
 
-# Backward-compatible alias
-get_zhipu_config = get_llm_config
-get_zhipu_key_file_path = get_llm_key_file_path
 
 
 def _timeouts_for_env() -> tuple[int, int, int]:
