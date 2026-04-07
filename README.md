@@ -6,6 +6,7 @@
   <a href="#quick-start">Quick Start</a> |
   <a href="#agent-usage">Agent Usage</a> |
   <a href="#configuration">Configuration</a> |
+  <a href="#running-tests">Tests</a> |
   <a href="#contributing">Contributing</a>
 </p>
 
@@ -90,34 +91,48 @@ A post-generation validation layer that runs automatically in brainstorm mode:
 
 ```
 QuantRAGForge/
-├── agent/                     # LangGraph agent layer
+├── agent/                          # LangGraph agent layer
 │   ├── __init__.py
-│   ├── graph.py               # Agent creation (ReAct pattern)
-│   ├── prompts.py             # System prompt
-│   └── tools.py               # 8 agent tools
-├── templates/                 # Article markdown templates
+│   ├── graph.py                    # Agent creation (ReAct pattern)
+│   ├── prompts.py                  # System prompt
+│   └── tools.py                    # 8 agent tools
+├── templates/                      # Article markdown templates
 │   ├── research-note-template.md
 │   └── strategy-note-template.md
-├── tests/                     # Unit tests (unittest)
+├── tests/                          # Test suite (unittest)
+│   ├── robustness/                 # Robustness & edge-case tests
+│   │   ├── conftest.py             # Shared fixtures and base classes
+│   │   ├── test_layer1_tool_robustness.py
+│   │   ├── test_layer2_workflow_integration.py
+│   │   ├── test_layer3_agent_routing.py
+│   │   └── test_layer4_llm_api_robustness.py
 │   ├── test_agent_graph.py
 │   ├── test_agent_tools.py
 │   ├── test_brainstorm_from_kb.py
+│   ├── test_build_catalog.py
 │   ├── test_embed_knowledge_base.py
 │   ├── test_enrich_articles_with_llm.py
 │   ├── test_ingest_wechat_article.py
 │   ├── test_rethink_layer.py
 │   └── test_sync_articles_by_status.py
-├── docs/                      # Design specs and plans
-├── agent_cli.py               # Interactive agent CLI
-├── brainstorm_from_kb.py      # RAG Q&A and brainstorm engine
-├── embed_knowledge_base.py    # ChromaDB vector indexing
-├── enrich_articles_with_llm.py # LLM enrichment pipeline
-├── ingest_wechat_article.py   # Article ingestion (WeChat/HTML)
-├── kb_shared.py               # Shared utilities and config
-├── rethink_layer.py           # Post-generation idea validation
-├── sync_articles_by_status.py # Article status-based file sync
-├── llm_config.example.env     # Example LLM provider config
-├── requirements.txt           # Python dependencies
+├── docs/                           # Design specs and usage guides
+│   ├── brainstorm-cli-usage.md
+│   ├── brainstorm-output-spec.md
+│   ├── embed-knowledge-base-usage.md
+│   ├── ingest-script-usage.md
+│   ├── ingestion-workflow.md
+│   ├── llm-enrichment-usage.md
+│   └── metadata-schema.md
+├── agent_cli.py                    # Interactive agent CLI
+├── brainstorm_from_kb.py           # RAG Q&A and brainstorm engine
+├── embed_knowledge_base.py         # ChromaDB vector indexing
+├── enrich_articles_with_llm.py     # LLM enrichment pipeline
+├── ingest_wechat_article.py        # Article ingestion (WeChat/HTML)
+├── kb_shared.py                    # Shared utilities and config
+├── rethink_layer.py                # Post-generation idea validation
+├── sync_articles_by_status.py      # Article status-based file sync
+├── llm_config.example.env          # Example LLM provider config
+├── requirements.txt                # Python dependencies
 └── README.md
 ```
 
@@ -136,7 +151,7 @@ pip install -r requirements.txt
 
 ### 2. Configure LLM Provider
 
-Copy the example config and set your API key:
+Copy the example config and fill in your API key:
 
 ```bash
 cp llm_config.example.env .env
@@ -159,18 +174,18 @@ See [llm_config.example.env](llm_config.example.env) for provider-specific examp
 # Single URL
 python3 ingest_wechat_article.py --url "https://mp.weixin.qq.com/s/..."
 
-# Batch from a file
-python3 ingest_wechat_article.py --url-list "urls.txt"
+# Batch from a file (one URL per line)
+python3 ingest_wechat_article.py --url-list urls.txt
 
-# From saved HTML
+# From a saved HTML file
 python3 ingest_wechat_article.py --html-file saved.html
 ```
 
 ### 4. Enrich with LLM
 
 ```bash
-python3 enrich_articles_with_llm.py                # all raw articles
-python3 enrich_articles_with_llm.py --dry-run       # preview only
+python3 enrich_articles_with_llm.py           # all raw articles
+python3 enrich_articles_with_llm.py --dry-run  # preview only
 ```
 
 ### 5. Build Vector Index
@@ -179,7 +194,7 @@ python3 enrich_articles_with_llm.py --dry-run       # preview only
 python3 embed_knowledge_base.py
 ```
 
-### 6. Brainstorm
+### 6. Query and Brainstorm
 
 ```bash
 # Factual Q&A
@@ -187,6 +202,9 @@ python3 brainstorm_from_kb.py ask --query "What momentum factors are discussed?"
 
 # Brainstorm new ideas (with Rethink Layer)
 python3 brainstorm_from_kb.py brainstorm --query "How to combine momentum and volatility timing for ETF rotation?"
+
+# Show retrieved context only (dry run)
+python3 brainstorm_from_kb.py brainstorm --query "..." --dry-run
 ```
 
 ## Agent Usage
@@ -229,14 +247,14 @@ Agent: [Generates ideas + Rethink Report with novelty/quality scores]
 
 ### LLM Provider
 
-QuantRAGForge works with **any OpenAI-compatible API**. Configure via environment variables:
+QuantRAGForge works with **any OpenAI-compatible API**. Configure via `.env` file (auto-loaded) or environment variables:
 
 | Variable | Default | Description |
 |----------|---------|-------------|
-| `LLM_API_KEY` | — | API key (or put in `zhipu_api_key.txt`) |
+| `LLM_API_KEY` | — | Your API key |
 | `LLM_BASE_URL` | `https://open.bigmodel.cn/api/paas/v4` | API base URL |
 | `LLM_MODEL` | `glm-4.7` | Chat model name |
-| `LLM_EMBEDDING_MODEL` | `embedding-3` | Embedding model |
+| `LLM_EMBEDDING_MODEL` | `embedding-3` | Embedding model name |
 | `LLM_CONNECT_TIMEOUT` | `10` | Connection timeout (seconds) |
 | `LLM_READ_TIMEOUT` | `120` | Read timeout (seconds) |
 | `LLM_MAX_RETRIES` | `2` | Max retry attempts |
@@ -257,8 +275,25 @@ Each article is classified with exactly one `content_type`:
 
 ## Running Tests
 
+### Unit Tests
+
 ```bash
 python3 -m unittest discover -s tests -p 'test_*.py' -v
+```
+
+### Robustness Tests
+
+The `tests/robustness/` suite covers edge cases and failure modes across four layers:
+
+| File | What it tests |
+|------|---------------|
+| `test_layer1_tool_robustness.py` | Agent tools with malformed/missing inputs |
+| `test_layer2_workflow_integration.py` | End-to-end pipeline with bad data |
+| `test_layer3_agent_routing.py` | Agent routing under unexpected queries |
+| `test_layer4_llm_api_robustness.py` | LLM API timeouts, retries, and failures |
+
+```bash
+python3 -m unittest discover -s tests/robustness -p 'test_*.py' -v
 ```
 
 ## Design Principles
