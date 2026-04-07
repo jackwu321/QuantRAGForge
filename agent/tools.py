@@ -37,6 +37,7 @@ def ingest_article(
     url_list_file: Optional[str] = None,
     html_file: Optional[str] = None,
     content_type: Optional[str] = None,
+    force: bool = False,
 ) -> str:
     """Ingest articles into the knowledge base from various sources.
 
@@ -46,9 +47,12 @@ def ingest_article(
     - url_list_file: Path to a .txt file with one URL per line
     - html_file: Path to a locally saved HTML file
 
+    Set force=True to re-ingest articles that already exist in the knowledge base.
+    By default, duplicate articles are detected and skipped with a warning.
+
     Each article is fetched, parsed (text/images/code extracted),
     classified by content_type, and saved to articles/raw/.
-    Returns a summary of successes and failures."""
+    Returns a summary of successes, skips, and failures."""
     from ingest_wechat_article import (
         ingest_single_url,
         load_url_list,
@@ -56,10 +60,11 @@ def ingest_article(
         write_article,
         fetch_html,
         detect_blocked_wechat_page,
+        DuplicateArticleError,
         BatchResult,
     )
 
-    args = argparse.Namespace(title=None, content_type=content_type, dry_run=False)
+    args = argparse.Namespace(title=None, content_type=content_type, dry_run=False, force=force)
 
     # Single HTML file
     if html_file and not url and not urls and not url_list_file:
@@ -70,8 +75,10 @@ def ingest_article(
             article = extract_article_data(html, "", None)
             if content_type:
                 article.content_type = content_type
-            out_dir = write_article(article)
+            out_dir = write_article(article, force=force)
             return f"Ingested HTML file successfully: {out_dir}"
+        except DuplicateArticleError as exc:
+            return f"Skipped (already exists): {exc}. Use force=True to re-ingest."
         except Exception as exc:
             return f"Error ingesting HTML file {html_file}: {exc}"
 
@@ -96,16 +103,25 @@ def ingest_article(
     # Ingest each URL
     results: list[str] = []
     success_count = 0
+    skipped_count = 0
     for i, u in enumerate(url_list, start=1):
         result: BatchResult = ingest_single_url(u, args)
-        if result.success:
+        if result.skipped:
+            skipped_count += 1
+            results.append(f"[{i}/{len(url_list)}] SKIPPED (exists): {result.output_dir}")
+        elif result.success:
             success_count += 1
             results.append(f"[{i}/{len(url_list)}] OK: {result.output_dir}")
         else:
             results.append(f"[{i}/{len(url_list)}] FAILED {u}: {result.error}")
 
-    fail_count = len(url_list) - success_count
-    summary = f"Ingested {success_count}/{len(url_list)} articles ({fail_count} failed)"
+    fail_count = len(url_list) - success_count - skipped_count
+    parts = [f"{success_count} ingested"]
+    if skipped_count:
+        parts.append(f"{skipped_count} skipped (already exist)")
+    if fail_count:
+        parts.append(f"{fail_count} failed")
+    summary = f"Result: {', '.join(parts)} (total {len(url_list)})"
     return summary + "\n" + "\n".join(results)
 
 
@@ -254,7 +270,7 @@ def set_article_status(article_paths: list[str], status: str) -> str:
                 count=1,
                 flags=re.MULTILINE,
             )
-            if new_content == content:
+            if new_content == content and not re.search(r"^status:\s*\S+", content, flags=re.MULTILINE):
                 # No status line found — insert one after the first ---
                 if content.startswith("---\n"):
                     parts = content.split("---\n", 2)

@@ -42,6 +42,13 @@ DEFAULT_SOURCE_DIRS = ("reviewed", "high-value")
 DEFAULT_LLM_BASE_URL = "https://open.bigmodel.cn/api/paas/v4"
 DEFAULT_LLM_MODEL = "glm-4.7"
 DEFAULT_LLM_KEY_FILE = ROOT / "llm_api_key.txt"
+# Additional key file names to search (in order) when no explicit path is configured
+_KEY_FILE_SEARCH_NAMES = (
+    "llm_api_key.txt",
+    "api_key.txt",
+    "api.txt",
+    "zhipu_api_key.txt",
+)
 DEFAULT_EMBEDDING_MODEL = "embedding-3"
 DEFAULT_CONNECT_TIMEOUT = 15
 DEFAULT_READ_TIMEOUT = 180
@@ -230,16 +237,34 @@ def load_api_key_from_file(path: Path) -> str:
 def get_llm_config() -> tuple[str, str, str]:
     """Return (api_key, base_url, model) for the configured LLM provider.
 
-    Reads from LLM_* env vars first, falls back to ZHIPU_* for backward
-    compatibility. Works with any OpenAI-compatible API provider.
+    Key resolution order:
+    1. Explicit key file path (LLM_API_KEY_FILE or ZHIPU_API_KEY_FILE env var)
+    2. Auto-search common key file names in project root
+       (llm_api_key.txt, api_key.txt, api.txt, zhipu_api_key.txt)
+    3. Environment variable (LLM_API_KEY or ZHIPU_API_KEY)
+
+    Works with any OpenAI-compatible API provider.
     """
+    # 1. Try explicit key file path
     api_key = load_api_key_from_file(get_llm_key_file_path())
+
+    # 2. Auto-search common key file names in project root
+    if not api_key:
+        for name in _KEY_FILE_SEARCH_NAMES:
+            candidate = ROOT / name
+            api_key = load_api_key_from_file(candidate)
+            if api_key:
+                break
+
+    # 3. Try environment variables
     if not api_key:
         api_key = _env_with_fallback("LLM_API_KEY", "ZHIPU_API_KEY")
     if not api_key:
         raise RuntimeError(
-            "LLM API key is required. Set LLM_API_KEY in .env, or put it in llm_api_key.txt, "
-            "or set LLM_API_KEY_FILE to point to a key file."
+            "LLM API key is required. Provide it in one of these ways:\n"
+            "  1. Put your key in a file: llm_api_key.txt, api_key.txt, or api.txt\n"
+            "  2. Set LLM_API_KEY in .env file\n"
+            "  3. Set LLM_API_KEY_FILE to point to a custom key file path"
         )
     base_url = _env_with_fallback("LLM_BASE_URL", "ZHIPU_BASE_URL", DEFAULT_LLM_BASE_URL).rstrip("/")
     model = _env_with_fallback("LLM_MODEL", "ZHIPU_MODEL", DEFAULT_LLM_MODEL) or DEFAULT_LLM_MODEL
@@ -287,7 +312,11 @@ def post_llm_json(path: str, payload: dict[str, Any]) -> dict[str, Any]:
             time.sleep(min(1.5, 0.5 * (attempt + 1)))
     if last_error is None:
         raise RuntimeError("LLM API request failed without an explicit exception")
-    raise last_error
+    url = f"{base_url}{path}"
+    raise type(last_error)(
+        f"LLM API request to {url} failed after {max_retries + 1} attempt(s): "
+        f"{type(last_error).__name__}: {last_error}"
+    ) from last_error
 
 
 # Backward-compatible alias

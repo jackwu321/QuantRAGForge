@@ -21,7 +21,14 @@ def create_agent():
     Uses the OpenAI-compatible API configured via LLM_* or ZHIPU_* env vars.
     Works with any provider: Zhipu GLM, DeepSeek, Moonshot, Qwen, OpenAI, etc.
     """
-    api_key, base_url, model = get_llm_config()
+    try:
+        api_key, base_url, model = get_llm_config()
+    except RuntimeError as exc:
+        raise RuntimeError(
+            f"Failed to initialize agent LLM: {exc}\n"
+            f"Configure via .env file or environment variables. "
+            f"See llm_config.example.env for examples."
+        ) from exc
 
     llm = ChatOpenAI(
         model=model,

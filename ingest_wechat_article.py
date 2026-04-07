@@ -78,12 +78,18 @@ class ArticleData:
     code_blocks: list[ExtractedCodeBlock]
 
 
+class DuplicateArticleError(Exception):
+    """Raised when an article with the same content already exists."""
+    pass
+
+
 @dataclass
 class BatchResult:
     url: str
     success: bool
     output_dir: str = ""
     error: str = ""
+    skipped: bool = False
 
 
 def parse_args() -> argparse.Namespace:
@@ -101,6 +107,11 @@ def parse_args() -> argparse.Namespace:
         "--content-type",
         choices=SUPPORTED_CONTENT_TYPES,
         help="Override the detected content_type classification.",
+    )
+    parser.add_argument(
+        "--force",
+        action="store_true",
+        help="Re-ingest even if the article already exists in the knowledge base.",
     )
     parser.add_argument(
         "--dry-run",
@@ -684,7 +695,21 @@ def inject_code_section(rendered: str, code_blocks: list[ExtractedCodeBlock]) ->
     return rendered.replace(CODE_BLOCK_PLACEHOLDER, render_code_blocks(code_blocks))
 
 
-def write_article(article: ArticleData) -> Path:
+def find_existing_article(article: ArticleData) -> Path | None:
+    """Check if an article with the same directory name already exists in any stage."""
+    dir_name = article_dir_name(article)
+    for stage in ("raw", "reviewed", "high-value"):
+        candidate = ARTICLES_RAW_DIR.parent / stage / dir_name
+        if candidate.exists() and (candidate / "article.md").exists():
+            return candidate
+    return None
+
+
+def write_article(article: ArticleData, force: bool = False) -> Path:
+    existing = find_existing_article(article)
+    if existing and not force:
+        raise DuplicateArticleError(str(existing))
+
     template = template_path_for(article.content_type).read_text(encoding="utf-8")
     template = inject_frontmatter(template, build_frontmatter(article))
     rendered = inject_body_placeholders(template, article)
@@ -751,8 +776,11 @@ def ingest_single_url(url: str, args: argparse.Namespace) -> BatchResult:
         if args.dry_run:
             print_summary(article)
             return BatchResult(url=url, success=True)
-        out_dir = write_article(article)
+        force = getattr(args, "force", False)
+        out_dir = write_article(article, force=force)
         return BatchResult(url=url, success=True, output_dir=str(out_dir))
+    except DuplicateArticleError as exc:
+        return BatchResult(url=url, success=True, output_dir=str(exc), skipped=True)
     except Exception as exc:
         return BatchResult(url=url, success=False, error=str(exc))
 
@@ -786,7 +814,9 @@ def ingest_url_list(path: str, args: argparse.Namespace) -> int:
         print(f"[{index}/{len(urls)}] ingesting {url}")
         result = ingest_single_url(url, args)
         results.append(result)
-        if result.success:
+        if result.skipped:
+            print(f"  skipped (already exists): {result.output_dir}")
+        elif result.success:
             if result.output_dir:
                 print(f"  created: {result.output_dir}")
             else:
@@ -794,12 +824,14 @@ def ingest_url_list(path: str, args: argparse.Namespace) -> int:
         else:
             print(f"  failed: {result.error}")
 
-    success_count = sum(1 for r in results if r.success)
-    failure_count = len(results) - success_count
+    success_count = sum(1 for r in results if r.success and not r.skipped)
+    skipped_count = sum(1 for r in results if r.skipped)
+    failure_count = sum(1 for r in results if not r.success)
     failure_list_path = write_ingest_failures(results)
     summary = {
         "total": len(results),
         "success": success_count,
+        "skipped": skipped_count,
         "failed": failure_count,
         "failure_list_path": str(failure_list_path),
         "failed_urls": [
@@ -827,7 +859,12 @@ def main() -> int:
         print_summary(article)
         return 0
 
-    out_dir = write_article(article)
+    try:
+        out_dir = write_article(article, force=args.force)
+    except DuplicateArticleError as exc:
+        print(f"skipped (already exists): {exc}")
+        print("use --force to re-ingest")
+        return 0
     print(f"created: {out_dir}")
     return 0
 

@@ -67,8 +67,11 @@ def interactive_loop(agent) -> None:
             else:
                 if messages:
                     print(f"\nAgent: {messages[-1].content}")
+        except KeyboardInterrupt:
+            print("\nInterrupted.")
+            break
         except Exception as exc:
-            print(f"\nError: {exc}")
+            print(f"\nError ({type(exc).__name__}): {exc}")
 
 
 def main() -> int:
@@ -79,8 +82,12 @@ def main() -> int:
     agent = create_agent()
 
     if args.query:
-        response = run_query(agent, args.query)
-        print(response)
+        try:
+            response = run_query(agent, args.query)
+            print(response)
+        except Exception as exc:
+            print(f"Error ({type(exc).__name__}): {exc}", file=sys.stderr)
+            return 1
         return 0
 
     interactive_loop(agent)
