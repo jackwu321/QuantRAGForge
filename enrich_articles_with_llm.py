@@ -4,6 +4,7 @@ import argparse
 import json
 import os
 import re
+from concurrent.futures import ThreadPoolExecutor, as_completed
 from dataclasses import dataclass
 from datetime import datetime
 from pathlib import Path
@@ -14,9 +15,11 @@ from kb_shared import (
     post_llm_json,
     require_requests,
     _env_with_fallback,
+    LLMAuthError,
     DEFAULT_CONNECT_TIMEOUT,
     DEFAULT_READ_TIMEOUT,
     DEFAULT_MAX_RETRIES,
+    DEFAULT_LLM_CONCURRENCY,
 )
 
 
@@ -114,6 +117,7 @@ def parse_args() -> argparse.Namespace:
     parser.add_argument("--limit", type=int, help="Maximum number of articles to process.")
     parser.add_argument("--dry-run", action="store_true", help="Do not write files; print enhanced JSON only.")
     parser.add_argument("--force", action="store_true", help="Re-run even if already enriched.")
+    parser.add_argument("--concurrency", type=int, default=None, help="Number of concurrent LLM requests (default: LLM_CONCURRENCY env or 3).")
     args = parser.parse_args()
     if args.article_dir and args.limit:
         parser.error("--limit is only valid with --articles-root")
@@ -456,6 +460,8 @@ def process_article_dir(article_dir: Path, args: argparse.Namespace) -> ProcessR
         updated_source = update_source_json(source_json, enhancement, enhancement_result.raw_response)
         write_article_dir(article_dir, updated_markdown, updated_source)
         return ProcessResult(article_dir=str(article_dir), success=True)
+    except LLMAuthError:
+        raise  # propagate auth errors for fail-fast handling
     except Exception as exc:
         updated_source = mark_source_json_error(source_json, str(exc))
         if not args.dry_run:
@@ -463,17 +469,95 @@ def process_article_dir(article_dir: Path, args: argparse.Namespace) -> ProcessR
         return ProcessResult(article_dir=str(article_dir), success=False, error=str(exc))
 
 
+def get_concurrency(args: argparse.Namespace) -> int:
+    """Return the concurrency level from args, env, or default."""
+    if getattr(args, "concurrency", None):
+        return args.concurrency
+    env_val = _env_with_fallback("LLM_CONCURRENCY", "ZHIPU_CONCURRENCY", "")
+    if env_val:
+        return max(1, int(env_val))
+    return DEFAULT_LLM_CONCURRENCY
+
+
+def run_enrich_batch(
+    article_dirs: list[Path],
+    args: argparse.Namespace,
+    concurrency: int = 1,
+    progress_callback=None,
+) -> list[ProcessResult]:
+    """Enrich a batch of articles, optionally concurrently.
+
+    Args:
+        article_dirs: directories to process.
+        args: CLI/tool arguments namespace.
+        concurrency: max parallel LLM requests.
+        progress_callback: optional callable(index, total, result) for progress.
+
+    Returns list of ProcessResult. Stops early on LLMAuthError.
+    """
+    results: list[ProcessResult] = []
+    total = len(article_dirs)
+    auth_failed = False
+
+    if concurrency <= 1:
+        for i, ad in enumerate(article_dirs):
+            result = process_article_dir(ad, args)
+            results.append(result)
+            if progress_callback:
+                progress_callback(i + 1, total, result)
+            if isinstance(result.error, str) and "authentication failed" in result.error.lower():
+                auth_failed = True
+                break
+        return results
+
+    # Concurrent execution
+    future_to_idx = {}
+    with ThreadPoolExecutor(max_workers=concurrency) as executor:
+        for i, ad in enumerate(article_dirs):
+            if auth_failed:
+                break
+            future = executor.submit(process_article_dir, ad, args)
+            future_to_idx[future] = i
+
+        for future in as_completed(future_to_idx):
+            idx = future_to_idx[future]
+            try:
+                result = future.result()
+            except LLMAuthError as exc:
+                result = ProcessResult(
+                    article_dir=str(article_dirs[idx]), success=False, error=str(exc)
+                )
+                auth_failed = True
+                # Cancel pending futures
+                for f in future_to_idx:
+                    f.cancel()
+            except Exception as exc:
+                result = ProcessResult(
+                    article_dir=str(article_dirs[idx]), success=False, error=str(exc)
+                )
+            results.append(result)
+            if progress_callback:
+                progress_callback(len(results), total, result)
+            if auth_failed:
+                break
+
+    return results
+
+
 def main() -> int:
     args = parse_args()
     article_dirs = discover_article_dirs(args)
-    results: list[ProcessResult] = []
-    for article_dir in article_dirs:
-        result = process_article_dir(article_dir, args)
-        results.append(result)
-        if result.success:
-            print(f"ok: {result.article_dir}")
-        else:
-            print(f"failed: {result.article_dir}: {result.error}")
+    concurrency = get_concurrency(args)
+
+    if concurrency > 1 and len(article_dirs) > 1:
+        print(f"Processing {len(article_dirs)} articles with concurrency={concurrency}")
+
+    def _progress(i, total, result):
+        status = "ok" if result.success else f"failed: {result.error}"
+        print(f"[{i}/{total}] {result.article_dir}: {status}")
+
+    results = run_enrich_batch(article_dirs, args, concurrency, progress_callback=_progress)
+
     failures = [r for r in results if not r.success]
     failure_list_path = write_llm_failures(results)
     summary = {

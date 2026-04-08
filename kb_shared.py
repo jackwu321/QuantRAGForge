@@ -36,6 +36,7 @@ DEFAULT_SOURCE_DIRS = ("reviewed", "high-value")
 #   LLM_CONNECT_TIMEOUT / ZHIPU_CONNECT_TIMEOUT  — Connection timeout in seconds
 #   LLM_READ_TIMEOUT    / ZHIPU_READ_TIMEOUT     — Read timeout in seconds
 #   LLM_MAX_RETRIES     / ZHIPU_MAX_RETRIES      — Max retry attempts
+#   LLM_CONCURRENCY                              — Max parallel LLM requests (default: 3)
 # ---------------------------------------------------------------------------
 
 DEFAULT_LLM_BASE_URL = "https://open.bigmodel.cn/api/paas/v4"
@@ -44,7 +45,12 @@ DEFAULT_EMBEDDING_MODEL = "embedding-3"
 DEFAULT_CONNECT_TIMEOUT = 15
 DEFAULT_READ_TIMEOUT = 180
 DEFAULT_MAX_RETRIES = 2
+DEFAULT_LLM_CONCURRENCY = 3
 PLACEHOLDER_TEXTS = {"待补充。", "待生成。"}
+
+
+class LLMAuthError(RuntimeError):
+    """Raised when the LLM API returns a 401/403 authentication error."""
 
 
 
@@ -247,8 +253,19 @@ def _timeouts_for_env() -> tuple[int, int, int]:
     return connect_timeout, read_timeout, max_retries
 
 
+def _is_retryable_status(status_code: int) -> bool:
+    """Return True if the HTTP status code is worth retrying."""
+    if 400 <= status_code < 500:
+        return status_code == 429  # rate limit is retryable
+    return True  # 5xx, network errors, etc.
+
+
 def post_llm_json(path: str, payload: dict[str, Any]) -> dict[str, Any]:
-    """POST to the LLM provider's OpenAI-compatible API with retries."""
+    """POST to the LLM provider's OpenAI-compatible API with retries.
+
+    Non-retryable errors (4xx except 429) fail immediately.
+    Auth errors (401/403) raise LLMAuthError for fail-fast handling.
+    """
     require_requests()
     api_key, base_url, _ = get_llm_config()
     connect_timeout, read_timeout, max_retries = _timeouts_for_env()
@@ -266,6 +283,18 @@ def post_llm_json(path: str, payload: dict[str, Any]) -> dict[str, Any]:
             )
             response.raise_for_status()
             return response.json()
+        except requests.exceptions.HTTPError as exc:
+            status = exc.response.status_code if exc.response is not None else 0
+            if status in (401, 403):
+                raise LLMAuthError(
+                    f"LLM API authentication failed ({status}). Check your LLM_API_KEY."
+                ) from exc
+            if not _is_retryable_status(status):
+                raise
+            last_error = exc
+            if attempt >= max_retries:
+                break
+            time.sleep(min(1.5, 0.5 * (attempt + 1)))
         except requests.exceptions.RequestException as exc:
             last_error = exc
             if attempt >= max_retries:

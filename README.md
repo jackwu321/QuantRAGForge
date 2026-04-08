@@ -258,6 +258,7 @@ QuantRAGForge works with **any OpenAI-compatible API**. Configure via `.env` fil
 | `LLM_CONNECT_TIMEOUT` | `10` | Connection timeout (seconds) |
 | `LLM_READ_TIMEOUT` | `120` | Read timeout (seconds) |
 | `LLM_MAX_RETRIES` | `2` | Max retry attempts |
+| `LLM_CONCURRENCY` | `3` | Max parallel LLM requests for enrichment |
 
 Legacy `ZHIPU_*` prefixed variables are also supported as fallbacks.
 

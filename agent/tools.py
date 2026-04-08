@@ -142,10 +142,12 @@ def enrich_articles(
     Optionally specify a single article_dir, or process all articles matching
     the status_filter (default: raw).
     Use 'limit' to cap the number of articles processed (recommended for
-    interactive use to avoid long waits)."""
+    interactive use to avoid long waits).
+    Articles are processed concurrently for speed (configurable via LLM_CONCURRENCY env var)."""
     from enrich_articles_with_llm import (
         discover_article_dirs as enrich_discover,
-        process_article_dir,
+        run_enrich_batch,
+        get_concurrency,
         ProcessResult,
     )
 
@@ -156,6 +158,7 @@ def enrich_articles(
         force=force,
         dry_run=False,
         limit=limit,
+        concurrency=None,
     )
     try:
         article_dirs = enrich_discover(args)
@@ -165,14 +168,15 @@ def enrich_articles(
     if not article_dirs:
         return "No articles found matching the criteria."
 
-    results: list[ProcessResult] = []
+    concurrency = get_concurrency(args)
     total = len(article_dirs)
-    for i, ad in enumerate(article_dirs, 1):
-        print(f"  [{i}/{total}] Enriching: {Path(ad).name} ...", flush=True)
-        result = process_article_dir(ad, args)
+    print(f"  Enriching {total} articles (concurrency={concurrency}) ...", flush=True)
+
+    def _progress(i, t, result):
         status = "ok" if result.success else f"failed: {result.error}"
-        print(f"  [{i}/{total}] {status}", flush=True)
-        results.append(result)
+        print(f"  [{i}/{t}] {Path(result.article_dir).name}: {status}", flush=True)
+
+    results = run_enrich_batch(article_dirs, args, concurrency, progress_callback=_progress)
 
     success = sum(1 for r in results if r.success)
     failed = [r for r in results if not r.success]
