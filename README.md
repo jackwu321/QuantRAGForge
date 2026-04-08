@@ -25,12 +25,13 @@
 
 ## Features
 
-- **Multi-source Ingestion** — Ingest from single URLs, batch URL lists, or local HTML files
-- **LLM Enrichment** — Automatically extract structured fields: idea blocks, transfer targets, combination hooks, failure modes, and more
+- **Multi-source Ingestion** — Ingest from single URLs, batch URL lists, or local HTML files; warns on re-ingesting previously rejected sources
+- **LLM Enrichment** — Automatically extract structured fields: idea blocks, transfer targets, combination hooks, failure modes, and more. Concurrent processing with configurable parallelism
 - **Hybrid RAG Retrieval** — Keyword + vector + RRF fusion retrieval across your knowledge base
 - **Brainstorm Mode** — Generate new strategy ideas by combining insights from multiple articles
 - **Rethink Layer** — Post-generation validation that checks idea novelty (via vector similarity) and scores quality (traceability, coherence, actionability)
-- **Interactive Agent** — LangGraph ReAct agent with 8 tools for full pipeline management
+- **Article Quality Control** — Mark articles as `rejected` to remove from KB and prevent re-ingestion; review tool shows only enriched articles
+- **Interactive Agent** — LangGraph ReAct agent with 8 tools for full pipeline management, with real-time progress streaming
 - **Provider-Agnostic** — Works with any OpenAI-compatible LLM API (Zhipu GLM, DeepSeek, Moonshot, Qwen, OpenAI, Ollama, etc.)
 - **Local-First** — All data stored locally as Markdown files + ChromaDB vectors
 
@@ -43,24 +44,27 @@ WeChat URLs / HTML Files
         |
         v
   [1. Ingest] ──> articles/raw/{dir}/article.md + source.json
-        |
+        |         (warns if URL was previously rejected)
         v
   [2. Enrich] ──> LLM fills idea_blocks, transfer_targets, failure_modes, etc.
+        |         (concurrent processing, configurable via LLM_CONCURRENCY)
+        v
+  [3. Review] ──> Human review via agent or Obsidian (shows enriched only)
+        |
+        v                              ┌──> rejected ──> recorded + deleted
+  [4. Status] ──> reviewed / high_value / rejected
+        |                              └──> reviewed or high_value
+        v
+  [5. Sync]   ──> Move to articles/reviewed/ or articles/high-value/
         |
         v
-  [3. Review] ──> Human review via agent or Obsidian
+  [6. Embed]  ──> Build ChromaDB vector index (block-level chunking)
         |
         v
-  [4. Sync]   ──> Move to articles/reviewed/ or articles/high-value/
+  [7. Query]  ──> RAG Q&A (ask) or Brainstorm (brainstorm)
         |
         v
-  [5. Embed]  ──> Build ChromaDB vector index (block-level chunking)
-        |
-        v
-  [6. Query]  ──> RAG Q&A (ask) or Brainstorm (brainstorm)
-        |
-        v
-  [7. Rethink] ──> Novelty check + Quality scoring + Rethink Report
+  [8. Rethink] ──> Novelty check + Quality scoring + Rethink Report
 ```
 
 ### Agent Layer
@@ -69,12 +73,12 @@ The LangGraph ReAct agent provides 8 tools:
 
 | Tool | Description |
 |------|-------------|
-| `ingest_article` | Ingest from URL, batch URLs, URL list file, or HTML file |
-| `enrich_articles` | LLM-powered structured enrichment |
+| `ingest_article` | Ingest from URL, batch URLs, URL list file, or HTML file. Warns on previously rejected sources |
+| `enrich_articles` | LLM-powered structured enrichment (concurrent, with `limit` support) |
 | `list_articles` | List articles by stage (raw/reviewed/high-value) |
-| `review_articles` | Show detailed article metadata for review |
-| `set_article_status` | Batch update article status |
-| `sync_articles` | Move articles based on frontmatter status |
+| `review_articles` | Show enriched articles ready for review (filters unenriched by default) |
+| `set_article_status` | Batch update article status (`reviewed`, `high_value`, or `rejected`) |
+| `sync_articles` | Move articles based on frontmatter status; deletes rejected articles |
 | `embed_knowledge` | Build/update ChromaDB vector index |
 | `query_knowledge_base` | RAG Q&A or brainstorm with Rethink Layer |
 
@@ -184,8 +188,10 @@ python3 ingest_wechat_article.py --html-file saved.html
 ### 4. Enrich with LLM
 
 ```bash
-python3 enrich_articles_with_llm.py           # all raw articles
-python3 enrich_articles_with_llm.py --dry-run  # preview only
+python3 enrich_articles_with_llm.py                    # all raw articles (concurrent)
+python3 enrich_articles_with_llm.py --limit 10         # first 10 only
+python3 enrich_articles_with_llm.py --concurrency 5    # 5 parallel LLM requests
+python3 enrich_articles_with_llm.py --dry-run           # preview only
 ```
 
 ### 5. Build Vector Index
@@ -227,17 +233,21 @@ python3 agent_cli.py --query "brainstorm: combine factor timing with risk parity
 You: ingest these articles: url1, url2, url3
 Agent: Ingested 3/3 articles successfully.
 
-You: enrich all raw articles
-Agent: Enriched 3 articles with LLM metadata.
+You: enrich the first 3 raw articles
+Agent: [1/3] ok  [2/3] ok  [3/3] ok — Enriched 3/3 articles.
 
 You: review the new articles
-Agent: [Shows detailed article list with content types and summaries]
+Agent: [Shows enriched articles with content types and summaries]
 
-You: set articles 1 and 3 as high_value, article 2 as reviewed
-Agent: Updated status for 3 articles.
+You: set articles 1 and 3 as high_value, article 2 as rejected (low research value)
+Agent: Updated 3 articles. Article 2 recorded as rejected.
 
 You: sync and rebuild the index
-Agent: Synced articles. Rebuilt vector index: 3 new, 20 total.
+Agent: Synced — 2 moved, 1 rejected (deleted). Rebuilt vector index.
+
+You: ingest url2 again
+Agent: WARNING — url2 was previously rejected: "文章标题" (reason: low research value).
+       Use force=True to re-ingest.
 
 You: brainstorm: how to combine momentum with volatility timing
 Agent: [Generates ideas + Rethink Report with novelty/quality scores]
@@ -273,6 +283,15 @@ Each article is classified with exactly one `content_type`:
 | `allocation` | Portfolio construction, rotation, ETF allocation |
 | `risk_control` | Risk management, drawdown control, volatility targeting |
 | `market_review` | Market commentary, sector reviews |
+
+### Article Status Lifecycle
+
+| Status | Directory | Description |
+|--------|-----------|-------------|
+| `raw` | `articles/raw/` | Ingested, pending enrichment and review |
+| `reviewed` | `articles/reviewed/` | Human-reviewed, included in vector index |
+| `high_value` | `articles/high-value/` | High research value, included in vector index |
+| `rejected` | *(deleted)* | Low value — removed from KB, source URL recorded to prevent re-ingestion |
 
 ## Running Tests
 
