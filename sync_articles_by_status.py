@@ -17,6 +17,7 @@ STATUS_TO_DIR = {
     "high_value": "high-value",
     "high-value": "high-value",
 }
+REJECTED_STATUSES = {"rejected"}
 
 
 @dataclass
@@ -78,6 +79,22 @@ def sync_by_status(source_dir: Path, dry_run: bool) -> list[SyncResult]:
             continue
 
         status = parse_status(article_md)
+
+        # Handle rejected articles — remove from raw/
+        if status in REJECTED_STATUSES:
+            if not dry_run:
+                shutil.rmtree(str(article_dir))
+            results.append(
+                SyncResult(
+                    article_dir=str(article_dir),
+                    status=status,
+                    target_dir="(deleted)",
+                    moved=True,
+                    reason="rejected — removed from knowledge base",
+                )
+            )
+            continue
+
         target_name = STATUS_TO_DIR.get(status, "")
         if not target_name:
             results.append(

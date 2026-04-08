@@ -22,6 +22,8 @@ from kb_shared import (
     parse_frontmatter,
     filter_notes,
     parse_csv_arg,
+    find_rejected_source,
+    add_rejected_source,
 )
 
 
@@ -104,7 +106,21 @@ def ingest_article(
     results: list[str] = []
     success_count = 0
     skipped_count = 0
+    rejected_warnings: list[str] = []
     for i, u in enumerate(url_list, start=1):
+        # Check if this URL was previously rejected
+        rejected = find_rejected_source(source_url=u)
+        if rejected and not force:
+            skipped_count += 1
+            reason = rejected.get("reason", "low value")
+            title = rejected.get("title", "unknown")
+            results.append(
+                f"[{i}/{len(url_list)}] WARNING — previously rejected: \"{title}\" "
+                f"(reason: {reason}, rejected at: {rejected.get('rejected_at', '?')}). "
+                f"Use force=True to re-ingest."
+            )
+            rejected_warnings.append(u)
+            continue
         result: BatchResult = ingest_single_url(u, args)
         if result.skipped:
             skipped_count += 1
@@ -119,6 +135,8 @@ def ingest_article(
     parts = [f"{success_count} ingested"]
     if skipped_count:
         parts.append(f"{skipped_count} skipped (already exist)")
+    if rejected_warnings:
+        parts.append(f"{len(rejected_warnings)} previously rejected")
     if fail_count:
         parts.append(f"{fail_count} failed")
     summary = f"Result: {', '.join(parts)} (total {len(url_list)})"
@@ -272,13 +290,16 @@ def review_articles(source_dir: str = "raw", enriched_only: bool = True) -> str:
 
 
 @tool
-def set_article_status(article_paths: list[str], status: str) -> str:
+def set_article_status(article_paths: list[str], status: str, reason: str = "") -> str:
     """Batch-update the status field in article frontmatter. Accepts a list
-    of article directory paths and a target status (reviewed or high_value).
+    of article directory paths and a target status (reviewed, high_value, or rejected).
     This modifies the status: line in each article.md's YAML frontmatter,
-    preparing them for sync_articles to move to the correct directory."""
-    if status not in ("reviewed", "high_value"):
-        return f"Invalid status '{status}'. Must be 'reviewed' or 'high_value'."
+    preparing them for sync_articles to move to the correct directory.
+    When status is 'rejected', the article's source URL and title are recorded
+    so that future re-ingestion of the same source will trigger a warning.
+    Use 'reason' to note why articles are rejected (e.g. 'low research value')."""
+    if status not in ("reviewed", "high_value", "rejected"):
+        return f"Invalid status '{status}'. Must be 'reviewed', 'high_value', or 'rejected'."
 
     updated: list[str] = []
     errors: list[str] = []
@@ -309,6 +330,19 @@ def set_article_status(article_paths: list[str], status: str) -> str:
             fm, _ = parse_frontmatter(new_content)
             title = fm.get("title", title)
             updated.append(f"  {title} → {status}")
+
+            # Record rejected sources for future ingestion warnings
+            if status == "rejected":
+                source_url = ""
+                source_path = article_dir / "source.json"
+                if source_path.exists():
+                    source_data = json.loads(source_path.read_text(encoding="utf-8"))
+                    source_url = source_data.get("source_url", "")
+                add_rejected_source(
+                    source_url=source_url,
+                    title=fm.get("title", article_dir.name),
+                    reason=reason or fm.get("brainstorm_value", ""),
+                )
         except Exception as exc:
             errors.append(f"  Error updating {article_dir.name}: {exc}")
 

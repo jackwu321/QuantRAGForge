@@ -53,6 +53,51 @@ class LLMAuthError(RuntimeError):
     """Raised when the LLM API returns a 401/403 authentication error."""
 
 
+# ---------------------------------------------------------------------------
+# Rejected sources registry — tracks URLs/titles marked as low-value
+# ---------------------------------------------------------------------------
+REJECTED_SOURCES_PATH = ROOT / "rejected_sources.json"
+
+
+def load_rejected_sources() -> list[dict[str, str]]:
+    """Load the rejected sources list. Each entry has 'source_url', 'title', 'reason', 'rejected_at'."""
+    if not REJECTED_SOURCES_PATH.exists():
+        return []
+    return json.loads(REJECTED_SOURCES_PATH.read_text(encoding="utf-8"))
+
+
+def save_rejected_sources(entries: list[dict[str, str]]) -> None:
+    REJECTED_SOURCES_PATH.write_text(
+        json.dumps(entries, ensure_ascii=False, indent=2), encoding="utf-8"
+    )
+
+
+def find_rejected_source(source_url: str = "", title: str = "") -> dict[str, str] | None:
+    """Check if a URL or title was previously rejected. Returns the entry or None."""
+    entries = load_rejected_sources()
+    for entry in entries:
+        if source_url and entry.get("source_url") and entry["source_url"] == source_url:
+            return entry
+        if title and entry.get("title") and entry["title"] == title:
+            return entry
+    return None
+
+
+def add_rejected_source(source_url: str, title: str, reason: str = "") -> None:
+    """Add a source to the rejected list (skips if already present)."""
+    from datetime import datetime
+    if find_rejected_source(source_url, title):
+        return
+    entries = load_rejected_sources()
+    entries.append({
+        "source_url": source_url,
+        "title": title,
+        "reason": reason,
+        "rejected_at": datetime.now().isoformat(timespec="seconds"),
+    })
+    save_rejected_sources(entries)
+
+
 
 @dataclass
 class KnowledgeNote:

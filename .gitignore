@@ -18,6 +18,9 @@ zhipu_api_key.txt
 *.api_key
 .env
 
+# User-specific data
+rejected_sources.json
+
 # IDE
 .vscode/
 .idea/
