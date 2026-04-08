@@ -32,7 +32,6 @@ DEFAULT_SOURCE_DIRS = ("reviewed", "high-value")
 #   LLM_API_KEY         / ZHIPU_API_KEY          — API key
 #   LLM_BASE_URL        / ZHIPU_BASE_URL         — Base URL for the API
 #   LLM_MODEL           / ZHIPU_MODEL            — Chat model name
-#   LLM_API_KEY_FILE    / ZHIPU_API_KEY_FILE     — Path to a file containing the key
 #   LLM_EMBEDDING_MODEL / ZHIPU_EMBEDDING_MODEL  — Embedding model name
 #   LLM_CONNECT_TIMEOUT / ZHIPU_CONNECT_TIMEOUT  — Connection timeout in seconds
 #   LLM_READ_TIMEOUT    / ZHIPU_READ_TIMEOUT     — Read timeout in seconds
@@ -41,14 +40,6 @@ DEFAULT_SOURCE_DIRS = ("reviewed", "high-value")
 
 DEFAULT_LLM_BASE_URL = "https://open.bigmodel.cn/api/paas/v4"
 DEFAULT_LLM_MODEL = "glm-4.7"
-DEFAULT_LLM_KEY_FILE = ROOT / "llm_api_key.txt"
-# Additional key file names to search (in order) when no explicit path is configured
-_KEY_FILE_SEARCH_NAMES = (
-    "llm_api_key.txt",
-    "api_key.txt",
-    "api.txt",
-    "zhipu_api_key.txt",
-)
 DEFAULT_EMBEDDING_MODEL = "embedding-3"
 DEFAULT_CONNECT_TIMEOUT = 15
 DEFAULT_READ_TIMEOUT = 180
@@ -221,50 +212,20 @@ def _env_with_fallback(generic: str, legacy: str, default: str = "") -> str:
     return os.getenv(legacy, default).strip()
 
 
-def get_llm_key_file_path() -> Path:
-    key_file = _env_with_fallback("LLM_API_KEY_FILE", "ZHIPU_API_KEY_FILE")
-    if key_file:
-        return Path(key_file).expanduser().resolve()
-    return DEFAULT_LLM_KEY_FILE
-
-
-def load_api_key_from_file(path: Path) -> str:
-    if not path.exists():
-        return ""
-    return path.read_text(encoding="utf-8").strip()
-
-
 def get_llm_config() -> tuple[str, str, str]:
     """Return (api_key, base_url, model) for the configured LLM provider.
 
-    Key resolution order:
-    1. Explicit key file path (LLM_API_KEY_FILE or ZHIPU_API_KEY_FILE env var)
-    2. Auto-search common key file names in project root
-       (llm_api_key.txt, api_key.txt, api.txt, zhipu_api_key.txt)
-    3. Environment variable (LLM_API_KEY or ZHIPU_API_KEY)
+    Key resolution: environment variable LLM_API_KEY (or ZHIPU_API_KEY fallback),
+    loaded from .env via python-dotenv at module import time.
 
     Works with any OpenAI-compatible API provider.
     """
-    # 1. Try explicit key file path
-    api_key = load_api_key_from_file(get_llm_key_file_path())
-
-    # 2. Auto-search common key file names in project root
-    if not api_key:
-        for name in _KEY_FILE_SEARCH_NAMES:
-            candidate = ROOT / name
-            api_key = load_api_key_from_file(candidate)
-            if api_key:
-                break
-
-    # 3. Try environment variables
-    if not api_key:
-        api_key = _env_with_fallback("LLM_API_KEY", "ZHIPU_API_KEY")
+    api_key = _env_with_fallback("LLM_API_KEY", "ZHIPU_API_KEY")
     if not api_key:
         raise RuntimeError(
             "LLM API key is required. Provide it in one of these ways:\n"
-            "  1. Put your key in a file: llm_api_key.txt, api_key.txt, or api.txt\n"
-            "  2. Set LLM_API_KEY in .env file\n"
-            "  3. Set LLM_API_KEY_FILE to point to a custom key file path"
+            "  1. Set LLM_API_KEY in .env file in the project root\n"
+            "  2. Set the LLM_API_KEY environment variable"
         )
     base_url = _env_with_fallback("LLM_BASE_URL", "ZHIPU_BASE_URL", DEFAULT_LLM_BASE_URL).rstrip("/")
     model = _env_with_fallback("LLM_MODEL", "ZHIPU_MODEL", DEFAULT_LLM_MODEL) or DEFAULT_LLM_MODEL

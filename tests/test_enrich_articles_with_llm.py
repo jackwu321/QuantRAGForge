@@ -9,15 +9,6 @@ import kb_shared
 
 
 class EnrichArticlesWithLlmTests(unittest.TestCase):
-    def test_load_api_key_from_file(self) -> None:
-        path = mod.ROOT / "tmp_test_api_key.txt"
-        try:
-            path.write_text("test-key\n", encoding="utf-8")
-            self.assertEqual(kb_shared.load_api_key_from_file(path), "test-key")
-        finally:
-            if path.exists():
-                path.unlink()
-
     def test_validate_enhancement_data_non_strategy_clears_trade_fields(self) -> None:
         data = {
             "reusability": "adaptable",

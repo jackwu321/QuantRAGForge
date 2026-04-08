@@ -365,58 +365,33 @@ class TestConfigurationRobustness(unittest.TestCase):
 
     @patch.dict(
         os.environ,
-        {"LLM_API_KEY": "", "ZHIPU_API_KEY": "", "LLM_API_KEY_FILE": "", "ZHIPU_API_KEY_FILE": ""},
+        {"LLM_API_KEY": "", "ZHIPU_API_KEY": ""},
         clear=False,
     )
     def test_missing_api_key_raises(self):
         from kb_shared import get_llm_config
 
-        # Ensure no key file exists by pointing to nonexistent path and root
-        with patch("kb_shared.DEFAULT_LLM_KEY_FILE", Path("/nonexistent/key.txt")), \
-             patch("kb_shared.ROOT", Path("/nonexistent")):
-            with self.assertRaises(RuntimeError) as ctx:
-                get_llm_config()
-            self.assertIn("API key is required", str(ctx.exception))
+        with self.assertRaises(RuntimeError) as ctx:
+            get_llm_config()
+        self.assertIn("API key is required", str(ctx.exception))
 
-    def test_api_key_from_file_fallback(self):
+    @patch.dict(os.environ, {"LLM_API_KEY": "env-key-999"}, clear=False)
+    def test_api_key_from_env(self):
         from kb_shared import get_llm_config
 
-        with tempfile.TemporaryDirectory() as tmpdir:
-            key_file = Path(tmpdir) / "api_key.txt"
-            key_file.write_text("file-based-key-12345", encoding="utf-8")
-
-            with patch.dict(os.environ, {"LLM_API_KEY": "", "ZHIPU_API_KEY": ""}, clear=False):
-                with patch("kb_shared.DEFAULT_LLM_KEY_FILE", key_file):
-                    api_key, base_url, model = get_llm_config()
-                    self.assertEqual(api_key, "file-based-key-12345")
-
-    @patch.dict(os.environ, {"LLM_API_KEY": "env-key-999", "LLM_API_KEY_FILE": ""}, clear=False)
-    def test_api_key_env_overrides_file(self):
-        from kb_shared import get_llm_config
-
-        with tempfile.TemporaryDirectory() as tmpdir:
-            key_file = Path(tmpdir) / "api_key.txt"
-            key_file.write_text("file-key-should-not-use", encoding="utf-8")
-
-            with patch("kb_shared.DEFAULT_LLM_KEY_FILE", key_file):
-                api_key, _, _ = get_llm_config()
-                # File key is loaded first, but only if env key is empty
-                # Actually, get_llm_config loads file first, then env fallback
-                # The file key takes precedence if it exists
-                self.assertIn(api_key, ("env-key-999", "file-key-should-not-use"))
+        api_key, _, _ = get_llm_config()
+        self.assertEqual(api_key, "env-key-999")
 
     @patch.dict(
         os.environ,
-        {"LLM_API_KEY": "", "ZHIPU_API_KEY": "zhipu-legacy-key", "LLM_API_KEY_FILE": "", "ZHIPU_API_KEY_FILE": ""},
+        {"LLM_API_KEY": "", "ZHIPU_API_KEY": "zhipu-legacy-key"},
         clear=False,
     )
     def test_legacy_zhipu_env_fallback(self):
         from kb_shared import get_llm_config
 
-        with patch("kb_shared.DEFAULT_LLM_KEY_FILE", Path("/nonexistent/key.txt")), \
-             patch("kb_shared.ROOT", Path("/nonexistent")):
-            api_key, _, _ = get_llm_config()
-            self.assertEqual(api_key, "zhipu-legacy-key")
+        api_key, _, _ = get_llm_config()
+        self.assertEqual(api_key, "zhipu-legacy-key")
 
     @patch("kb_shared.get_llm_config", side_effect=_mock_get_llm_config)
     @patch("kb_shared.time.sleep")
