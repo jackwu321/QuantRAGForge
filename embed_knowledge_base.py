@@ -55,6 +55,11 @@ class CorruptedVectorStoreError(RuntimeError):
     """Raised when the ChromaDB store is corrupted and has been cleaned up."""
 
 
+# Module-level flag: once Chroma's Rust bindings are poisoned in this process,
+# no further open attempts can succeed until restart.
+_chroma_poisoned = False
+
+
 def open_collection(vector_store_dir: Path):
     """Open or create the ChromaDB collection.
 
@@ -63,12 +68,19 @@ def open_collection(vector_store_dir: Path):
     Chroma's Rust bindings hold in-process state that cannot be reset,
     so the caller must restart the process and retry.
     """
+    global _chroma_poisoned
+    if _chroma_poisoned:
+        raise CorruptedVectorStoreError(
+            "ChromaDB is unavailable in this session due to a previous store corruption. "
+            "Please restart the agent and retry the embed command."
+        )
     require_chromadb()
     vector_store_dir.mkdir(parents=True, exist_ok=True)
     try:
         client = chromadb.PersistentClient(path=str(vector_store_dir))
         return client.get_or_create_collection(COLLECTION_NAME, metadata={"hnsw:space": "cosine"})
     except Exception as exc:
+        _chroma_poisoned = True
         # Clean up corrupt files so next process start works
         import shutil
         shutil.rmtree(str(vector_store_dir), ignore_errors=True)
