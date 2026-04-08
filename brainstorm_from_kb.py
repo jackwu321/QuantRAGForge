@@ -18,6 +18,7 @@ from kb_shared import (
     KnowledgeNote,
     build_blocks,
     call_zhipu_chat,
+    check_vector_store_health,
     filter_notes,
     get_llm_config,
     load_notes,
@@ -170,6 +171,11 @@ def _open_vector_collection(vector_store_dir: Path):
         raise RuntimeError("chromadb is required for vector or hybrid retrieval. Install with: pip install chromadb")
     if not vector_store_dir.exists():
         raise RuntimeError(f"vector store directory not found: {vector_store_dir}")
+    if not check_vector_store_health(vector_store_dir):
+        raise RuntimeError(
+            "Vector store was corrupted and has been cleaned up. "
+            "Please run embed_knowledge to rebuild the index."
+        )
     client = chromadb.PersistentClient(path=str(vector_store_dir))
     return client.get_collection("knowledge_blocks")
 

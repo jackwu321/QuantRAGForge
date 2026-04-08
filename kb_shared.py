@@ -4,6 +4,7 @@ import hashlib
 import json
 import os
 import re
+import sqlite3
 import time
 from dataclasses import dataclass
 from pathlib import Path
@@ -97,6 +98,40 @@ def add_rejected_source(source_url: str, title: str, reason: str = "") -> None:
     })
     save_rejected_sources(entries)
 
+
+# ---------------------------------------------------------------------------
+# Vector store health check
+# ---------------------------------------------------------------------------
+
+def check_vector_store_health(vector_store_dir: Path) -> bool:
+    """Pre-flight check: validate chroma.sqlite3 before Chroma touches it.
+
+    Must be called BEFORE chromadb.PersistentClient() to avoid poisoning
+    Chroma's Rust bindings with a corrupt database.
+
+    Returns True if store is healthy or absent (safe to proceed).
+    Returns False if store was corrupt and has been cleaned up.
+    """
+    import shutil
+    db_path = vector_store_dir / "chroma.sqlite3"
+    if not db_path.exists():
+        return True
+    try:
+        conn = sqlite3.connect(str(db_path))
+        result = conn.execute("PRAGMA integrity_check").fetchone()
+        conn.close()
+        if result and result[0] == "ok":
+            return True
+    except Exception:
+        pass
+    # Corrupt — clean up before Chroma touches it
+    shutil.rmtree(str(vector_store_dir), ignore_errors=True)
+    vector_store_dir.mkdir(parents=True, exist_ok=True)
+    # Clear manifest so all articles get re-indexed on next embed
+    manifest_path = vector_store_dir / "index_manifest.json"
+    if manifest_path.exists():
+        manifest_path.unlink()
+    return False
 
 
 @dataclass

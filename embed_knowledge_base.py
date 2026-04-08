@@ -18,6 +18,7 @@ from kb_shared import (
     KnowledgeBlock,
     article_content_hash,
     build_blocks,
+    check_vector_store_health,
     embed_text,
     load_notes,
     parse_csv_arg,
@@ -76,6 +77,8 @@ def open_collection(vector_store_dir: Path):
         )
     require_chromadb()
     vector_store_dir.mkdir(parents=True, exist_ok=True)
+    if not check_vector_store_health(vector_store_dir):
+        print("  Corrupt vector store detected and cleaned up. Rebuilding from scratch.", flush=True)
     try:
         client = chromadb.PersistentClient(path=str(vector_store_dir))
         return client.get_or_create_collection(COLLECTION_NAME, metadata={"hnsw:space": "cosine"})

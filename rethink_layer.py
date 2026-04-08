@@ -15,6 +15,7 @@ from kb_shared import (
     ROOT,
     KnowledgeBlock,
     call_llm_chat,
+    check_vector_store_health,
     embed_text,
 )
 
@@ -161,6 +162,11 @@ def _open_rethink_collection(vector_store_dir: Path | None = None):
     store_dir = vector_store_dir or VECTOR_STORE_DIR
     if not store_dir.exists():
         raise RuntimeError(f"vector store directory not found: {store_dir}")
+    if not check_vector_store_health(store_dir):
+        raise RuntimeError(
+            "Vector store was corrupted and has been cleaned up. "
+            "Please run embed_knowledge to rebuild the index."
+        )
     client = chromadb.PersistentClient(path=str(store_dir))
     return client.get_collection("knowledge_blocks")
 
