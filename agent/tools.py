@@ -390,6 +390,7 @@ def embed_knowledge(force: bool = False) -> str:
     articles. Use force=True to re-index all articles."""
     from embed_knowledge_base import (
         open_collection,
+        CorruptedVectorStoreError,
         load_manifest,
         save_manifest,
         manifest_key,
@@ -420,15 +421,10 @@ def embed_knowledge(force: bool = False) -> str:
     manifest = load_manifest(manifest_path)
     try:
         collection = open_collection(VECTOR_STORE_DIR)
+    except CorruptedVectorStoreError as exc:
+        return str(exc)
     except Exception as exc:
         return f"Error opening vector store: {exc}"
-    # If store was auto-repaired (rebuilt from scratch), clear manifest
-    # so all articles get re-indexed
-    if not any(VECTOR_STORE_DIR.glob("chroma.sqlite3-journal")):
-        # Check if store was just recreated (empty collection but non-empty manifest)
-        if manifest["articles"] and collection.count() == 0:
-            manifest = {"articles": {}}
-            force = True
     failures: list[dict[str, str]] = []
     success = 0
     skipped = 0

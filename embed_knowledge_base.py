@@ -51,12 +51,17 @@ def require_chromadb() -> None:
         raise RuntimeError("chromadb is required. Install with: pip install chromadb")
 
 
-def open_collection(vector_store_dir: Path, auto_repair: bool = True):
+class CorruptedVectorStoreError(RuntimeError):
+    """Raised when the ChromaDB store is corrupted and has been cleaned up."""
+
+
+def open_collection(vector_store_dir: Path):
     """Open or create the ChromaDB collection.
 
     If the SQLite store is corrupted (e.g. from an interrupted run),
-    and auto_repair is True, deletes the corrupt store and creates a fresh one.
-    The manifest should be cleared separately so all articles get re-indexed.
+    deletes the corrupt files and raises CorruptedVectorStoreError.
+    Chroma's Rust bindings hold in-process state that cannot be reset,
+    so the caller must restart the process and retry.
     """
     require_chromadb()
     vector_store_dir.mkdir(parents=True, exist_ok=True)
@@ -64,15 +69,19 @@ def open_collection(vector_store_dir: Path, auto_repair: bool = True):
         client = chromadb.PersistentClient(path=str(vector_store_dir))
         return client.get_or_create_collection(COLLECTION_NAME, metadata={"hnsw:space": "cosine"})
     except Exception as exc:
-        if not auto_repair:
-            raise
-        # Corrupted store — remove and recreate
+        # Clean up corrupt files so next process start works
         import shutil
-        print(f"  ChromaDB store corrupted ({exc}), rebuilding from scratch...", flush=True)
         shutil.rmtree(str(vector_store_dir), ignore_errors=True)
         vector_store_dir.mkdir(parents=True, exist_ok=True)
-        client = chromadb.PersistentClient(path=str(vector_store_dir))
-        return client.get_or_create_collection(COLLECTION_NAME, metadata={"hnsw:space": "cosine"})
+        # Also clear the manifest so all articles get re-indexed on retry
+        manifest_path = vector_store_dir / INDEX_MANIFEST_FILENAME
+        if manifest_path.exists():
+            manifest_path.unlink()
+        raise CorruptedVectorStoreError(
+            f"ChromaDB store was corrupted ({exc}). "
+            f"Corrupt files have been removed. "
+            f"Please restart the agent and retry the embed command."
+        ) from exc
 
 
 def manifest_key(kb_root: Path, note) -> str:
