@@ -220,20 +220,32 @@ def list_articles(source_dir: Optional[str] = None) -> str:
 
 
 @tool
-def review_articles(source_dir: str = "raw") -> str:
+def review_articles(source_dir: str = "raw", enriched_only: bool = True) -> str:
     """Show articles ready for review with detailed metadata. Displays a
     numbered list with title, content_type, brainstorm_value, and summary
     so the user can decide which status to assign.
+    By default only shows enriched articles (enriched_only=True).
+    Set enriched_only=False to include all articles regardless of enrichment.
     Returns the list for user to make decisions about set_article_status."""
     discovered = discover_article_dirs(KB_ROOT, [source_dir])
     if not discovered:
         return f"No articles found in {source_dir}/."
 
-    lines: list[str] = [f"Articles in {source_dir}/ ({len(discovered)} total):\n"]
-    for idx, (_sd, article_dir) in enumerate(discovered, start=1):
+    lines: list[str] = []
+    idx = 0
+    for _sd, article_dir in discovered:
         md_path = article_dir / "article.md"
         if not md_path.exists():
             continue
+        if enriched_only:
+            source_path = article_dir / "source.json"
+            if source_path.exists():
+                source_data = json.loads(source_path.read_text(encoding="utf-8"))
+                if not source_data.get("llm_enriched"):
+                    continue
+            else:
+                continue
+        idx += 1
         fm, _ = parse_frontmatter(md_path.read_text(encoding="utf-8"))
         title = fm.get("title", article_dir.name)
         ct = fm.get("content_type", "")
@@ -247,7 +259,11 @@ def review_articles(source_dir: str = "raw") -> str:
             f"   summary: {summary}\n"
             f"   path: {article_dir}\n"
         )
-    return "\n".join(lines)
+    if not lines:
+        qualifier = "enriched " if enriched_only else ""
+        return f"No {qualifier}articles found in {source_dir}/."
+    header = f"Enriched articles in {source_dir}/ ({idx} ready for review):\n"
+    return header + "\n".join(lines)
 
 
 # ---------------------------------------------------------------------------

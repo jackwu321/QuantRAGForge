@@ -176,6 +176,7 @@ class TestReviewArticlesRobust(RobustTestBase):
         (article_dir / "article.md").write_text(
             "---\ntitle: Minimal\n---\n\nBody\n", encoding="utf-8"
         )
+        (article_dir / "source.json").write_text('{"llm_enriched": true}', encoding="utf-8")
         result = review_articles.invoke({"source_dir": "raw"})
         self.assertIn("Minimal", result)
         self.assertIsInstance(result, str)

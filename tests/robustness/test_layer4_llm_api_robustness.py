@@ -426,7 +426,7 @@ class TestToolAPIFailures(RobustTestBase):
         mock_post.side_effect = requests_lib.exceptions.ConnectionError("API unreachable")
 
         ArticleFixtureFactory.create_raw_article(
-            self.tmp_root, "api_fail_article", title="API Fail Test"
+            self.tmp_root, "api_fail_article", title="API Fail Test", llm_enriched=False
         )
         result = enrich_articles.invoke({"status_filter": "raw"})
         self.assertIsInstance(result, str)

@@ -118,6 +118,7 @@ class ArticleFixtureFactory:
         combination_hooks: list[str] | None = None,
         transfer_targets: list[str] | None = None,
         failure_modes: list[str] | None = None,
+        llm_enriched: bool = True,
     ) -> Path:
         """Create an article directory with article.md. Returns the directory path."""
         article_dir = base_dir / article_id
@@ -142,6 +143,10 @@ class ArticleFixtureFactory:
         frontmatter = "\n".join(fm_lines)
         md = f"---\n{frontmatter}\n---\n\n## Main Content\n\n{body_content}\n"
         (article_dir / "article.md").write_text(md, encoding="utf-8")
+        if llm_enriched:
+            import json
+            source = {"llm_enriched": True}
+            (article_dir / "source.json").write_text(json.dumps(source), encoding="utf-8")
         return article_dir
 
     @classmethod

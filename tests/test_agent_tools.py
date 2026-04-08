@@ -149,6 +149,7 @@ class TestReviewArticles(unittest.TestCase):
                 Content here.
             """)
             (article_dir / "article.md").write_text(md, encoding="utf-8")
+            (article_dir / "source.json").write_text('{"llm_enriched": true}', encoding="utf-8")
 
             with patch("agent.tools.discover_article_dirs", return_value=[("raw", article_dir)]):
                 result = review_articles.invoke({"source_dir": "raw"})
