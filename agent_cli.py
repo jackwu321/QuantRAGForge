@@ -14,6 +14,8 @@ import argparse
 import sys
 from pathlib import Path
 
+from langchain_core.messages import HumanMessage
+
 ROOT = Path(__file__).resolve().parent
 if str(ROOT) not in sys.path:
     sys.path.insert(0, str(ROOT))
@@ -50,7 +52,7 @@ def interactive_loop(agent) -> None:
     """Run an interactive multi-turn conversation."""
     print("Knowledge Base Agent (type 'quit' or 'exit' to stop)")
     print("-" * 50)
-    messages: list[dict] = []
+    messages: list = []
     while True:
         try:
             user_input = input("\nYou: ").strip()
@@ -63,7 +65,7 @@ def interactive_loop(agent) -> None:
             print("Bye!")
             break
 
-        messages.append({"role": "user", "content": user_input})
+        messages.append(HumanMessage(content=user_input))
         try:
             for state in agent.stream(
                 {"messages": messages},
