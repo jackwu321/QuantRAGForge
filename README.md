@@ -323,6 +323,7 @@ python3 -m unittest discover -s tests/robustness -p 'test_*.py' -v
 - **Complementary retrieval** — Brainstorm mode prioritizes complementary (not similar) content
 - **Traceable ideas** — Every generated idea must cite which source articles inspired it
 - **Graceful degradation** — Every component handles missing dependencies without crashing
+- **Self-healing vector store** — Automatic SQLite integrity check before each ChromaDB operation; corrupted stores (e.g. from interrupted indexing) are cleaned up and rebuilt transparently
 
 ## Contributing
 
