@@ -51,11 +51,28 @@ def require_chromadb() -> None:
         raise RuntimeError("chromadb is required. Install with: pip install chromadb")
 
 
-def open_collection(vector_store_dir: Path):
+def open_collection(vector_store_dir: Path, auto_repair: bool = True):
+    """Open or create the ChromaDB collection.
+
+    If the SQLite store is corrupted (e.g. from an interrupted run),
+    and auto_repair is True, deletes the corrupt store and creates a fresh one.
+    The manifest should be cleared separately so all articles get re-indexed.
+    """
     require_chromadb()
     vector_store_dir.mkdir(parents=True, exist_ok=True)
-    client = chromadb.PersistentClient(path=str(vector_store_dir))
-    return client.get_or_create_collection(COLLECTION_NAME, metadata={"hnsw:space": "cosine"})
+    try:
+        client = chromadb.PersistentClient(path=str(vector_store_dir))
+        return client.get_or_create_collection(COLLECTION_NAME, metadata={"hnsw:space": "cosine"})
+    except Exception as exc:
+        if not auto_repair:
+            raise
+        # Corrupted store — remove and recreate
+        import shutil
+        print(f"  ChromaDB store corrupted ({exc}), rebuilding from scratch...", flush=True)
+        shutil.rmtree(str(vector_store_dir), ignore_errors=True)
+        vector_store_dir.mkdir(parents=True, exist_ok=True)
+        client = chromadb.PersistentClient(path=str(vector_store_dir))
+        return client.get_or_create_collection(COLLECTION_NAME, metadata={"hnsw:space": "cosine"})
 
 
 def manifest_key(kb_root: Path, note) -> str:

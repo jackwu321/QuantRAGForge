@@ -418,7 +418,17 @@ def embed_knowledge(force: bool = False) -> str:
 
     manifest_path = VECTOR_STORE_DIR / INDEX_MANIFEST_FILENAME
     manifest = load_manifest(manifest_path)
-    collection = open_collection(VECTOR_STORE_DIR)
+    try:
+        collection = open_collection(VECTOR_STORE_DIR)
+    except Exception as exc:
+        return f"Error opening vector store: {exc}"
+    # If store was auto-repaired (rebuilt from scratch), clear manifest
+    # so all articles get re-indexed
+    if not any(VECTOR_STORE_DIR.glob("chroma.sqlite3-journal")):
+        # Check if store was just recreated (empty collection but non-empty manifest)
+        if manifest["articles"] and collection.count() == 0:
+            manifest = {"articles": {}}
+            force = True
     failures: list[dict[str, str]] = []
     success = 0
     skipped = 0
