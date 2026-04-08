@@ -135,11 +135,14 @@ def enrich_articles(
     article_dir: Optional[str] = None,
     status_filter: str = "raw",
     force: bool = False,
+    limit: Optional[int] = None,
 ) -> str:
     """Enrich articles with LLM-generated structured metadata (idea_blocks,
     transfer_targets, combination_hooks, failure_modes, etc.).
     Optionally specify a single article_dir, or process all articles matching
-    the status_filter (default: raw)."""
+    the status_filter (default: raw).
+    Use 'limit' to cap the number of articles processed (recommended for
+    interactive use to avoid long waits)."""
     from enrich_articles_with_llm import (
         discover_article_dirs as enrich_discover,
         process_article_dir,
@@ -152,7 +155,7 @@ def enrich_articles(
         status_filter=status_filter,
         force=force,
         dry_run=False,
-        limit=None,
+        limit=limit,
     )
     try:
         article_dirs = enrich_discover(args)
@@ -163,8 +166,12 @@ def enrich_articles(
         return "No articles found matching the criteria."
 
     results: list[ProcessResult] = []
-    for ad in article_dirs:
+    total = len(article_dirs)
+    for i, ad in enumerate(article_dirs, 1):
+        print(f"  [{i}/{total}] Enriching: {Path(ad).name} ...", flush=True)
         result = process_article_dir(ad, args)
+        status = "ok" if result.success else f"failed: {result.error}"
+        print(f"  [{i}/{total}] {status}", flush=True)
         results.append(result)
 
     success = sum(1 for r in results if r.success)

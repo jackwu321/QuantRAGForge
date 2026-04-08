@@ -25,17 +25,25 @@ def parse_args() -> argparse.Namespace:
     return parser.parse_args()
 
 
-def run_query(agent, query: str) -> str:
-    """Run a single query through the agent and return the final response."""
-    result = agent.invoke({"messages": [{"role": "user", "content": query}]})
-    messages = result["messages"]
-    # Find the last AI message that is not a tool call
+def _extract_last_ai_content(messages) -> str:
+    """Extract the last AI message content that isn't a pure tool call."""
     for msg in reversed(messages):
-        if hasattr(msg, "type") and msg.type == "ai" and msg.content and not msg.tool_calls:
+        if hasattr(msg, "type") and msg.type == "ai" and msg.content and not getattr(msg, "tool_calls", None):
             return msg.content
         if hasattr(msg, "type") and msg.type == "ai" and msg.content:
             return msg.content
     return str(messages[-1].content) if messages else "No response."
+
+
+def run_query(agent, query: str) -> str:
+    """Run a single query through the agent, streaming intermediate output."""
+    messages = []
+    for state in agent.stream(
+        {"messages": [{"role": "user", "content": query}]},
+        stream_mode="values",
+    ):
+        messages = state.get("messages", messages)
+    return _extract_last_ai_content(messages)
 
 
 def interactive_loop(agent) -> None:
@@ -57,16 +65,13 @@ def interactive_loop(agent) -> None:
 
         messages.append({"role": "user", "content": user_input})
         try:
-            result = agent.invoke({"messages": messages})
-            messages = result["messages"]
-            # Print the last AI response
-            for msg in reversed(messages):
-                if hasattr(msg, "type") and msg.type == "ai" and msg.content and not getattr(msg, "tool_calls", None):
-                    print(f"\nAgent: {msg.content}")
-                    break
-            else:
-                if messages:
-                    print(f"\nAgent: {messages[-1].content}")
+            for state in agent.stream(
+                {"messages": messages},
+                stream_mode="values",
+            ):
+                messages = state.get("messages", messages)
+            response = _extract_last_ai_content(messages)
+            print(f"\nAgent: {response}")
         except KeyboardInterrupt:
             print("\nInterrupted.")
             break
