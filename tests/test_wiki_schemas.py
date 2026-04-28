@@ -86,5 +86,44 @@ class ConceptArticleSchemaTests(unittest.TestCase):
             )
 
 
+class SourceSummarySchemaTests(unittest.TestCase):
+    def test_serialize_source_summary(self) -> None:
+        summary = wiki_schemas.SourceSummary(
+            source_path="articles/reviewed/2026-03-22_华泰_趋势/article.md",
+            title="基于趋势和拐点的市值因子择时模型",
+            content_type="methodology",
+            brainstorm_value="high",
+            feeds_concepts=["factor-timing", "momentum-factor"],
+            ingested="2026-03-22",
+            last_compiled="2026-04-28",
+            takeaway="市值因子可基于趋势拐点择时。",
+            top_idea_blocks=["趋势识别", "拐点过滤"],
+            why_in_kb="High brainstorm value methodology.",
+        )
+        text = wiki_schemas.serialize_source_summary(summary)
+        self.assertIn("title: 基于趋势和拐点的市值因子择时模型", text)
+        self.assertIn("[[factor-timing]]", text)
+        self.assertIn("**One-line takeaway:**", text)
+
+    def test_round_trip_source_summary(self) -> None:
+        original = wiki_schemas.SourceSummary(
+            source_path="articles/high-value/x/article.md",
+            title="X",
+            content_type="strategy",
+            brainstorm_value="medium",
+            feeds_concepts=["etf-rotation"],
+            ingested="2026-04-01",
+            last_compiled="2026-04-28",
+            takeaway="T",
+            top_idea_blocks=["A", "B", "C"],
+            why_in_kb="W",
+        )
+        text = wiki_schemas.serialize_source_summary(original)
+        parsed = wiki_schemas.parse_source_summary(text)
+        self.assertEqual(parsed.title, "X")
+        self.assertEqual(parsed.feeds_concepts, ["etf-rotation"])
+        self.assertEqual(parsed.top_idea_blocks, ["A", "B", "C"])
+
+
 if __name__ == "__main__":
     unittest.main()

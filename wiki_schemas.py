@@ -190,3 +190,78 @@ def parse_concept(text: str) -> ConceptArticle:
         open_questions=_section_list("Open Questions"),
         source_basenames=src_basenames,
     )
+
+
+@dataclass
+class SourceSummary:
+    source_path: str
+    title: str
+    content_type: str
+    brainstorm_value: str
+    feeds_concepts: list[str]
+    ingested: str
+    last_compiled: str
+    takeaway: str
+    top_idea_blocks: list[str]
+    why_in_kb: str
+
+
+def serialize_source_summary(s: SourceSummary) -> str:
+    fm_lines = [
+        "---",
+        f"source_path: {s.source_path}",
+        f"title: {s.title}",
+        f"content_type: {s.content_type}",
+        f"brainstorm_value: {s.brainstorm_value}",
+        f"feeds_concepts: {_yaml_list(s.feeds_concepts)}",
+        f"ingested: {s.ingested}",
+        f"last_compiled: {s.last_compiled}",
+        "---",
+    ]
+    feeds_line = (
+        "**Feeds concepts:** " + ", ".join(f"[[{c}]]" for c in s.feeds_concepts)
+        if s.feeds_concepts else "**Feeds concepts:** _none_"
+    )
+    body = [
+        f"# {s.title} — Source Summary",
+        "",
+        f"**One-line takeaway:** {s.takeaway or '_none_'}",
+        "",
+        "**Idea Blocks (top 3):**",
+        "",
+        _md_list(s.top_idea_blocks[:3]),
+        "",
+        f"**Why it's in the KB:** {s.why_in_kb or '_none_'}",
+        "",
+        feeds_line,
+        "",
+    ]
+    return "\n".join(fm_lines) + "\n\n" + "\n".join(body)
+
+
+def parse_source_summary(text: str) -> SourceSummary:
+    fm, body = parse_frontmatter(text)
+    feeds = fm.get("feeds_concepts", [])
+    if isinstance(feeds, str):
+        feeds = _parse_yaml_list(feeds)
+    takeaway_match = re.search(r"\*\*One-line takeaway:\*\* (.*)", body)
+    why_match = re.search(r"\*\*Why it's in the KB:\*\* (.*)", body)
+    blocks_match = re.search(r"\*\*Idea Blocks \(top 3\):\*\*\s*\n\s*\n((?:- .+\n?)+)", body)
+    top_blocks: list[str] = []
+    if blocks_match:
+        for line in blocks_match.group(1).splitlines():
+            line = line.strip()
+            if line.startswith("- ") and line[2:].strip() != "_none_":
+                top_blocks.append(line[2:].strip())
+    return SourceSummary(
+        source_path=str(fm.get("source_path", "")),
+        title=str(fm.get("title", "")),
+        content_type=str(fm.get("content_type", "")),
+        brainstorm_value=str(fm.get("brainstorm_value", "")),
+        feeds_concepts=feeds if isinstance(feeds, list) else [],
+        ingested=str(fm.get("ingested", "")),
+        last_compiled=str(fm.get("last_compiled", "")),
+        takeaway=takeaway_match.group(1).strip() if takeaway_match else "",
+        top_idea_blocks=top_blocks,
+        why_in_kb=why_match.group(1).strip() if why_match else "",
+    )
