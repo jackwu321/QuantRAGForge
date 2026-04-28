@@ -1,5 +1,21 @@
 from __future__ import annotations
 
+"""Schemas for the LLM-maintained wiki layer.
+
+Note on `ConceptArticle.sources` vs `source_basenames`:
+- `sources` holds full paths to article.md files (e.g. `articles/reviewed/<dir>/article.md`).
+  It is serialized to the frontmatter as a YAML block-list for human readability.
+- `source_basenames` holds article directory basenames (e.g. `2026-03-22_华泰_趋势`),
+  rendered as `[[basename]]` Obsidian wikilinks under the `## Sources` body section.
+
+`source_basenames` is the **authoritative round-trip field**. The frontmatter `sources:`
+block-list does NOT round-trip through `parse_concept` — `kb_shared.parse_frontmatter`
+only handles single-line `key: value` pairs. Callers that need full source paths
+must keep them in the `ConceptArticle` instance they construct (e.g. compile_wiki
+re-derives them from the corresponding article.md mtimes); they cannot be recovered
+from the on-disk concept file alone.
+"""
+
 import re
 from dataclasses import dataclass, field
 from typing import Literal
@@ -123,6 +139,11 @@ def _parse_yaml_list(value: str) -> list[str]:
 
 
 def parse_concept(text: str) -> ConceptArticle:
+    """Parse a concept article markdown file back to a ConceptArticle.
+
+    The on-disk YAML `sources:` block-list is NOT round-tripped — `source_basenames`
+    (from `## Sources` wikilinks) is the authoritative field. See module docstring.
+    """
     fm, body = parse_frontmatter(text)
     sources = fm.get("sources", [])
     if isinstance(sources, str):
