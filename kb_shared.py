@@ -22,6 +22,10 @@ ROOT = Path(__file__).resolve().parent
 # Auto-load .env from project root (does not override existing env vars)
 load_dotenv(ROOT / ".env")
 DEFAULT_SOURCE_DIRS = ("reviewed", "high-value")
+WIKI_DIR = ROOT / "wiki"
+WIKI_CONCEPTS_DIR = WIKI_DIR / "concepts"
+WIKI_SOURCES_DIR = WIKI_DIR / "sources"
+WIKI_INDEX_PATH = WIKI_DIR / "INDEX.md"
 
 # ---------------------------------------------------------------------------
 # LLM provider configuration (OpenAI-compatible API)
