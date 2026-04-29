@@ -39,9 +39,11 @@ def _today() -> str:
 
 def _dispatch_wechat(url: str, content_type: str | None = None, force: bool = False) -> str:
     """Delegate to existing WeChat ingest pipeline."""
-    from ingest_wechat_article import ingest_single_url
+    from ingest_wechat_article import ingest_single_url, DuplicateArticleError
     args = argparse.Namespace(title=None, content_type=content_type, dry_run=False, force=force)
     result = ingest_single_url(url, args)
+    if result.skipped:
+        raise DuplicateArticleError(result.output_dir)
     if result.success:
         return result.output_dir
     raise RuntimeError(result.error or "wechat ingest failed")

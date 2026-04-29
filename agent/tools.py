@@ -117,6 +117,7 @@ def ingest_article(
 
     results: list[str] = []
     success_count = 0
+    skipped_count = 0
     rejected_warnings: list[str] = []
     for i, u in enumerate(url_list, start=1):
         rejected = find_rejected_source(source_url=u)
@@ -133,11 +134,16 @@ def ingest_article(
             out = ingest_source.dispatch_url(u, content_type=content_type, force=force)
             success_count += 1
             results.append(f"[{i}/{len(url_list)}] OK: {out}")
+        except DuplicateArticleError as exc:
+            skipped_count += 1
+            results.append(f"[{i}/{len(url_list)}] SKIPPED (exists): {exc}")
         except Exception as exc:
             results.append(f"[{i}/{len(url_list)}] FAILED {u}: {exc}")
 
-    fail_count = len(url_list) - success_count - len(rejected_warnings)
+    fail_count = len(url_list) - success_count - skipped_count - len(rejected_warnings)
     parts = [f"{success_count} ingested"]
+    if skipped_count:
+        parts.append(f"{skipped_count} skipped (already exist)")
     if rejected_warnings:
         parts.append(f"{len(rejected_warnings)} previously rejected")
     if fail_count:

@@ -256,11 +256,11 @@ class TestIngestArticleRobust(RobustTestBase):
         ingest_mod.ARTICLES_RAW_DIR = self.tmp_root / "articles" / "raw"
         try:
             # First ingest
-            result1 = ingest_article.invoke({"url": "https://example.com/article1"})
+            result1 = ingest_article.invoke({"url": "https://mp.weixin.qq.com/s/article1"})
             self.assertIn("1 ingested", result1)
 
             # Second ingest of same URL — should skip
-            result2 = ingest_article.invoke({"url": "https://example.com/article1"})
+            result2 = ingest_article.invoke({"url": "https://mp.weixin.qq.com/s/article1"})
             self.assertIn("skipped", result2.lower())
             self.assertIn("already exist", result2.lower())
         finally:
@@ -277,11 +277,11 @@ class TestIngestArticleRobust(RobustTestBase):
         ingest_mod.ARTICLES_RAW_DIR = self.tmp_root / "articles" / "raw"
         try:
             # First ingest
-            result1 = ingest_article.invoke({"url": "https://example.com/article1"})
+            result1 = ingest_article.invoke({"url": "https://mp.weixin.qq.com/s/article1"})
             self.assertIn("1 ingested", result1)
 
             # Force re-ingest
-            result2 = ingest_article.invoke({"url": "https://example.com/article1", "force": True})
+            result2 = ingest_article.invoke({"url": "https://mp.weixin.qq.com/s/article1", "force": True})
             self.assertIn("1 ingested", result2)
             self.assertNotIn("skipped", result2.lower())
         finally:
@@ -298,7 +298,7 @@ class TestIngestArticleRobust(RobustTestBase):
         ingest_mod.ARTICLES_RAW_DIR = self.tmp_root / "articles" / "raw"
         try:
             # First ingest to raw/
-            result1 = ingest_article.invoke({"url": "https://example.com/article2"})
+            result1 = ingest_article.invoke({"url": "https://mp.weixin.qq.com/s/article2"})
             self.assertIn("1 ingested", result1)
 
             # Move to reviewed/ (simulating the pipeline)
@@ -309,7 +309,7 @@ class TestIngestArticleRobust(RobustTestBase):
                     shutil.move(str(d), str(self.tmp_root / "articles" / "reviewed" / d.name))
 
             # Try to ingest again — should detect in reviewed/
-            result2 = ingest_article.invoke({"url": "https://example.com/article2"})
+            result2 = ingest_article.invoke({"url": "https://mp.weixin.qq.com/s/article2"})
             self.assertIn("skipped", result2.lower())
         finally:
             ingest_mod.ARTICLES_RAW_DIR = original_raw_dir
