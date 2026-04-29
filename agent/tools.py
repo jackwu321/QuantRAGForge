@@ -545,6 +545,139 @@ def query_knowledge_base(
 
 
 # ---------------------------------------------------------------------------
+# Tool 9: compile_wiki
+# ---------------------------------------------------------------------------
+
+
+@tool
+def compile_wiki(mode: str = "incremental", dry_run: bool = False) -> str:
+    """Compile or update the LLM-maintained wiki from reviewed/high-value articles.
+
+    Modes:
+    - 'incremental' (default): only update concepts whose sources changed.
+    - 'rebuild': wipe non-seed concepts and recompile from scratch.
+
+    Set dry_run=True to plan without writing files.
+    """
+    import wiki_compile
+    if mode not in ("incremental", "rebuild"):
+        return f"Invalid mode '{mode}'. Must be 'incremental' or 'rebuild'."
+    try:
+        report = wiki_compile.compile_wiki(kb_root=KB_ROOT, mode=mode, dry_run=dry_run)
+    except Exception as exc:
+        return f"Error during compile_wiki: {exc}"
+    summary = report.summary()
+    if report.concepts_proposed:
+        summary += (
+            f"\n\nProposed concepts ({report.concepts_proposed}) are awaiting review. "
+            f"Use list_concepts to see them and set_concept_status to approve/reject."
+        )
+    return summary
+
+
+# ---------------------------------------------------------------------------
+# Tool 10: list_concepts
+# ---------------------------------------------------------------------------
+
+
+@tool
+def list_concepts(status: str = "all") -> str:
+    """List wiki concepts grouped by status.
+
+    Status filter: 'all' (default), 'stable', 'proposed', or 'deprecated'.
+    Returns a markdown list of concept slugs with title and source count.
+    """
+    from wiki_schemas import parse_concept
+    if status not in ("all", "stable", "proposed", "deprecated"):
+        return f"Invalid status filter '{status}'."
+    cdir = KB_ROOT / "wiki" / "concepts"
+    if not cdir.exists():
+        return "Wiki not initialized — run compile_wiki first."
+
+    rows: list[str] = []
+    for md in sorted(cdir.glob("*.md")):
+        try:
+            c = parse_concept(md.read_text(encoding="utf-8"))
+        except Exception:
+            continue
+        if status != "all" and c.status != status:
+            continue
+        rows.append(f"- {c.slug} — {c.title} ({c.status}) — {len(c.sources)} source(s)")
+    if not rows:
+        return f"No concepts match status='{status}'."
+    return "\n".join(rows)
+
+
+# ---------------------------------------------------------------------------
+# Tool 11: set_concept_status
+# ---------------------------------------------------------------------------
+
+
+@tool
+def set_concept_status(slug: str, status: str, reason: str = "") -> str:
+    """Approve, deprecate, or delete a wiki concept by slug.
+
+    status:
+    - 'stable'     — approve a proposed concept; concept becomes part of the wiki
+    - 'deprecated' — mark concept as no longer used; kept on disk for traceability
+    - 'deleted'    — remove the concept file entirely
+
+    `reason` is recorded as a short note on the change.
+    """
+    from wiki_schemas import parse_concept, serialize_concept
+    if status not in ("stable", "deprecated", "deleted"):
+        return f"Invalid status '{status}'. Must be 'stable', 'deprecated', or 'deleted'."
+
+    path = KB_ROOT / "wiki" / "concepts" / f"{slug}.md"
+    if not path.exists():
+        return f"Concept not found: {slug}"
+
+    if status == "deleted":
+        path.unlink()
+        return f"Deleted concept: {slug}. Reason: {reason or '(none)'}"
+
+    try:
+        concept = parse_concept(path.read_text(encoding="utf-8"))
+    except Exception as exc:
+        return f"Failed to parse concept: {exc}"
+    concept.status = status
+    path.write_text(serialize_concept(concept), encoding="utf-8")
+    return f"Concept {slug} → {status}. Reason: {reason or '(none)'}"
+
+
+# ---------------------------------------------------------------------------
+# Tool 12: read_wiki
+# ---------------------------------------------------------------------------
+
+
+@tool
+def read_wiki(target: str) -> str:
+    """Read a wiki entry by name.
+
+    target:
+    - 'index' — return the wiki INDEX.md
+    - <concept-slug> — return wiki/concepts/<slug>.md
+    - <source-id> — return wiki/sources/<source-id>.md (the article basename)
+    """
+    wiki_dir = KB_ROOT / "wiki"
+    if not wiki_dir.exists():
+        return "Wiki not initialized — run compile_wiki first."
+    if target == "index":
+        idx = wiki_dir / "INDEX.md"
+        return idx.read_text(encoding="utf-8") if idx.exists() else "INDEX.md not found — run compile_wiki."
+
+    concept_path = wiki_dir / "concepts" / f"{target}.md"
+    if concept_path.exists():
+        return concept_path.read_text(encoding="utf-8")
+
+    source_path = wiki_dir / "sources" / f"{target}.md"
+    if source_path.exists():
+        return source_path.read_text(encoding="utf-8")
+
+    return f"Wiki entry not found: {target}"
+
+
+# ---------------------------------------------------------------------------
 # All tools for registration
 # ---------------------------------------------------------------------------
 
@@ -557,4 +690,8 @@ ALL_TOOLS = [
     sync_articles,
     embed_knowledge,
     query_knowledge_base,
+    compile_wiki,
+    list_concepts,
+    set_concept_status,
+    read_wiki,
 ]

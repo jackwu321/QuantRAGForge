@@ -179,6 +179,149 @@ class TestToolsReturnStrings(unittest.TestCase):
             self.assertIn("No candidate", result)
 
 
+class CompileWikiToolTests(unittest.TestCase):
+    def test_compile_wiki_invokes_orchestrator(self) -> None:
+        from unittest.mock import patch
+        from agent.tools import compile_wiki as compile_wiki_tool
+        import wiki_compile
+
+        fake_report = wiki_compile.CompileReport(
+            sources_written=2, concepts_assigned=2, concepts_recompiled=1,
+        )
+        with patch("wiki_compile.compile_wiki", return_value=fake_report):
+            result = compile_wiki_tool.invoke({"mode": "incremental"})
+        self.assertIn("2 sources", result)
+        self.assertIn("1 concepts recompiled", result)
+
+
+class ListConceptsToolTests(unittest.TestCase):
+    def test_list_concepts_filters_by_status(self) -> None:
+        import tempfile
+        from pathlib import Path
+        from unittest.mock import patch
+        from agent.tools import list_concepts as list_concepts_tool
+        from wiki_seed import bootstrap_wiki
+
+        with tempfile.TemporaryDirectory() as tmp:
+            wiki_dir = Path(tmp) / "wiki"
+            bootstrap_wiki(wiki_dir)
+            with patch("agent.tools.KB_ROOT", Path(tmp)):
+                result = list_concepts_tool.invoke({"status": "stable"})
+            self.assertIn("momentum-strategies", result)
+            self.assertIn("(stable)", result)
+
+
+class SetConceptStatusToolTests(unittest.TestCase):
+    def test_approve_proposed_to_stable(self) -> None:
+        import tempfile
+        from pathlib import Path
+        from unittest.mock import patch
+        from agent.tools import set_concept_status as set_status_tool
+        from wiki_schemas import ConceptArticle, parse_concept, serialize_concept
+
+        with tempfile.TemporaryDirectory() as tmp:
+            wiki_dir = Path(tmp) / "wiki"
+            (wiki_dir / "concepts").mkdir(parents=True)
+            (wiki_dir / "sources").mkdir(parents=True)
+            proposed = ConceptArticle(
+                title="X", slug="x-test", aliases=[], status="proposed",
+                related_concepts=[], sources=[], content_types=[],
+                last_compiled="2026-04-28", compile_version=0,
+                synthesis="", definition="", key_idea_blocks=[], variants=[],
+                common_combinations=[], transfer_targets=[], failure_modes=[],
+                open_questions=[], source_basenames=[],
+            )
+            (wiki_dir / "concepts" / "x-test.md").write_text(serialize_concept(proposed), encoding="utf-8")
+
+            with patch("agent.tools.KB_ROOT", Path(tmp)):
+                result = set_status_tool.invoke(
+                    {"slug": "x-test", "status": "stable", "reason": "approved"}
+                )
+            self.assertIn("stable", result)
+            updated = parse_concept((wiki_dir / "concepts" / "x-test.md").read_text(encoding="utf-8"))
+            self.assertEqual(updated.status, "stable")
+
+    def test_delete_status_removes_file(self) -> None:
+        import tempfile
+        from pathlib import Path
+        from unittest.mock import patch
+        from agent.tools import set_concept_status as set_status_tool
+        from wiki_schemas import ConceptArticle, serialize_concept
+
+        with tempfile.TemporaryDirectory() as tmp:
+            wiki_dir = Path(tmp) / "wiki"
+            (wiki_dir / "concepts").mkdir(parents=True)
+            c = ConceptArticle(
+                title="X", slug="x-test", aliases=[], status="proposed",
+                related_concepts=[], sources=[], content_types=[],
+                last_compiled="2026-04-28", compile_version=0,
+                synthesis="", definition="", key_idea_blocks=[], variants=[],
+                common_combinations=[], transfer_targets=[], failure_modes=[],
+                open_questions=[], source_basenames=[],
+            )
+            (wiki_dir / "concepts" / "x-test.md").write_text(serialize_concept(c), encoding="utf-8")
+
+            with patch("agent.tools.KB_ROOT", Path(tmp)):
+                set_status_tool.invoke({"slug": "x-test", "status": "deleted", "reason": "rejected"})
+            self.assertFalse((wiki_dir / "concepts" / "x-test.md").exists())
+
+    def test_missing_slug_returns_error(self) -> None:
+        import tempfile
+        from pathlib import Path
+        from unittest.mock import patch
+        from agent.tools import set_concept_status as set_status_tool
+
+        with tempfile.TemporaryDirectory() as tmp:
+            (Path(tmp) / "wiki" / "concepts").mkdir(parents=True)
+            with patch("agent.tools.KB_ROOT", Path(tmp)):
+                result = set_status_tool.invoke({"slug": "missing", "status": "stable", "reason": "x"})
+            self.assertIn("not found", result.lower())
+
+
+class ReadWikiToolTests(unittest.TestCase):
+    def test_read_index(self) -> None:
+        import tempfile
+        from pathlib import Path
+        from unittest.mock import patch
+        from agent.tools import read_wiki as read_wiki_tool
+        from wiki_seed import bootstrap_wiki
+        from wiki_index import write_index
+
+        with tempfile.TemporaryDirectory() as tmp:
+            wiki_dir = Path(tmp) / "wiki"
+            bootstrap_wiki(wiki_dir)
+            write_index(wiki_dir)
+            with patch("agent.tools.KB_ROOT", Path(tmp)):
+                result = read_wiki_tool.invoke({"target": "index"})
+            self.assertIn("# Knowledge Base Index", result)
+
+    def test_read_concept_by_slug(self) -> None:
+        import tempfile
+        from pathlib import Path
+        from unittest.mock import patch
+        from agent.tools import read_wiki as read_wiki_tool
+        from wiki_seed import bootstrap_wiki
+
+        with tempfile.TemporaryDirectory() as tmp:
+            wiki_dir = Path(tmp) / "wiki"
+            bootstrap_wiki(wiki_dir)
+            with patch("agent.tools.KB_ROOT", Path(tmp)):
+                result = read_wiki_tool.invoke({"target": "momentum-strategies"})
+            self.assertIn("Momentum Strategies", result)
+
+    def test_read_unknown_target(self) -> None:
+        import tempfile
+        from pathlib import Path
+        from unittest.mock import patch
+        from agent.tools import read_wiki as read_wiki_tool
+
+        with tempfile.TemporaryDirectory() as tmp:
+            (Path(tmp) / "wiki").mkdir(parents=True)
+            with patch("agent.tools.KB_ROOT", Path(tmp)):
+                result = read_wiki_tool.invoke({"target": "nonexistent"})
+            self.assertIn("not found", result.lower())
+
+
 class IngestArticleDispatchTests(unittest.TestCase):
     @patch("ingest_source.dispatch_url")
     def test_url_routes_through_dispatch_url_for_pdf(self, mock_dispatch) -> None:
