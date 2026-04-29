@@ -46,5 +46,44 @@ class SourceSummaryGenerationTests(unittest.TestCase):
             self.assertIn("brainstorm_value: high", text)
 
 
+class AssignConceptsTests(unittest.TestCase):
+    def test_assign_concepts_parses_existing_and_proposed(self) -> None:
+        from unittest.mock import patch
+        import wiki_compile_llm
+
+        fake_response = """{
+  "existing_concepts": ["momentum-strategies", "factor-timing"],
+  "proposed_new_concepts": [
+    {
+      "slug": "macro-momentum",
+      "title": "Macro Momentum",
+      "aliases": ["宏观动量"],
+      "rationale": "Article applies momentum to macro factors specifically.",
+      "draft_synthesis": "Momentum applied across macro signals."
+    }
+  ]
+}"""
+        with patch("wiki_compile_llm.call_llm_chat", return_value=fake_response):
+            result = wiki_compile_llm.assign_concepts(
+                article_frontmatter={"title": "X", "content_type": "methodology", "idea_blocks": ["a", "b"]},
+                index_text="- momentum-strategies — Trading rules using past returns.",
+            )
+        self.assertEqual(result.existing_concepts, ["momentum-strategies", "factor-timing"])
+        self.assertEqual(len(result.proposed_new_concepts), 1)
+        self.assertEqual(result.proposed_new_concepts[0].slug, "macro-momentum")
+
+    def test_assign_concepts_handles_invalid_json(self) -> None:
+        from unittest.mock import patch
+        import wiki_compile_llm
+
+        with patch("wiki_compile_llm.call_llm_chat", return_value="not json"):
+            result = wiki_compile_llm.assign_concepts(
+                article_frontmatter={"title": "X"},
+                index_text="",
+            )
+        self.assertEqual(result.existing_concepts, [])
+        self.assertEqual(result.proposed_new_concepts, [])
+
+
 if __name__ == "__main__":
     unittest.main()
