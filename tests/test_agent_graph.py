@@ -53,6 +53,10 @@ class TestAgentGraph(unittest.TestCase):
             "sync_articles",
             "embed_knowledge",
             "query_knowledge_base",
+            "compile_wiki",
+            "list_concepts",
+            "set_concept_status",
+            "read_wiki",
         }
         self.assertEqual(tool_names, expected)
 
