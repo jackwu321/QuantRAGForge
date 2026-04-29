@@ -106,3 +106,88 @@ def assign_concepts(article_frontmatter: dict, index_text: str) -> ConceptAssign
             draft_synthesis=str(p.get("draft_synthesis", "")),
         ))
     return ConceptAssignment(existing_concepts=existing, proposed_new_concepts=proposed)
+
+
+@dataclass
+class RecompileResult:
+    synthesis: str
+    definition: str
+    key_idea_blocks: list[str]
+    variants: list[str]
+    common_combinations: list[str]
+    transfer_targets: list[str]
+    failure_modes: list[str]
+    open_questions: list[str]
+    related_concepts: list[str]
+
+
+_RECOMPILE_SYSTEM = """你是量化投研知识库的概念合成助手。
+你的任务是基于多篇来源文章合成一篇概念文章的各个章节。
+输出严格 JSON，每个字段独立。Synthesis 是 1-3 段叙事，其它是项目列表。"""
+
+
+def _format_source_articles(sources: list[dict]) -> str:
+    parts = []
+    for i, s in enumerate(sources, 1):
+        title = s.get("title", "")
+        ct = s.get("content_type", "")
+        ideas = s.get("idea_blocks", [])
+        if not isinstance(ideas, list):
+            ideas = [str(ideas)]
+        ideas_text = "\n  ".join(f"- {x}" for x in ideas[:5])
+        parts.append(f"[Source {i}] {title} ({ct})\n  {ideas_text}")
+    return "\n\n".join(parts) or "(no sources)"
+
+
+def recompile_concept(
+    concept_slug: str,
+    concept_title: str,
+    source_articles: list[dict],
+) -> RecompileResult:
+    user_prompt = f"""概念 slug: {concept_slug}
+概念 title: {concept_title}
+
+来源文章列表:
+{_format_source_articles(source_articles)}
+
+输出 JSON schema:
+{{
+  "synthesis": "<1-3 段，描述这些来源对该概念合起来说了什么>",
+  "definition": "<1 段经典定义>",
+  "key_idea_blocks": ["<由源文章 idea_blocks 聚合后去重>", ...],
+  "variants": ["<不同来源的实现/变体>", ...],
+  "common_combinations": ["<可与之组合的概念，使用 [[slug]] 格式>", ...],
+  "transfer_targets": ["<可迁移到的市场/资产/周期>", ...],
+  "failure_modes": ["<研究失效边界，不要写风控规则>", ...],
+  "open_questions": ["<延伸研究问题>", ...],
+  "related_concepts": ["<相关概念 slug，无 [[]]>", ...]
+}}"""
+    messages = [
+        {"role": "system", "content": _RECOMPILE_SYSTEM},
+        {"role": "user", "content": user_prompt},
+    ]
+    try:
+        raw = call_llm_chat(messages, temperature=0.2)
+    except Exception:
+        return RecompileResult("", "", [], [], [], [], [], [], [])
+
+    try:
+        data = json.loads(_strip_json_fences(raw))
+    except json.JSONDecodeError:
+        return RecompileResult("", "", [], [], [], [], [], [], [])
+
+    def _list(key: str) -> list[str]:
+        v = data.get(key, [])
+        return [str(x) for x in v] if isinstance(v, list) else []
+
+    return RecompileResult(
+        synthesis=str(data.get("synthesis", "")),
+        definition=str(data.get("definition", "")),
+        key_idea_blocks=_list("key_idea_blocks"),
+        variants=_list("variants"),
+        common_combinations=_list("common_combinations"),
+        transfer_targets=_list("transfer_targets"),
+        failure_modes=_list("failure_modes"),
+        open_questions=_list("open_questions"),
+        related_concepts=_list("related_concepts"),
+    )

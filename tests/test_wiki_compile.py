@@ -85,5 +85,32 @@ class AssignConceptsTests(unittest.TestCase):
         self.assertEqual(result.proposed_new_concepts, [])
 
 
+class RecompileConceptTests(unittest.TestCase):
+    def test_recompile_returns_structured_sections(self) -> None:
+        from unittest.mock import patch
+        import wiki_compile_llm
+
+        fake = """{
+  "synthesis": "Momentum is best at 12-month horizons.",
+  "definition": "Buy past winners.",
+  "key_idea_blocks": ["12-1 momentum", "Risk-adjusted variant"],
+  "variants": ["Time-series", "Cross-sectional"],
+  "common_combinations": ["[[regime-detection]]", "[[risk-parity]]"],
+  "transfer_targets": ["Crypto", "Fixed income"],
+  "failure_modes": ["Reversals at long horizons"],
+  "open_questions": ["Optimal lookback?"],
+  "related_concepts": ["regime-detection", "risk-parity"]
+}"""
+        with patch("wiki_compile_llm.call_llm_chat", return_value=fake):
+            r = wiki_compile_llm.recompile_concept(
+                concept_slug="momentum-strategies",
+                concept_title="Momentum Strategies",
+                source_articles=[{"title": "S1", "idea_blocks": ["12-1"]}],
+            )
+        self.assertIn("12-month", r.synthesis)
+        self.assertEqual(r.related_concepts, ["regime-detection", "risk-parity"])
+        self.assertEqual(len(r.key_idea_blocks), 2)
+
+
 if __name__ == "__main__":
     unittest.main()
