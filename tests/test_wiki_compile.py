@@ -112,5 +112,100 @@ class RecompileConceptTests(unittest.TestCase):
         self.assertEqual(len(r.key_idea_blocks), 2)
 
 
+class CompileOrchestratorTests(unittest.TestCase):
+    def _setup_corpus(self, root: Path) -> None:
+        from wiki_seed import bootstrap_wiki
+        bootstrap_wiki(root / "wiki")
+        article_dir = root / "articles" / "reviewed" / "2026-03-22_test_article"
+        article_dir.mkdir(parents=True, exist_ok=True)
+        (article_dir / "article.md").write_text(
+            "---\n"
+            "title: Test Article\n"
+            "content_type: methodology\n"
+            "brainstorm_value: high\n"
+            "core_hypothesis: Momentum predicts.\n"
+            "idea_blocks: [Idea A, Idea B]\n"
+            "summary: A study.\n"
+            "status: reviewed\n"
+            "---\n\n## Main Content\n\nBody.\n",
+            encoding="utf-8",
+        )
+
+    def test_incremental_compile_writes_source_summary(self) -> None:
+        from unittest.mock import patch
+        import wiki_compile
+        import wiki_compile_llm
+
+        with tempfile.TemporaryDirectory() as tmp:
+            root = Path(tmp)
+            self._setup_corpus(root)
+
+            assignment = wiki_compile_llm.ConceptAssignment(
+                existing_concepts=["momentum-strategies"],
+                proposed_new_concepts=[],
+            )
+            recompile = wiki_compile_llm.RecompileResult(
+                synthesis="S", definition="D",
+                key_idea_blocks=["k"], variants=[], common_combinations=[],
+                transfer_targets=[], failure_modes=[], open_questions=[],
+                related_concepts=[],
+            )
+            with patch("wiki_compile.assign_concepts", return_value=assignment), \
+                 patch("wiki_compile.recompile_concept", return_value=recompile):
+                report = wiki_compile.compile_wiki(
+                    kb_root=root,
+                    mode="incremental",
+                )
+            self.assertGreaterEqual(report.sources_written, 1)
+            summary_path = root / "wiki" / "sources" / "2026-03-22_test_article.md"
+            self.assertTrue(summary_path.exists())
+            momentum_path = root / "wiki" / "concepts" / "momentum-strategies.md"
+            text = momentum_path.read_text(encoding="utf-8")
+            self.assertIn("articles/reviewed/2026-03-22_test_article/article.md", text)
+
+    def test_incremental_idempotent_skips_unchanged(self) -> None:
+        from unittest.mock import patch
+        import wiki_compile
+        import wiki_compile_llm
+
+        with tempfile.TemporaryDirectory() as tmp:
+            root = Path(tmp)
+            self._setup_corpus(root)
+            assignment = wiki_compile_llm.ConceptAssignment(["momentum-strategies"], [])
+            recompile = wiki_compile_llm.RecompileResult("S", "D", [], [], [], [], [], [], [])
+            with patch("wiki_compile.assign_concepts", return_value=assignment) as ma, \
+                 patch("wiki_compile.recompile_concept", return_value=recompile) as mr:
+                wiki_compile.compile_wiki(kb_root=root, mode="incremental")
+                first_calls = ma.call_count + mr.call_count
+
+                # Run again — nothing changed
+                wiki_compile.compile_wiki(kb_root=root, mode="incremental")
+                second_calls = ma.call_count + mr.call_count - first_calls
+                self.assertEqual(second_calls, 0)
+
+    def test_proposed_concept_lands_with_status_proposed(self) -> None:
+        from unittest.mock import patch
+        import wiki_compile
+        import wiki_compile_llm
+        from wiki_schemas import parse_concept
+
+        with tempfile.TemporaryDirectory() as tmp:
+            root = Path(tmp)
+            self._setup_corpus(root)
+            proposed = wiki_compile_llm.ProposedConcept(
+                slug="macro-momentum", title="Macro Momentum",
+                aliases=["宏观动量"], rationale="r", draft_synthesis="ds",
+            )
+            assignment = wiki_compile_llm.ConceptAssignment([], [proposed])
+            recompile = wiki_compile_llm.RecompileResult("S", "D", [], [], [], [], [], [], [])
+            with patch("wiki_compile.assign_concepts", return_value=assignment), \
+                 patch("wiki_compile.recompile_concept", return_value=recompile):
+                wiki_compile.compile_wiki(kb_root=root, mode="incremental")
+            path = root / "wiki" / "concepts" / "macro-momentum.md"
+            self.assertTrue(path.exists())
+            concept = parse_concept(path.read_text(encoding="utf-8"))
+            self.assertEqual(concept.status, "proposed")
+
+
 if __name__ == "__main__":
     unittest.main()
