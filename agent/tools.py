@@ -38,37 +38,47 @@ def ingest_article(
     urls: Optional[str] = None,
     url_list_file: Optional[str] = None,
     html_file: Optional[str] = None,
+    pdf_file: Optional[str] = None,
+    pdf_url: Optional[str] = None,
     content_type: Optional[str] = None,
     force: bool = False,
 ) -> str:
     """Ingest articles into the knowledge base from various sources.
 
     Accepts ONE of the following (in priority order):
-    - url: A single WeChat article URL
-    - urls: Multiple URLs separated by newlines or commas
+    - url: A single URL (auto-detected: WeChat / web / PDF)
+    - urls: Multiple URLs (newline/comma separated; each auto-detected)
     - url_list_file: Path to a .txt file with one URL per line
-    - html_file: Path to a locally saved HTML file
+    - html_file: Path to a locally saved HTML file (WeChat-style)
+    - pdf_file: Path to a local PDF file
+    - pdf_url: A direct URL to a PDF document
 
-    Set force=True to re-ingest articles that already exist in the knowledge base.
-    By default, duplicate articles are detected and skipped with a warning.
-
-    Each article is fetched, parsed (text/images/code extracted),
-    classified by content_type, and saved to articles/raw/.
-    Returns a summary of successes, skips, and failures."""
+    Set force=True to re-ingest articles that already exist."""
+    import ingest_source
     from ingest_wechat_article import (
-        ingest_single_url,
-        load_url_list,
         extract_article_data,
         write_article,
-        fetch_html,
         detect_blocked_wechat_page,
         DuplicateArticleError,
-        BatchResult,
     )
 
-    args = argparse.Namespace(title=None, content_type=content_type, dry_run=False, force=force)
+    # Single PDF file
+    if pdf_file:
+        try:
+            out = ingest_source.dispatch_pdf_file(pdf_file, content_type=content_type)
+            return f"Ingested PDF: {out}"
+        except Exception as exc:
+            return f"Error ingesting PDF file {pdf_file}: {exc}"
 
-    # Single HTML file
+    # Single PDF URL
+    if pdf_url:
+        try:
+            out = ingest_source._dispatch_pdf_url(pdf_url, content_type=content_type, force=force)
+            return f"Ingested PDF: {out}"
+        except Exception as exc:
+            return f"Error ingesting PDF URL {pdf_url}: {exc}"
+
+    # Single HTML file (WeChat-style)
     if html_file and not url and not urls and not url_list_file:
         try:
             html_path = Path(html_file).expanduser().resolve()
@@ -88,59 +98,51 @@ def ingest_article(
     url_list: list[str] = []
     if url_list_file:
         try:
-            url_list = load_url_list(url_list_file)
+            url_list = [
+                ln.strip()
+                for ln in Path(url_list_file).expanduser().read_text(encoding="utf-8").splitlines()
+                if ln.strip() and not ln.strip().startswith("#")
+            ]
         except Exception as exc:
             return f"Error reading URL list file {url_list_file}: {exc}"
         if not url_list:
             return f"No valid URLs found in {url_list_file}"
     elif urls:
-        # Split on newlines, commas, or semicolons
         raw = urls.replace(",", "\n").replace(";", "\n").replace("，", "\n").replace("；", "\n")
         url_list = [u.strip() for u in raw.splitlines() if u.strip()]
     elif url:
         url_list = [url]
     else:
-        return "Please provide one of: url, urls, url_list_file, or html_file."
+        return "Please provide one of: url, urls, url_list_file, html_file, pdf_file, pdf_url."
 
-    # Ingest each URL
     results: list[str] = []
     success_count = 0
-    skipped_count = 0
     rejected_warnings: list[str] = []
     for i, u in enumerate(url_list, start=1):
-        # Check if this URL was previously rejected
         rejected = find_rejected_source(source_url=u)
         if rejected and not force:
-            skipped_count += 1
             reason = rejected.get("reason", "low value")
             title = rejected.get("title", "unknown")
             results.append(
                 f"[{i}/{len(url_list)}] WARNING — previously rejected: \"{title}\" "
-                f"(reason: {reason}, rejected at: {rejected.get('rejected_at', '?')}). "
-                f"Use force=True to re-ingest."
+                f"(reason: {reason}). Use force=True to re-ingest."
             )
             rejected_warnings.append(u)
             continue
-        result: BatchResult = ingest_single_url(u, args)
-        if result.skipped:
-            skipped_count += 1
-            results.append(f"[{i}/{len(url_list)}] SKIPPED (exists): {result.output_dir}")
-        elif result.success:
+        try:
+            out = ingest_source.dispatch_url(u, content_type=content_type, force=force)
             success_count += 1
-            results.append(f"[{i}/{len(url_list)}] OK: {result.output_dir}")
-        else:
-            results.append(f"[{i}/{len(url_list)}] FAILED {u}: {result.error}")
+            results.append(f"[{i}/{len(url_list)}] OK: {out}")
+        except Exception as exc:
+            results.append(f"[{i}/{len(url_list)}] FAILED {u}: {exc}")
 
-    fail_count = len(url_list) - success_count - skipped_count
+    fail_count = len(url_list) - success_count - len(rejected_warnings)
     parts = [f"{success_count} ingested"]
-    if skipped_count:
-        parts.append(f"{skipped_count} skipped (already exist)")
     if rejected_warnings:
         parts.append(f"{len(rejected_warnings)} previously rejected")
     if fail_count:
         parts.append(f"{fail_count} failed")
-    summary = f"Result: {', '.join(parts)} (total {len(url_list)})"
-    return summary + "\n" + "\n".join(results)
+    return f"Result: {', '.join(parts)} (total {len(url_list)})\n" + "\n".join(results)
 
 
 # ---------------------------------------------------------------------------

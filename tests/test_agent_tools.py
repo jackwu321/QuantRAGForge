@@ -179,5 +179,24 @@ class TestToolsReturnStrings(unittest.TestCase):
             self.assertIn("No candidate", result)
 
 
+class IngestArticleDispatchTests(unittest.TestCase):
+    @patch("ingest_source.dispatch_url")
+    def test_url_routes_through_dispatch_url_for_pdf(self, mock_dispatch) -> None:
+        from agent.tools import ingest_article
+        mock_dispatch.return_value = "/tmp/out"
+        result = ingest_article.invoke({"url": "https://example.com/paper.pdf"})
+        mock_dispatch.assert_called_once()
+        self.assertIn("OK:", result)
+        self.assertIn("/tmp/out", result)
+
+    @patch("ingest_source.dispatch_pdf_file")
+    def test_pdf_file_param_routes_to_pdf_dispatcher(self, mock_pdf) -> None:
+        from agent.tools import ingest_article
+        mock_pdf.return_value = "/tmp/out"
+        result = ingest_article.invoke({"pdf_file": "/tmp/x.pdf"})
+        mock_pdf.assert_called_once_with("/tmp/x.pdf", content_type=None)
+        self.assertIn("Ingested PDF", result)
+
+
 if __name__ == "__main__":
     unittest.main()
