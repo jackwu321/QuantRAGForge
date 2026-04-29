@@ -49,7 +49,7 @@ class EmbedKnowledgeBaseTests(unittest.TestCase):
         )
         block = kb_shared.KnowledgeBlock(note=note, block_type="idea_blocks", text="内容", score=0.0)
         metadata = mod.block_metadata(block)
-        self.assertEqual(set(metadata.keys()), {"article_dir", "source_dir", "content_type", "brainstorm_value", "block_type"})
+        self.assertEqual(set(metadata.keys()), {"article_dir", "source_dir", "content_type", "brainstorm_value", "block_type", "kb_layer"})
 
     def test_load_manifest_resets_on_schema_change(self) -> None:
         with tempfile.TemporaryDirectory() as tmpdir:
@@ -58,6 +58,31 @@ class EmbedKnowledgeBaseTests(unittest.TestCase):
             manifest = mod.load_manifest(path)
             self.assertEqual(manifest["schema_version"], mod.INDEX_SCHEMA_VERSION)
             self.assertEqual(manifest["articles"], {})
+
+
+class EmbedWikiTests(unittest.TestCase):
+    def test_block_metadata_includes_kb_layer(self) -> None:
+        from kb_shared import KnowledgeNote, KnowledgeBlock
+        note = kb_shared.KnowledgeNote(
+            article_dir=Path("a"), source_dir="reviewed",
+            frontmatter={"content_type": "methodology", "brainstorm_value": "high"},
+            body="",
+        )
+        block = kb_shared.KnowledgeBlock(note=note, block_type="summary", text="t", score=0.0)
+        meta = mod.block_metadata(block, kb_layer="article")
+        self.assertEqual(meta["kb_layer"], "article")
+
+    def test_iter_wiki_blocks_yields_concept_and_source(self) -> None:
+        import tempfile
+        with tempfile.TemporaryDirectory() as tmp:
+            from wiki_seed import bootstrap_wiki
+            wiki_dir = Path(tmp) / "wiki"
+            bootstrap_wiki(wiki_dir)
+            blocks = list(mod.iter_wiki_blocks(wiki_dir))
+            # 7 seed concepts, each yields at least 1 block (definition/synthesis)
+            self.assertGreaterEqual(len(blocks), 7)
+            kinds = {b.block_type for b in blocks}
+            self.assertIn("wiki_concept", kinds)
 
 
 if __name__ == "__main__":

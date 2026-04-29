@@ -129,7 +129,7 @@ def make_block_id(kb_root: Path, block: KnowledgeBlock, ordinal: int) -> str:
     return f"{rel_path.replace('/', '__')}__{block.block_type}__{ordinal}__{digest}"
 
 
-def block_metadata(block: KnowledgeBlock) -> dict[str, str]:
+def block_metadata(block: KnowledgeBlock, kb_layer: str = "article") -> dict[str, str]:
     frontmatter = block.note.frontmatter
     return {
         "article_dir": str(block.note.article_dir),
@@ -137,6 +137,7 @@ def block_metadata(block: KnowledgeBlock) -> dict[str, str]:
         "content_type": str(frontmatter.get("content_type", "")),
         "brainstorm_value": str(frontmatter.get("brainstorm_value", "")),
         "block_type": block.block_type,
+        "kb_layer": kb_layer,
     }
 
 
@@ -206,6 +207,22 @@ def main() -> int:
         except Exception as exc:
             failures.append({"article_dir": str(note.article_dir), "error": str(exc)})
 
+    # Index wiki/ entries (best-effort; missing wiki dir is fine)
+    from kb_shared import WIKI_DIR
+    wiki_dir = WIKI_DIR
+    if wiki_dir.exists() and not args.dry_run and collection is not None:
+        for block in iter_wiki_blocks(wiki_dir):
+            try:
+                wiki_id = make_block_id(kb_root, block, 0)
+                collection.upsert(
+                    ids=[wiki_id],
+                    documents=[block.text],
+                    metadatas=[block_metadata(block, kb_layer=block.block_type)],
+                    embeddings=[embed_text(block.text)],
+                )
+            except Exception as exc:
+                failures.append({"article_dir": str(block.note.article_dir), "error": str(exc)})
+
     if not args.dry_run:
         save_manifest(manifest_path, manifest)
     write_failure_list(failures, FAILURE_LIST_PATH)
@@ -219,6 +236,63 @@ def main() -> int:
     }
     print(json.dumps(summary, ensure_ascii=False, indent=2))
     return 0 if not failures else 1
+
+
+def iter_wiki_blocks(wiki_dir: Path):
+    """Yield KnowledgeBlock objects for each wiki concept article and source summary."""
+    from kb_shared import KnowledgeNote
+    from wiki_schemas import parse_concept, parse_source_summary
+
+    cdir = wiki_dir / "concepts"
+    if cdir.exists():
+        for md in sorted(cdir.glob("*.md")):
+            try:
+                concept = parse_concept(md.read_text(encoding="utf-8"))
+            except Exception:
+                continue
+            note = KnowledgeNote(
+                article_dir=md,
+                source_dir="wiki_concepts",
+                frontmatter={
+                    "title": concept.title,
+                    "content_type": concept.content_types[0] if concept.content_types else "",
+                    "brainstorm_value": "high",
+                    "slug": concept.slug,
+                },
+                body="",
+            )
+            text = "\n\n".join(filter(None, [
+                concept.synthesis,
+                concept.definition,
+                "\n".join(concept.key_idea_blocks),
+                "\n".join(concept.variants),
+                "\n".join(concept.common_combinations),
+                "\n".join(concept.transfer_targets),
+                "\n".join(concept.failure_modes),
+            ]))
+            if text.strip():
+                yield KnowledgeBlock(note=note, block_type="wiki_concept", text=text, score=0.0)
+
+    sdir = wiki_dir / "sources"
+    if sdir.exists():
+        for md in sorted(sdir.glob("*.md")):
+            try:
+                summary = parse_source_summary(md.read_text(encoding="utf-8"))
+            except Exception:
+                continue
+            note = KnowledgeNote(
+                article_dir=md,
+                source_dir="wiki_sources",
+                frontmatter={
+                    "title": summary.title,
+                    "content_type": summary.content_type,
+                    "brainstorm_value": summary.brainstorm_value,
+                },
+                body="",
+            )
+            text = " · ".join(filter(None, [summary.takeaway] + summary.top_idea_blocks))
+            if text.strip():
+                yield KnowledgeBlock(note=note, block_type="wiki_source", text=text, score=0.0)
 
 
 if __name__ == "__main__":
