@@ -406,11 +406,13 @@ def embed_knowledge(force: bool = False) -> str:
         block_metadata,
         delete_article_blocks,
         write_failure_list,
+        iter_wiki_blocks,
         VECTOR_STORE_DIR,
         FAILURE_LIST_PATH,
         INDEX_MANIFEST_FILENAME,
         INDEX_SCHEMA_VERSION,
     )
+    from kb_shared import WIKI_DIR
     from kb_shared import (
         article_content_hash,
         build_blocks,
@@ -462,9 +464,26 @@ def embed_knowledge(force: bool = False) -> str:
         except Exception as exc:
             failures.append({"article_dir": str(note.article_dir), "error": str(exc)})
 
+    # Index wiki/ entries (concept articles + source summaries) if present
+    wiki_indexed = 0
+    if WIKI_DIR.exists():
+        for block in iter_wiki_blocks(WIKI_DIR):
+            try:
+                wiki_id = make_block_id(kb_root, block, 0)
+                collection.upsert(
+                    ids=[wiki_id],
+                    documents=[block.text],
+                    metadatas=[block_metadata(block, kb_layer=block.block_type)],
+                    embeddings=[embed_text(block.text, model=DEFAULT_EMBEDDING_MODEL)],
+                )
+                wiki_indexed += 1
+            except Exception as exc:
+                failures.append({"article_dir": str(block.note.article_dir), "error": str(exc)})
+
     save_manifest(manifest_path, manifest)
     write_failure_list(failures, FAILURE_LIST_PATH)
-    return f"Embedding complete: {success} indexed, {skipped} skipped, {len(failures)} failed."
+    wiki_note = f", {wiki_indexed} wiki entries" if wiki_indexed else ""
+    return f"Embedding complete: {success} indexed, {skipped} skipped, {len(failures)} failed{wiki_note}."
 
 
 # ---------------------------------------------------------------------------
