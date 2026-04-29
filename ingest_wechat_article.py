@@ -1,5 +1,8 @@
 from __future__ import annotations
 
+# This module is preserved for backward compatibility. New code should import
+# from ingest_source for the unified WeChat / web / PDF / HTML dispatcher.
+
 import argparse
 import hashlib
 import json
