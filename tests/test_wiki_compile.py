@@ -183,6 +183,27 @@ class CompileOrchestratorTests(unittest.TestCase):
                 second_calls = ma.call_count + mr.call_count - first_calls
                 self.assertEqual(second_calls, 0)
 
+    def test_orphan_article_is_skipped_on_rerun(self) -> None:
+        """Articles for which assign_concepts returned empty (orphans) must still
+        be skipped on a rerun — otherwise we burn LLM calls re-trying the same
+        content that already produced no assignment."""
+        from unittest.mock import patch
+        import wiki_compile
+        import wiki_compile_llm
+
+        with tempfile.TemporaryDirectory() as tmp:
+            root = Path(tmp)
+            self._setup_corpus(root)
+            empty = wiki_compile_llm.ConceptAssignment([], [])  # orphan: no concepts assigned
+            with patch("wiki_compile.assign_concepts", return_value=empty) as ma, \
+                 patch("wiki_compile.recompile_concept") as mr:
+                wiki_compile.compile_wiki(kb_root=root, mode="incremental")
+                first = ma.call_count + mr.call_count
+
+                wiki_compile.compile_wiki(kb_root=root, mode="incremental")
+                second = ma.call_count + mr.call_count - first
+                self.assertEqual(second, 0, "orphan article should not re-call assign_concepts on unchanged content")
+
     def test_content_hash_change_triggers_recompile(self) -> None:
         """Editing the source article must invalidate the cache and trigger LLM calls again."""
         from unittest.mock import patch

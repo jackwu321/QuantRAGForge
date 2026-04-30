@@ -215,16 +215,16 @@ def compile_wiki(
         article_md = article_dir / "article.md"
         existing_summary = wiki_dir / "sources" / f"{article_dir.name}.md"
 
-        # Content-hash idempotency. If the article hash matches the recorded
-        # hash AND the source summary exists AND we have prior assignments,
-        # skip the LLM call entirely.
+        # Content-hash idempotency. Skip if we have a prior entry with matching
+        # hash AND a source summary on disk. Orphans (feeds=[]) also count as
+        # "already tried" — re-running assign_concepts on the same content will
+        # produce the same empty result, so we shouldn't burn LLM calls on it.
         source_key = str(article_md)
         prior_entry = state.sources.get(source_key)
         if (
             mode == "incremental"
             and prior_entry is not None
             and existing_summary.exists()
-            and prior_entry.feeds_concepts
             and not is_source_changed(state, article_md)
         ):
             report.skipped += 1
