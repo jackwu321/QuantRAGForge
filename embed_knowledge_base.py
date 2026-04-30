@@ -130,8 +130,11 @@ def make_block_id(kb_root: Path, block: KnowledgeBlock, ordinal: int) -> str:
 
 
 def block_metadata(block: KnowledgeBlock, kb_layer: str = "article") -> dict[str, str]:
+    """Build ChromaDB metadata for a block. ChromaDB requires str/int/float/bool
+    scalar values, so wiki score fields are coerced to floats.
+    """
     frontmatter = block.note.frontmatter
-    return {
+    meta: dict[str, str | float | int] = {
         "article_dir": str(block.note.article_dir),
         "source_dir": block.note.source_dir,
         "content_type": str(frontmatter.get("content_type", "")),
@@ -139,6 +142,23 @@ def block_metadata(block: KnowledgeBlock, kb_layer: str = "article") -> dict[str
         "block_type": block.block_type,
         "kb_layer": kb_layer,
     }
+    # Wiki-specific fields used for filter+rerank at retrieval time.
+    if "status" in frontmatter:
+        meta["status"] = str(frontmatter["status"])
+    if "slug" in frontmatter:
+        meta["slug"] = str(frontmatter["slug"])
+    for k in ("confidence", "importance", "freshness"):
+        if k in frontmatter:
+            try:
+                meta[k] = float(frontmatter[k])
+            except (TypeError, ValueError):
+                pass
+    if "source_count" in frontmatter:
+        try:
+            meta["source_count"] = int(frontmatter["source_count"])
+        except (TypeError, ValueError):
+            pass
+    return meta
 
 
 def delete_article_blocks(collection, article_dir: str) -> None:
@@ -239,9 +259,19 @@ def main() -> int:
 
 
 def iter_wiki_blocks(wiki_dir: Path):
-    """Yield KnowledgeBlock objects for each wiki concept article and source summary."""
+    """Yield KnowledgeBlock objects for each wiki concept article and source summary.
+
+    The note.frontmatter dict includes wiki-specific metadata (status, slug, plus
+    confidence/importance/freshness from wiki/state.json when available) so that
+    block_metadata propagates them into ChromaDB. Brainstorm retrieval can then
+    filter to `where={"kb_layer": "wiki_concept", "status": "stable"}` and rerank
+    using the score fields.
+    """
     from kb_shared import KnowledgeNote
     from wiki_schemas import parse_concept, parse_source_summary
+    from wiki_state import load_wiki_state
+
+    state = load_wiki_state(wiki_dir / "state.json")
 
     cdir = wiki_dir / "concepts"
     if cdir.exists():
@@ -250,6 +280,7 @@ def iter_wiki_blocks(wiki_dir: Path):
                 concept = parse_concept(md.read_text(encoding="utf-8"))
             except Exception:
                 continue
+            entry = state.concepts.get(concept.slug)
             note = KnowledgeNote(
                 article_dir=md,
                 source_dir="wiki_concepts",
@@ -258,6 +289,11 @@ def iter_wiki_blocks(wiki_dir: Path):
                     "content_type": concept.content_types[0] if concept.content_types else "",
                     "brainstorm_value": "high",
                     "slug": concept.slug,
+                    "status": concept.status,
+                    "confidence": entry.confidence if entry else 0.0,
+                    "importance": entry.importance if entry else 0.0,
+                    "freshness": entry.freshness if entry else 0.0,
+                    "source_count": entry.source_count if entry else len(concept.sources),
                 },
                 body="",
             )
@@ -287,6 +323,7 @@ def iter_wiki_blocks(wiki_dir: Path):
                     "title": summary.title,
                     "content_type": summary.content_type,
                     "brainstorm_value": summary.brainstorm_value,
+                    "status": "stable",  # source summaries are mechanical, always usable
                 },
                 body="",
             )

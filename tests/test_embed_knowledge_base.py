@@ -84,6 +84,22 @@ class EmbedWikiTests(unittest.TestCase):
             kinds = {b.block_type for b in blocks}
             self.assertIn("wiki_concept", kinds)
 
+    def test_wiki_concept_metadata_includes_status_and_score_fields(self) -> None:
+        import tempfile
+        with tempfile.TemporaryDirectory() as tmp:
+            from wiki_seed import bootstrap_wiki
+            wiki_dir = Path(tmp) / "wiki"
+            bootstrap_wiki(wiki_dir)
+            blocks = [b for b in mod.iter_wiki_blocks(wiki_dir) if b.block_type == "wiki_concept"]
+            self.assertGreater(len(blocks), 0)
+            meta = mod.block_metadata(blocks[0], kb_layer="wiki_concept")
+            self.assertEqual(meta["kb_layer"], "wiki_concept")
+            self.assertEqual(meta["status"], "stable")
+            self.assertIn("slug", meta)
+            self.assertIn("confidence", meta)
+            self.assertIn("freshness", meta)
+            self.assertIsInstance(meta["confidence"], float)
+
 
 if __name__ == "__main__":
     unittest.main()
