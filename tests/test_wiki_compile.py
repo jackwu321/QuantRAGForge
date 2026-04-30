@@ -183,6 +183,58 @@ class CompileOrchestratorTests(unittest.TestCase):
                 second_calls = ma.call_count + mr.call_count - first_calls
                 self.assertEqual(second_calls, 0)
 
+    def test_content_hash_change_triggers_recompile(self) -> None:
+        """Editing the source article must invalidate the cache and trigger LLM calls again."""
+        from unittest.mock import patch
+        import wiki_compile
+        import wiki_compile_llm
+
+        with tempfile.TemporaryDirectory() as tmp:
+            root = Path(tmp)
+            self._setup_corpus(root)
+            assignment = wiki_compile_llm.ConceptAssignment(["momentum-strategies"], [])
+            recompile = wiki_compile_llm.RecompileResult("S", "D", [], [], [], [], [], [], [])
+            with patch("wiki_compile.assign_concepts", return_value=assignment) as ma, \
+                 patch("wiki_compile.recompile_concept", return_value=recompile) as mr:
+                wiki_compile.compile_wiki(kb_root=root, mode="incremental")
+                base = ma.call_count + mr.call_count
+
+                # Modify the article — content hash changes
+                article_md = root / "articles" / "reviewed" / "2026-03-22_test_article" / "article.md"
+                article_md.write_text(
+                    article_md.read_text(encoding="utf-8") + "\nNew paragraph.\n",
+                    encoding="utf-8",
+                )
+
+                wiki_compile.compile_wiki(kb_root=root, mode="incremental")
+                after_edit = ma.call_count + mr.call_count - base
+                self.assertGreater(after_edit, 0, "edited article should retrigger LLM calls")
+
+    def test_state_json_written_after_compile(self) -> None:
+        from unittest.mock import patch
+        import wiki_compile
+        import wiki_compile_llm
+        import wiki_state
+
+        with tempfile.TemporaryDirectory() as tmp:
+            root = Path(tmp)
+            self._setup_corpus(root)
+            assignment = wiki_compile_llm.ConceptAssignment(["momentum-strategies"], [])
+            recompile = wiki_compile_llm.RecompileResult("S", "D", [], [], [], [], [], [], [])
+            with patch("wiki_compile.assign_concepts", return_value=assignment), \
+                 patch("wiki_compile.recompile_concept", return_value=recompile):
+                wiki_compile.compile_wiki(kb_root=root, mode="incremental")
+            state_path = root / "wiki" / "state.json"
+            self.assertTrue(state_path.exists())
+            state = wiki_state.load_wiki_state(state_path)
+            self.assertIn("momentum-strategies", state.concepts)
+            article_md = str(root / "articles" / "reviewed" / "2026-03-22_test_article" / "article.md")
+            self.assertIn(article_md, state.sources)
+            self.assertEqual(
+                state.sources[article_md].feeds_concepts,
+                ["momentum-strategies"],
+            )
+
     def test_proposed_concept_lands_with_status_proposed(self) -> None:
         from unittest.mock import patch
         import wiki_compile
