@@ -300,6 +300,7 @@ def compile_wiki(
                 continue
             try:
                 fm, _ = parse_frontmatter(ap.read_text(encoding="utf-8"))
+                fm["source_basename"] = ap.parent.name
                 source_dicts.append(fm)
             except Exception:
                 continue

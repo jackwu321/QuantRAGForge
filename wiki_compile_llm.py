@@ -123,7 +123,16 @@ class RecompileResult:
 
 _RECOMPILE_SYSTEM = """你是量化投研知识库的概念合成助手。
 你的任务是基于多篇来源文章合成一篇概念文章的各个章节。
-输出严格 JSON，每个字段独立。Synthesis 是 1-3 段叙事，其它是项目列表。"""
+输出严格 JSON，每个字段独立。
+
+关键约束 — 来源锚 (source anchors):
+- key_idea_blocks / variants / common_combinations / transfer_targets / failure_modes / open_questions
+  里的每一条都必须以 [<source_basename>[, <source_basename>...]] 结尾，标注其来源
+- 来源 basename 是输入中给出的 [Source N: <basename>] 里的 <basename>
+- 一条要点引用多个来源时使用逗号分隔，例如：[a, b, c]
+- 没有任何来源支撑的论断一律删除，不要捏造来源
+- synthesis 段落是连续散文，可以不嵌入锚；但其中提到的具体事实应有结构化要点支撑
+"""
 
 
 def _format_source_articles(sources: list[dict]) -> str:
@@ -131,11 +140,12 @@ def _format_source_articles(sources: list[dict]) -> str:
     for i, s in enumerate(sources, 1):
         title = s.get("title", "")
         ct = s.get("content_type", "")
+        basename = s.get("source_basename") or s.get("basename") or f"src{i}"
         ideas = s.get("idea_blocks", [])
         if not isinstance(ideas, list):
             ideas = [str(ideas)]
         ideas_text = "\n  ".join(f"- {x}" for x in ideas[:5])
-        parts.append(f"[Source {i}] {title} ({ct})\n  {ideas_text}")
+        parts.append(f"[Source {i}: {basename}] {title} ({ct})\n  {ideas_text}")
     return "\n\n".join(parts) or "(no sources)"
 
 
@@ -150,17 +160,17 @@ def recompile_concept(
 来源文章列表:
 {_format_source_articles(source_articles)}
 
-输出 JSON schema:
+输出 JSON schema (每条要点必须以 [<source_basename>[, <basename>...]] 结尾):
 {{
   "synthesis": "<1-3 段，描述这些来源对该概念合起来说了什么>",
   "definition": "<1 段经典定义>",
-  "key_idea_blocks": ["<由源文章 idea_blocks 聚合后去重>", ...],
-  "variants": ["<不同来源的实现/变体>", ...],
-  "common_combinations": ["<可与之组合的概念，使用 [[slug]] 格式>", ...],
-  "transfer_targets": ["<可迁移到的市场/资产/周期>", ...],
-  "failure_modes": ["<研究失效边界，不要写风控规则>", ...],
-  "open_questions": ["<延伸研究问题>", ...],
-  "related_concepts": ["<相关概念 slug，无 [[]]>", ...]
+  "key_idea_blocks": ["<要点 1> [<basename>]", "<要点 2> [<b1>, <b2>]", ...],
+  "variants": ["<变体 1> [<basename>]", ...],
+  "common_combinations": ["<可与 [[slug]] 组合> [<basename>]", ...],
+  "transfer_targets": ["<可迁移到的领域> [<basename>]", ...],
+  "failure_modes": ["<研究失效边界> [<basename>]", ...],
+  "open_questions": ["<延伸研究问题> [<basename>]", ...],
+  "related_concepts": ["<相关概念 slug，无 [[]] 也无锚>", ...]
 }}"""
     messages = [
         {"role": "system", "content": _RECOMPILE_SYSTEM},
