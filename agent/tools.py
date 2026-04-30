@@ -586,16 +586,39 @@ def compile_wiki(mode: str = "incremental", dry_run: bool = False) -> str:
     except Exception as exc:
         return f"Error during compile_wiki: {exc}"
     summary = report.summary()
+    if getattr(report, "lint_summary", ""):
+        summary += f"\n\nWiki health:\n{report.lint_summary}"
     if report.concepts_proposed:
         summary += (
-            f"\n\nProposed concepts ({report.concepts_proposed}) are awaiting review. "
-            f"Use list_concepts to see them and set_concept_status to approve/reject."
+            f"\n\n{report.concepts_proposed} low-confidence concept(s) were placed in the exception queue. "
+            "They are excluded from brainstorm until the agent merges, stabilizes, or deprecates them."
         )
     return summary
 
 
 # ---------------------------------------------------------------------------
-# Tool 10: list_concepts
+# Tool 10: audit_wiki
+# ---------------------------------------------------------------------------
+
+
+@tool
+def audit_wiki() -> str:
+    """Return the wiki health report used by the agent before relying on compiled memory.
+
+    Runs lint checks (stale sources, unsupported bullets, duplicate aliases, orphan
+    concepts/sources, oversized concepts). Calls out blocking issues that should
+    push brainstorm to article-only fallback.
+    """
+    import wiki_lint
+    try:
+        report = wiki_lint.lint_wiki(KB_ROOT)
+    except Exception as exc:
+        return f"Wiki audit failed: {exc}"
+    return report.summary()
+
+
+# ---------------------------------------------------------------------------
+# Tool 11: list_concepts
 # ---------------------------------------------------------------------------
 
 
@@ -710,6 +733,7 @@ ALL_TOOLS = [
     embed_knowledge,
     query_knowledge_base,
     compile_wiki,
+    audit_wiki,
     list_concepts,
     set_concept_status,
     read_wiki,

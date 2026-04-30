@@ -54,6 +54,7 @@ class TestAgentGraph(unittest.TestCase):
             "embed_knowledge",
             "query_knowledge_base",
             "compile_wiki",
+            "audit_wiki",
             "list_concepts",
             "set_concept_status",
             "read_wiki",

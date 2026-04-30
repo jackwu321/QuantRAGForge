@@ -159,6 +159,21 @@ class TestReviewArticles(unittest.TestCase):
                 self.assertIn("1.", result)
 
 
+class AuditWikiToolTests(unittest.TestCase):
+    def test_audit_wiki_returns_summary(self) -> None:
+        import tempfile
+        from pathlib import Path
+        from agent.tools import audit_wiki as audit_wiki_tool
+        from wiki_seed import bootstrap_wiki
+
+        with tempfile.TemporaryDirectory() as tmp:
+            wiki_dir = Path(tmp) / "wiki"
+            bootstrap_wiki(wiki_dir)
+            with patch("agent.tools.KB_ROOT", Path(tmp)):
+                result = audit_wiki_tool.invoke({})
+            self.assertIn("Wiki health", result)
+
+
 class TestToolsReturnStrings(unittest.TestCase):
     """Verify all tools return strings on error conditions."""
 
