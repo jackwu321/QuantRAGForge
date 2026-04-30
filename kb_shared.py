@@ -26,6 +26,8 @@ WIKI_DIR = ROOT / "wiki"
 WIKI_CONCEPTS_DIR = WIKI_DIR / "concepts"
 WIKI_SOURCES_DIR = WIKI_DIR / "sources"
 WIKI_INDEX_PATH = WIKI_DIR / "INDEX.md"
+WIKI_STATE_PATH = WIKI_DIR / "state.json"
+WIKI_LINT_PATH = WIKI_DIR / "lint_report.json"
 
 # ---------------------------------------------------------------------------
 # LLM provider configuration (OpenAI-compatible API)
