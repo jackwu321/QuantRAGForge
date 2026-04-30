@@ -125,5 +125,60 @@ class SourceSummarySchemaTests(unittest.TestCase):
         self.assertEqual(parsed.top_idea_blocks, ["A", "B", "C"])
 
 
+class YamlFrontmatterTests(unittest.TestCase):
+    def test_round_trip_concept_with_non_empty_sources_block_list(self) -> None:
+        original = wiki_schemas.ConceptArticle(
+            title="Momentum Factor",
+            slug="momentum-factor",
+            aliases=["momentum", "动量因子"],
+            status="stable",
+            related_concepts=["factor-timing"],
+            sources=[
+                "articles/reviewed/2026-03-22_华泰_趋势/article.md",
+                "articles/high-value/2025-03-04_中金_低频策略/article.md",
+            ],
+            content_types=["methodology", "strategy"],
+            last_compiled="2026-04-30",
+            compile_version=4,
+            synthesis="S",
+            definition="D",
+            key_idea_blocks=[],
+            variants=[],
+            common_combinations=[],
+            transfer_targets=[],
+            failure_modes=[],
+            open_questions=[],
+            source_basenames=["2026-03-22_华泰_趋势", "2025-03-04_中金_低频策略"],
+        )
+        text = wiki_schemas.serialize_concept(original)
+        parsed = wiki_schemas.parse_concept(text)
+        self.assertEqual(parsed.sources, original.sources)
+        self.assertEqual(parsed.related_concepts, ["factor-timing"])
+        self.assertEqual(parsed.content_types, ["methodology", "strategy"])
+        self.assertEqual(parsed.compile_version, 4)
+
+
+class BulletAnchorHelpersTests(unittest.TestCase):
+    def test_bullet_with_single_anchor(self) -> None:
+        b = "12-month minus 1-month return is the canonical signal [2026-03-22_华泰_趋势]"
+        self.assertEqual(wiki_schemas.bullet_text(b), "12-month minus 1-month return is the canonical signal")
+        self.assertEqual(wiki_schemas.bullet_sources(b), ["2026-03-22_华泰_趋势"])
+
+    def test_bullet_with_multiple_anchors(self) -> None:
+        b = "Reversal at >36-month horizons [src1, src2, src3]"
+        self.assertEqual(wiki_schemas.bullet_text(b), "Reversal at >36-month horizons")
+        self.assertEqual(wiki_schemas.bullet_sources(b), ["src1", "src2", "src3"])
+
+    def test_bullet_without_anchor(self) -> None:
+        b = "An unanchored claim"
+        self.assertEqual(wiki_schemas.bullet_text(b), "An unanchored claim")
+        self.assertEqual(wiki_schemas.bullet_sources(b), [])
+
+    def test_bullet_with_empty_anchor_brackets(self) -> None:
+        b = "An empty-anchor claim []"
+        self.assertEqual(wiki_schemas.bullet_text(b), "An empty-anchor claim")
+        self.assertEqual(wiki_schemas.bullet_sources(b), [])
+
+
 if __name__ == "__main__":
     unittest.main()
