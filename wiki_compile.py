@@ -84,6 +84,8 @@ class CompileReport:
     concepts_proposed: int = 0
     skipped: int = 0
     errors: list[str] = field(default_factory=list)
+    lint_summary: str = ""
+    lint_ok: bool = True
 
     def summary(self) -> str:
         parts = [
@@ -324,5 +326,14 @@ def compile_wiki(
                 update_concept_entry(state, c)
         save_wiki_state(state, state_path)
         write_index(wiki_dir)
+
+        # Run lint after compile so the agent can decide whether to trust memory.
+        try:
+            from wiki_lint import lint_wiki
+            lint = lint_wiki(kb_root)
+            report.lint_summary = lint.summary()
+            report.lint_ok = lint.ok_for_brainstorm()
+        except Exception as exc:
+            report.errors.append(f"lint failed: {exc}")
 
     return report
