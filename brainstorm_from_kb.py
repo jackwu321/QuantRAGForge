@@ -14,6 +14,8 @@ except ImportError:  # pragma: no cover - runtime dependency
 from kb_shared import (
     ROOT,
     DEFAULT_SOURCE_DIRS,
+    WIKI_DIR,
+    WIKI_STATE_PATH,
     KnowledgeBlock,
     KnowledgeNote,
     build_blocks,
@@ -29,6 +31,11 @@ from kb_shared import (
     embed_text,
 )
 from rethink_layer import rethink
+from wiki_schemas import parse_concept
+from wiki_state import (
+    concept_memory_score,
+    load_wiki_state,
+)
 
 
 DEFAULT_OUTPUT_DIR = ROOT / "outputs" / "brainstorms"
@@ -255,6 +262,244 @@ def _rrf_fusion(keyword_blocks: list[KnowledgeBlock], vector_blocks: list[Knowle
     return results
 
 
+# ---------------------------------------------------------------------------
+# Wiki-concept retrieval (Chroma-filtered, state-score reranked)
+# ---------------------------------------------------------------------------
+
+DEFAULT_CONCEPT_TOP_K = 3
+CONCEPT_FETCH_MULTIPLIER = 4  # over-fetch from Chroma so the rerank has options
+RERANK_W_SIM = 0.50
+RERANK_W_MEMORY = 0.50  # the rest is composed inside concept_memory_score
+
+
+def _build_concept_body(c) -> str:
+    """Compact memory block for a concept: synthesis + structured bullets."""
+    parts = list(filter(None, [
+        c.synthesis,
+        c.definition,
+    ]))
+    if c.key_idea_blocks:
+        parts.append("Key Idea Blocks:\n" + "\n".join(f"- {b}" for b in c.key_idea_blocks))
+    if c.common_combinations:
+        parts.append("Combinations: " + "; ".join(c.common_combinations))
+    if c.transfer_targets:
+        parts.append("Transfer Targets: " + "; ".join(c.transfer_targets))
+    if c.failure_modes:
+        parts.append("Failure Modes: " + "; ".join(c.failure_modes))
+    return "\n\n".join(parts)
+
+
+def _retrieve_concepts_via_chroma(
+    query: str,
+    top_k: int,
+    vector_store_dir: Path,
+) -> list[dict] | None:
+    """Vector-search Chroma for wiki concepts. Returns None if Chroma unavailable.
+
+    Filters to `kb_layer=wiki_concept AND status=stable`. Reranks using
+    state.json memory score (confidence + importance + freshness − conflicts).
+    """
+    if chromadb is None or not vector_store_dir.exists():
+        return None
+    try:
+        if not check_vector_store_health(vector_store_dir):
+            return None
+        client = chromadb.PersistentClient(path=str(vector_store_dir))
+        collection = client.get_collection("knowledge_blocks")
+    except Exception:
+        return None
+
+    if collection.count() <= 0:
+        return None
+
+    try:
+        query_embedding = embed_text(query)
+    except Exception:
+        return None
+
+    try:
+        results = collection.query(
+            query_embeddings=[query_embedding],
+            n_results=max(top_k * CONCEPT_FETCH_MULTIPLIER, top_k),
+            where={"$and": [
+                {"kb_layer": {"$eq": "wiki_concept"}},
+                {"status": {"$eq": "stable"}},
+            ]},
+            include=["documents", "metadatas", "distances"],
+        )
+    except Exception:
+        return None
+
+    docs = results.get("documents", [[]])[0]
+    metas = results.get("metadatas", [[]])[0]
+    dists = results.get("distances", [[]])[0]
+    if not metas:
+        return None
+
+    state = load_wiki_state(WIKI_STATE_PATH)
+    scored: list[tuple[float, dict, str]] = []
+    for text, meta, dist in zip(docs, metas, dists):
+        slug = str(meta.get("slug", "")).strip()
+        if not slug:
+            continue
+        sim = max(0.0, 1.0 - float(dist))
+        entry = state.concepts.get(slug)
+        if entry is None:
+            mem_score = 0.0
+            conflict_count = 0
+        else:
+            mem_score = concept_memory_score(
+                confidence=entry.confidence,
+                importance=entry.importance,
+                freshness=entry.freshness,
+                source_count=entry.source_count,
+                conflict_count=len(entry.conflicts),
+            )
+            conflict_count = len(entry.conflicts)
+        final = RERANK_W_SIM * sim + RERANK_W_MEMORY * mem_score
+        scored.append((final, meta, text))
+
+    scored.sort(key=lambda kv: kv[0], reverse=True)
+
+    # Read full concept articles from disk to surface structured bullets,
+    # not just the embedded body.
+    out: list[dict] = []
+    seen_slugs: set[str] = set()
+    for _, meta, text in scored:
+        slug = str(meta.get("slug", ""))
+        if slug in seen_slugs:
+            continue
+        seen_slugs.add(slug)
+        concept_md = WIKI_DIR / "concepts" / f"{slug}.md"
+        if not concept_md.exists():
+            continue
+        try:
+            c = parse_concept(concept_md.read_text(encoding="utf-8"))
+        except Exception:
+            continue
+        out.append({
+            "slug": c.slug,
+            "title": c.title,
+            "sources": c.sources,
+            "body_text": _build_concept_body(c),
+        })
+        if len(out) >= top_k:
+            break
+    return out or None
+
+
+def _retrieve_concepts_via_lexical(query: str, top_k: int) -> list[dict]:
+    """Lexical fallback for concept retrieval. Used when Chroma is unavailable.
+
+    Scores concepts by token overlap of query against title + aliases +
+    retrieval_hints (from state.json). Plain and deterministic.
+    """
+    cdir = WIKI_DIR / "concepts"
+    if not cdir.exists():
+        return []
+    candidates = []
+    for md in cdir.glob("*.md"):
+        try:
+            c = parse_concept(md.read_text(encoding="utf-8"))
+        except Exception:
+            continue
+        if c.status != "stable":
+            continue
+        candidates.append(c)
+    if not candidates:
+        return []
+
+    state = load_wiki_state(WIKI_STATE_PATH)
+    q_tokens = tokenize(query)
+    scored = []
+    for c in candidates:
+        entry = state.concepts.get(c.slug)
+        hints = list(entry.retrieval_hints) if entry else (list(c.aliases) + [c.title])
+        score_text = " ".join([c.title] + hints + [c.definition[:200]])
+        c_tokens = tokenize(score_text)
+        overlap = len(q_tokens & c_tokens)
+        if overlap == 0:
+            continue
+        if entry is not None:
+            mem = concept_memory_score(
+                confidence=entry.confidence,
+                importance=entry.importance,
+                freshness=entry.freshness,
+                source_count=entry.source_count,
+                conflict_count=len(entry.conflicts),
+            )
+        else:
+            mem = 0.0
+        scored.append((overlap + 2.0 * mem, c))
+    scored.sort(key=lambda kv: kv[0], reverse=True)
+
+    return [
+        {
+            "slug": c.slug,
+            "title": c.title,
+            "sources": c.sources,
+            "body_text": _build_concept_body(c),
+        }
+        for _, c in scored[:top_k]
+    ]
+
+
+def _retrieve_concept_articles(
+    query: str,
+    top_k: int = DEFAULT_CONCEPT_TOP_K,
+    vector_store_dir: Path | None = None,
+) -> list[dict]:
+    """Retrieve top-K stable wiki concepts.
+
+    Preferred: Chroma vector search filtered to `kb_layer=wiki_concept`,
+    reranked by `wiki/state.json` memory score
+    (vector_sim + confidence + importance + freshness - conflicts).
+    Fallback: lexical token overlap on title/aliases/retrieval_hints when
+    Chroma is unavailable, the index is empty, or the query has no hits.
+    """
+    if not (WIKI_DIR / "concepts").exists():
+        return []
+    store = vector_store_dir or VECTOR_STORE_DIR
+    via_chroma = _retrieve_concepts_via_chroma(query, top_k, store)
+    if via_chroma:
+        return via_chroma
+    return _retrieve_concepts_via_lexical(query, top_k)
+
+
+def _concepts_to_blocks(
+    query: str,
+    top_k: int = DEFAULT_CONCEPT_TOP_K,
+    vector_store_dir: Path | None = None,
+) -> list[KnowledgeBlock]:
+    concepts = _retrieve_concept_articles(query, top_k=top_k, vector_store_dir=vector_store_dir)
+    if not concepts:
+        return []
+    blocks: list[KnowledgeBlock] = []
+    for c in concepts:
+        note = KnowledgeNote(
+            article_dir=WIKI_DIR / "concepts" / f"{c['slug']}.md",
+            source_dir="wiki_concepts",
+            frontmatter={"title": c["title"], "content_type": ""},
+            body="",
+        )
+        blocks.append(KnowledgeBlock(
+            note=note,
+            block_type="wiki_concept",
+            text=c["body_text"],
+            score=1.0,
+        ))
+    return blocks
+
+
+def _wiki_is_healthy_for_brainstorm() -> bool:
+    """Audit the wiki — return True if brainstorm should use compiled memory."""
+    try:
+        from wiki_lint import lint_wiki
+        return lint_wiki(ROOT).ok_for_brainstorm()
+    except Exception:
+        return True  # absence of lint is not a blocker; the lint itself is best-effort
+
+
 def retrieve_blocks(
     notes: list[KnowledgeNote],
     query: str,
@@ -265,43 +510,68 @@ def retrieve_blocks(
 ) -> tuple[list[KnowledgeBlock], str, str | None]:
     candidate_k = max(top_k * 2, top_k)
     keyword_blocks = _keyword_candidates(notes, query, candidate_k, command)
-    if retrieval_mode == "keyword":
-        return keyword_blocks[:top_k], "keyword", None
-
     store_dir = vector_store_dir or VECTOR_STORE_DIR
+
+    # Brainstorm: prepend wiki concept memory, exclude their already-cited sources
+    wiki_blocks: list[KnowledgeBlock] = []
+    excluded_articles: set[str] = set()
+    if command == "brainstorm" and _wiki_is_healthy_for_brainstorm():
+        wiki_blocks = _concepts_to_blocks(query, top_k=DEFAULT_CONCEPT_TOP_K, vector_store_dir=store_dir)
+        if wiki_blocks:
+            for c in _retrieve_concept_articles(query, top_k=DEFAULT_CONCEPT_TOP_K, vector_store_dir=store_dir):
+                for src_path in c["sources"]:
+                    excluded_articles.add(str(Path(src_path).parent))
+
+    remaining_k = max(0, top_k - len(wiki_blocks))
+
+    if retrieval_mode == "keyword":
+        article_blocks = [
+            b for b in keyword_blocks
+            if str(b.note.article_dir) not in excluded_articles
+        ][:remaining_k]
+        return wiki_blocks + article_blocks, "keyword", None
+
     try:
         vector_blocks = _vector_retrieve(notes, query, candidate_k, command, store_dir)
     except Exception as exc:
         warning = f"{retrieval_mode} retrieval fell back to keyword: {exc}"
-        return keyword_blocks[:top_k], "keyword", warning
+        article_blocks = [
+            b for b in keyword_blocks
+            if str(b.note.article_dir) not in excluded_articles
+        ][:remaining_k]
+        return wiki_blocks + article_blocks, "keyword", warning
+
+    vector_blocks = [b for b in vector_blocks if str(b.note.article_dir) not in excluded_articles]
 
     if retrieval_mode == "vector":
         if vector_blocks:
-            return vector_blocks[:top_k], "vector", None
-        return keyword_blocks[:top_k], "keyword", "vector retrieval returned no results; fell back to keyword"
+            return wiki_blocks + vector_blocks[:remaining_k], "vector", None
+        return wiki_blocks + keyword_blocks[:remaining_k], "keyword", "vector retrieval returned no results; fell back to keyword"
 
     if not vector_blocks:
-        return keyword_blocks[:top_k], "keyword", "hybrid retrieval fell back to keyword because vector retrieval returned no results"
+        return wiki_blocks + keyword_blocks[:remaining_k], "keyword", \
+            "hybrid retrieval fell back to keyword because vector retrieval returned no results"
 
-    fused = _rrf_fusion(keyword_blocks, vector_blocks, top_k)
+    fused = _rrf_fusion(keyword_blocks, vector_blocks, remaining_k)
     if not fused:
-        return keyword_blocks[:top_k], "keyword", "hybrid retrieval fell back to keyword because fusion returned no results"
-    return fused, "hybrid", None
+        return wiki_blocks + keyword_blocks[:remaining_k], "keyword", \
+            "hybrid retrieval fell back to keyword because fusion returned no results"
+    return wiki_blocks + fused, "hybrid", None
 
 
 def format_context(blocks: list[KnowledgeBlock]) -> str:
     chunks: list[str] = []
     for index, block in enumerate(blocks, start=1):
+        label = "Wiki Concept" if block.block_type == "wiki_concept" else (
+            "Wiki Source Summary" if block.block_type == "wiki_source" else "Article"
+        )
         chunks.append(
             "\n".join(
                 [
-                    f"[Context {index}]",
+                    f"[Context {index}] [{label}]",
                     f"Title: {block.note.title}",
                     f"Path: {block.note.article_dir}",
                     f"Content Type: {block.note.frontmatter.get('content_type', '')}",
-                    f"Strategy Type: {block.note.frontmatter.get('strategy_type', [])}",
-                    f"Market: {block.note.frontmatter.get('market', [])}",
-                    f"Asset Type: {block.note.frontmatter.get('asset_type', [])}",
                     f"Block Type: {block.block_type}",
                     f"Content: {block.text}",
                 ]
