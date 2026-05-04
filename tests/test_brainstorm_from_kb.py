@@ -75,8 +75,15 @@ class BrainstormFromKbTests(unittest.TestCase):
         self.assertEqual(filtered[0].title, "A")
 
     def test_retrieve_blocks_prefers_idea_blocks(self) -> None:
+        from unittest.mock import patch
+        from pathlib import Path
+        import tempfile
         note = self.make_note()
-        retrieved, mode, warning = mod.retrieve_blocks([note], "行业轮动 风险预算", 3, "brainstorm", "keyword")
+        # Isolate from any compiled wiki/ in the worktree — this test predates
+        # the wiki layer and asserts on article-only retrieval.
+        with tempfile.TemporaryDirectory() as tmp:
+            with patch.object(mod, "WIKI_DIR", Path(tmp) / "no-wiki"):
+                retrieved, mode, warning = mod.retrieve_blocks([note], "行业轮动 风险预算", 3, "brainstorm", "keyword")
         self.assertTrue(retrieved)
         self.assertEqual(retrieved[0].block_type, "idea_blocks")
         self.assertEqual(mode, "keyword")

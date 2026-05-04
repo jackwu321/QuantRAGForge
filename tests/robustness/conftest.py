@@ -59,16 +59,21 @@ class RobustTestBase(unittest.TestCase):
         # Store originals
         self._originals = {
             "kb_shared.ROOT": kb_shared.ROOT,
+            "kb_shared.WIKI_DIR": kb_shared.WIKI_DIR,
+            "kb_shared.WIKI_STATE_PATH": kb_shared.WIKI_STATE_PATH,
             "tools.KB_ROOT": tools_mod.KB_ROOT,
             "sync.ARTICLES_DIR": sync_mod.ARTICLES_DIR,
             "sync.DEFAULT_SOURCE_DIR": sync_mod.DEFAULT_SOURCE_DIR,
             "embed.VECTOR_STORE_DIR": embed_mod.VECTOR_STORE_DIR,
             "embed.FAILURE_LIST_PATH": embed_mod.FAILURE_LIST_PATH,
             "brainstorm.VECTOR_STORE_DIR": brainstorm_mod.VECTOR_STORE_DIR,
+            "brainstorm.WIKI_DIR": brainstorm_mod.WIKI_DIR,
         }
 
         # Patch to temp dirs
         kb_shared.ROOT = self.tmp_root
+        kb_shared.WIKI_DIR = self.tmp_root / "wiki"
+        kb_shared.WIKI_STATE_PATH = self.tmp_root / "wiki" / "state.json"
         tools_mod.KB_ROOT = self.tmp_root
         sync_mod.ARTICLES_DIR = self.tmp_root / "articles"
         sync_mod.DEFAULT_SOURCE_DIR = self.tmp_root / "articles" / "raw"
@@ -77,6 +82,7 @@ class RobustTestBase(unittest.TestCase):
             self.tmp_root / "sources" / "processed" / "embed_failures.txt"
         )
         brainstorm_mod.VECTOR_STORE_DIR = self.tmp_root / "vector_store"
+        brainstorm_mod.WIKI_DIR = self.tmp_root / "wiki"
 
     def tearDown(self):
         import kb_shared
@@ -86,12 +92,15 @@ class RobustTestBase(unittest.TestCase):
         import brainstorm_from_kb as brainstorm_mod
 
         kb_shared.ROOT = self._originals["kb_shared.ROOT"]
+        kb_shared.WIKI_DIR = self._originals["kb_shared.WIKI_DIR"]
+        kb_shared.WIKI_STATE_PATH = self._originals["kb_shared.WIKI_STATE_PATH"]
         tools_mod.KB_ROOT = self._originals["tools.KB_ROOT"]
         sync_mod.ARTICLES_DIR = self._originals["sync.ARTICLES_DIR"]
         sync_mod.DEFAULT_SOURCE_DIR = self._originals["sync.DEFAULT_SOURCE_DIR"]
         embed_mod.VECTOR_STORE_DIR = self._originals["embed.VECTOR_STORE_DIR"]
         embed_mod.FAILURE_LIST_PATH = self._originals["embed.FAILURE_LIST_PATH"]
         brainstorm_mod.VECTOR_STORE_DIR = self._originals["brainstorm.VECTOR_STORE_DIR"]
+        brainstorm_mod.WIKI_DIR = self._originals["brainstorm.WIKI_DIR"]
 
         self._tmp.cleanup()
 
