@@ -3,8 +3,10 @@ from __future__ import annotations
 import hashlib
 import json
 import os
+import random
 import re
 import sqlite3
+import threading
 import time
 from dataclasses import dataclass
 from pathlib import Path
@@ -43,6 +45,7 @@ WIKI_LINT_PATH = WIKI_DIR / "lint_report.json"
 #   LLM_CONNECT_TIMEOUT / ZHIPU_CONNECT_TIMEOUT  — Connection timeout in seconds
 #   LLM_READ_TIMEOUT    / ZHIPU_READ_TIMEOUT     — Read timeout in seconds
 #   LLM_MAX_RETRIES     / ZHIPU_MAX_RETRIES      — Max retry attempts
+#   LLM_MIN_INTERVAL_SECONDS                     — Min seconds between LLM calls (default: 0.5)
 #   LLM_CONCURRENCY                              — Max parallel LLM requests (default: 3)
 # ---------------------------------------------------------------------------
 
@@ -51,7 +54,8 @@ DEFAULT_LLM_MODEL = "glm-4.7"
 DEFAULT_EMBEDDING_MODEL = "embedding-3"
 DEFAULT_CONNECT_TIMEOUT = 15
 DEFAULT_READ_TIMEOUT = 180
-DEFAULT_MAX_RETRIES = 2
+DEFAULT_MAX_RETRIES = 4
+DEFAULT_MIN_INTERVAL_SECONDS = 0.5
 DEFAULT_LLM_CONCURRENCY = 3
 PLACEHOLDER_TEXTS = {"待补充。", "待生成。"}
 
@@ -346,17 +350,90 @@ def _is_retryable_status(status_code: int) -> bool:
     return True  # 5xx, network errors, etc.
 
 
+# Module-level rate limiter shared across all LLM API calls.
+_last_llm_call_ts: float = 0.0
+_llm_call_lock = threading.Lock()
+
+
+def _min_interval_seconds() -> float:
+    raw = _env_with_fallback(
+        "LLM_MIN_INTERVAL_SECONDS",
+        "ZHIPU_MIN_INTERVAL_SECONDS",
+        str(DEFAULT_MIN_INTERVAL_SECONDS),
+    )
+    try:
+        return max(0.0, float(raw))
+    except (TypeError, ValueError):
+        return DEFAULT_MIN_INTERVAL_SECONDS
+
+
+def _enforce_min_interval() -> None:
+    """Sleep so successive LLM calls are spaced at least min_interval apart."""
+    global _last_llm_call_ts
+    interval = _min_interval_seconds()
+    if interval <= 0:
+        return
+    with _llm_call_lock:
+        now = time.monotonic()
+        wait = interval - (now - _last_llm_call_ts)
+        if wait > 0:
+            time.sleep(wait)
+        _last_llm_call_ts = time.monotonic()
+
+
+def _retry_after_seconds(response: Any) -> float | None:
+    """Parse a Retry-After header into seconds, or None if missing/unparseable."""
+    if response is None:
+        return None
+    headers = getattr(response, "headers", None)
+    if headers is None:
+        return None
+    try:
+        value = headers.get("Retry-After")
+    except Exception:
+        return None
+    if not value:
+        return None
+    try:
+        return max(0.0, float(str(value).strip()))
+    except (TypeError, ValueError):
+        # HTTP-date format is rare from LLM providers; skip rather than parse.
+        return None
+
+
+def _backoff_seconds(attempt: int, status: int, response: Any = None) -> float:
+    """Compute backoff before the next retry.
+
+    Honors Retry-After (capped at 60s) for 429s. Otherwise uses exponential
+    backoff with full jitter: base * 2^attempt + uniform(0, base), capped.
+      - 429:  base 5s, cap 60s   (rate-limit windows are typically per-minute)
+      - other: base 1s, cap 30s
+    """
+    server_hint = _retry_after_seconds(response) if status == 429 else None
+    if server_hint is not None:
+        return min(60.0, server_hint)
+    base = 5.0 if status == 429 else 1.0
+    cap = 60.0 if status == 429 else 30.0
+    backoff = base * (2 ** attempt)
+    jitter = random.uniform(0, base)
+    return min(cap, backoff + jitter)
+
+
 def post_llm_json(path: str, payload: dict[str, Any]) -> dict[str, Any]:
     """POST to the LLM provider's OpenAI-compatible API with retries.
 
     Non-retryable errors (4xx except 429) fail immediately.
     Auth errors (401/403) raise LLMAuthError for fail-fast handling.
+
+    Calls are paced by LLM_MIN_INTERVAL_SECONDS (default 0.5s) to avoid
+    slamming providers with strict per-minute limits.
     """
     require_requests()
     api_key, base_url, _ = get_llm_config()
     connect_timeout, read_timeout, max_retries = _timeouts_for_env()
     last_error: Exception | None = None
     for attempt in range(max_retries + 1):
+        _enforce_min_interval()
         try:
             response = requests.post(
                 f"{base_url}{path}",
@@ -370,7 +447,8 @@ def post_llm_json(path: str, payload: dict[str, Any]) -> dict[str, Any]:
             response.raise_for_status()
             return response.json()
         except requests.exceptions.HTTPError as exc:
-            status = exc.response.status_code if exc.response is not None else 0
+            response = exc.response
+            status = response.status_code if response is not None else 0
             if status in (401, 403):
                 raise LLMAuthError(
                     f"LLM API authentication failed ({status}). Check your LLM_API_KEY."
@@ -380,12 +458,12 @@ def post_llm_json(path: str, payload: dict[str, Any]) -> dict[str, Any]:
             last_error = exc
             if attempt >= max_retries:
                 break
-            time.sleep(min(1.5, 0.5 * (attempt + 1)))
+            time.sleep(_backoff_seconds(attempt, status, response))
         except requests.exceptions.RequestException as exc:
             last_error = exc
             if attempt >= max_retries:
                 break
-            time.sleep(min(1.5, 0.5 * (attempt + 1)))
+            time.sleep(_backoff_seconds(attempt, 0, None))
     if last_error is None:
         raise RuntimeError("LLM API request failed without an explicit exception")
     url = f"{base_url}{path}"

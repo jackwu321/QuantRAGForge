@@ -47,8 +47,17 @@ def _make_mock_response(status_code=200, json_data=None, raise_for_status=None):
 # ===========================================================================
 
 
+@patch.dict(
+    os.environ,
+    {"LLM_MIN_INTERVAL_SECONDS": "0", "LLM_MAX_RETRIES": "2"},
+    clear=False,
+)
 class TestConnectionFailures(unittest.TestCase):
     """Test post_llm_json behavior under network failures."""
+
+    def setUp(self):
+        import kb_shared
+        kb_shared._last_llm_call_ts = 0.0
 
     @patch("kb_shared.get_llm_config", side_effect=_mock_get_llm_config)
     @patch("kb_shared.time.sleep")
@@ -124,8 +133,17 @@ class TestConnectionFailures(unittest.TestCase):
 # ===========================================================================
 
 
+@patch.dict(
+    os.environ,
+    {"LLM_MIN_INTERVAL_SECONDS": "0", "LLM_MAX_RETRIES": "2"},
+    clear=False,
+)
 class TestHTTPErrors(unittest.TestCase):
     """Test post_llm_json behavior with HTTP error responses."""
+
+    def setUp(self):
+        import kb_shared
+        kb_shared._last_llm_call_ts = 0.0
 
     @patch("kb_shared.get_llm_config", side_effect=_mock_get_llm_config)
     @patch("kb_shared.time.sleep")
@@ -202,8 +220,17 @@ class TestHTTPErrors(unittest.TestCase):
 # ===========================================================================
 
 
+@patch.dict(
+    os.environ,
+    {"LLM_MIN_INTERVAL_SECONDS": "0"},
+    clear=False,
+)
 class TestRetryBehavior(unittest.TestCase):
     """Test retry mechanics of post_llm_json."""
+
+    def setUp(self):
+        import kb_shared
+        kb_shared._last_llm_call_ts = 0.0
 
     @patch("kb_shared.get_llm_config", side_effect=_mock_get_llm_config)
     @patch("kb_shared.time.sleep")
@@ -236,10 +263,12 @@ class TestRetryBehavior(unittest.TestCase):
         self.assertEqual(result, {"result": "ok"})
         self.assertEqual(mock_post.call_count, 2)
 
+    @patch("kb_shared.random.uniform", return_value=0.0)
     @patch("kb_shared.get_llm_config", side_effect=_mock_get_llm_config)
     @patch("kb_shared.time.sleep")
     @patch("kb_shared.requests.post")
-    def test_retry_backoff_timing(self, mock_post, mock_sleep, mock_config):
+    @patch.dict(os.environ, {"LLM_MAX_RETRIES": "2"})
+    def test_retry_backoff_timing(self, mock_post, mock_sleep, mock_config, mock_uniform):
         from kb_shared import post_llm_json
 
         mock_post.side_effect = requests_lib.exceptions.ConnectionError("fail")
@@ -247,12 +276,12 @@ class TestRetryBehavior(unittest.TestCase):
         with self.assertRaises(requests_lib.exceptions.ConnectionError):
             post_llm_json("/chat/completions", {"model": "test", "messages": []})
 
-        # Default max_retries=2, so 2 sleeps between 3 attempts
+        # 2 retries → 2 backoff sleeps. Network errors use base=1, no jitter (mocked to 0).
+        # Expected: 1*2^0=1, 1*2^1=2.
         self.assertEqual(mock_sleep.call_count, 2)
-        # Backoff: min(1.5, 0.5*(attempt+1)) → sleep(0.5), sleep(1.0)
         calls = [c[0][0] for c in mock_sleep.call_args_list]
-        self.assertAlmostEqual(calls[0], 0.5, places=1)
-        self.assertAlmostEqual(calls[1], 1.0, places=1)
+        self.assertAlmostEqual(calls[0], 1.0, places=2)
+        self.assertAlmostEqual(calls[1], 2.0, places=2)
 
     @patch("kb_shared.get_llm_config", side_effect=_mock_get_llm_config)
     @patch("kb_shared.time.sleep")
@@ -286,14 +315,133 @@ class TestRetryBehavior(unittest.TestCase):
         self.assertIn("attempt", error_msg)
         self.assertIn("Connection refused", error_msg)
 
+    @patch("kb_shared.random.uniform", return_value=0.0)
+    @patch("kb_shared.get_llm_config", side_effect=_mock_get_llm_config)
+    @patch("kb_shared.time.sleep")
+    @patch("kb_shared.requests.post")
+    @patch.dict(os.environ, {"LLM_MAX_RETRIES": "1"})
+    def test_429_uses_longer_backoff_than_network_errors(
+        self, mock_post, mock_sleep, mock_config, mock_uniform
+    ):
+        """429 uses base=5s; network errors use base=1s."""
+        from kb_shared import post_llm_json
+
+        # 429 case
+        http_429 = requests_lib.exceptions.HTTPError("429")
+        resp_429 = _make_mock_response(429, raise_for_status=http_429)
+        resp_429.headers = {}  # no Retry-After
+        http_429.response = resp_429
+        mock_post.return_value = resp_429
+
+        with self.assertRaises(requests_lib.exceptions.HTTPError):
+            post_llm_json("/chat/completions", {"model": "test", "messages": []})
+
+        # 1 retry → 1 backoff sleep at attempt=0 with base=5: 5*2^0=5
+        sleeps_429 = [c[0][0] for c in mock_sleep.call_args_list]
+        self.assertEqual(len(sleeps_429), 1)
+        self.assertAlmostEqual(sleeps_429[0], 5.0, places=2)
+
+    @patch("kb_shared.get_llm_config", side_effect=_mock_get_llm_config)
+    @patch("kb_shared.time.sleep")
+    @patch("kb_shared.requests.post")
+    @patch.dict(os.environ, {"LLM_MAX_RETRIES": "1"})
+    def test_429_honors_retry_after_header(self, mock_post, mock_sleep, mock_config):
+        """When the server sends Retry-After, use that exact value (capped at 60s)."""
+        from kb_shared import post_llm_json
+
+        http_429 = requests_lib.exceptions.HTTPError("429 Too Many Requests")
+        resp = _make_mock_response(429, raise_for_status=http_429)
+        resp.headers = {"Retry-After": "7"}
+        http_429.response = resp
+        mock_post.return_value = resp
+
+        with self.assertRaises(requests_lib.exceptions.HTTPError):
+            post_llm_json("/chat/completions", {"model": "test", "messages": []})
+
+        sleeps = [c[0][0] for c in mock_sleep.call_args_list]
+        self.assertEqual(len(sleeps), 1)
+        self.assertAlmostEqual(sleeps[0], 7.0, places=2)
+
+    @patch("kb_shared.get_llm_config", side_effect=_mock_get_llm_config)
+    @patch("kb_shared.time.sleep")
+    @patch("kb_shared.requests.post")
+    @patch.dict(os.environ, {"LLM_MAX_RETRIES": "1"})
+    def test_429_caps_retry_after_at_60_seconds(self, mock_post, mock_sleep, mock_config):
+        """A pathologically large Retry-After value is capped at 60s."""
+        from kb_shared import post_llm_json
+
+        http_429 = requests_lib.exceptions.HTTPError("429")
+        resp = _make_mock_response(429, raise_for_status=http_429)
+        resp.headers = {"Retry-After": "9999"}
+        http_429.response = resp
+        mock_post.return_value = resp
+
+        with self.assertRaises(requests_lib.exceptions.HTTPError):
+            post_llm_json("/chat/completions", {"model": "test", "messages": []})
+
+        sleeps = [c[0][0] for c in mock_sleep.call_args_list]
+        self.assertEqual(len(sleeps), 1)
+        self.assertAlmostEqual(sleeps[0], 60.0, places=2)
+
+
+# ===========================================================================
+# Inter-Call Rate Limiter Tests
+# ===========================================================================
+
+
+class TestMinIntervalRateLimiter(unittest.TestCase):
+    """Test that LLM_MIN_INTERVAL_SECONDS spaces calls apart."""
+
+    def setUp(self):
+        import kb_shared
+        kb_shared._last_llm_call_ts = 0.0
+
+    @patch("kb_shared.get_llm_config", side_effect=_mock_get_llm_config)
+    @patch("kb_shared.time.sleep")
+    @patch("kb_shared.requests.post")
+    @patch.dict(os.environ, {"LLM_MIN_INTERVAL_SECONDS": "0.4"}, clear=False)
+    def test_second_call_waits_for_min_interval(self, mock_post, mock_sleep, mock_config):
+        from kb_shared import post_llm_json
+
+        mock_post.return_value = _make_mock_response(200, {"ok": True})
+
+        post_llm_json("/chat/completions", {"model": "test", "messages": []})
+        post_llm_json("/chat/completions", {"model": "test", "messages": []})
+
+        # First call: _last_llm_call_ts is 0 so wait <= 0, no sleep.
+        # Second call: ~0s elapsed, so wait ≈ 0.4s, one sleep call.
+        sleeps = [c[0][0] for c in mock_sleep.call_args_list]
+        self.assertEqual(len(sleeps), 1)
+        self.assertGreater(sleeps[0], 0.3)
+        self.assertLessEqual(sleeps[0], 0.4)
+
+    @patch("kb_shared.get_llm_config", side_effect=_mock_get_llm_config)
+    @patch("kb_shared.time.sleep")
+    @patch("kb_shared.requests.post")
+    @patch.dict(os.environ, {"LLM_MIN_INTERVAL_SECONDS": "0"}, clear=False)
+    def test_zero_interval_disables_rate_limiter(self, mock_post, mock_sleep, mock_config):
+        from kb_shared import post_llm_json
+
+        mock_post.return_value = _make_mock_response(200, {"ok": True})
+
+        post_llm_json("/chat/completions", {"model": "test", "messages": []})
+        post_llm_json("/chat/completions", {"model": "test", "messages": []})
+
+        mock_sleep.assert_not_called()
+
 
 # ===========================================================================
 # Malformed API Response Tests
 # ===========================================================================
 
 
+@patch.dict(os.environ, {"LLM_MIN_INTERVAL_SECONDS": "0"}, clear=False)
 class TestMalformedResponses(unittest.TestCase):
     """Test handling of unexpected API response formats."""
+
+    def setUp(self):
+        import kb_shared
+        kb_shared._last_llm_call_ts = 0.0
 
     @patch("kb_shared.get_llm_config", side_effect=_mock_get_llm_config)
     @patch("kb_shared.requests.post")
@@ -360,8 +508,13 @@ class TestMalformedResponses(unittest.TestCase):
 # ===========================================================================
 
 
+@patch.dict(os.environ, {"LLM_MIN_INTERVAL_SECONDS": "0"}, clear=False)
 class TestConfigurationRobustness(unittest.TestCase):
     """Test get_llm_config and related config functions under edge conditions."""
+
+    def setUp(self):
+        import kb_shared
+        kb_shared._last_llm_call_ts = 0.0
 
     @patch.dict(
         os.environ,
