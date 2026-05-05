@@ -71,13 +71,6 @@ class TestAgentRouting(RobustTestBase):
         content = (article_dir / "article.md").read_text(encoding="utf-8")
         self.assertIn("status: high_value", content)
 
-    def test_route_sync_articles(self):
-        result, fake = self._run_agent_with_fake_llm(
-            "sync_articles", {},
-            "Sync the articles",
-        )
-        self.assertTrue(len(fake.calls_made) >= 1)
-
     @patch("kb_shared.embed_text")
     @patch("kb_shared.get_llm_config", return_value=("fake-key", "https://fake.url/v4", "glm-4.7"))
     def test_route_embed_knowledge(self, mock_config, mock_embed):
@@ -120,7 +113,7 @@ class TestAgentRouting(RobustTestBase):
 class TestMultiTurnRouting(RobustTestBase):
     """Verify multi-step tool chains work correctly."""
 
-    def test_review_then_set_status_then_sync(self):
+    def test_review_then_set_status(self):
         from langgraph.prebuilt import create_react_agent
         from agent.tools import ALL_TOOLS
         from agent.prompts import SYSTEM_PROMPT
@@ -136,9 +129,8 @@ class TestMultiTurnRouting(RobustTestBase):
                     "article_paths": [str(article_dir)],
                     "status": "reviewed",
                 }),
-                ("sync_articles", {}),
             ],
-            final_response="All done. Articles reviewed, status updated, and synced.",
+            final_response="All done. Articles reviewed and status updated.",
         )
 
         agent = create_react_agent(
@@ -148,17 +140,15 @@ class TestMultiTurnRouting(RobustTestBase):
         )
 
         result = agent.invoke({
-            "messages": [{"role": "user", "content": "Review articles, set to reviewed, then sync"}]
+            "messages": [{"role": "user", "content": "Review articles, then set to reviewed"}]
         })
 
-        # All 3 tools should have been called (3 tool calls + 1 final response = 4 LLM calls)
-        self.assertEqual(len(fake_llm.calls_made), 4)
+        # 2 tool calls + 1 final response = 3 LLM calls
+        self.assertEqual(len(fake_llm.calls_made), 3)
 
-        # Article should have been moved to reviewed/
-        self.assertTrue(
-            (self.tmp_root / "articles" / "reviewed" / "multi_turn_article").exists()
-        )
-        self.assertFalse(article_dir.exists())
+        # Article stays under raw/; status is now reviewed in frontmatter
+        self.assertTrue(article_dir.exists())
+        self.assertIn("status: reviewed", (article_dir / "article.md").read_text(encoding="utf-8"))
 
 
 if __name__ == "__main__":

@@ -50,7 +50,6 @@ class TestAgentGraph(unittest.TestCase):
             "list_articles",
             "review_articles",
             "set_article_status",
-            "sync_articles",
             "embed_knowledge",
             "query_knowledge_base",
             "compile_wiki",

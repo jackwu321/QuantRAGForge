@@ -17,6 +17,13 @@ from wiki_state import (
     is_source_changed, update_source_entry, update_concept_entry,
 )
 
+DEFAULT_SCHEMA_FILES = (
+    "wiki-structure.md",
+    "concept-schema.md",
+    "source-schema.md",
+    "operations.md",
+)
+
 
 def _atomic_write(path: Path, content: str) -> None:
     path.parent.mkdir(parents=True, exist_ok=True)
@@ -82,6 +89,8 @@ class CompileReport:
     concepts_assigned: int = 0
     concepts_recompiled: int = 0
     concepts_proposed: int = 0
+    assign_failed: int = 0
+    recompile_failed: int = 0
     skipped: int = 0
     errors: list[str] = field(default_factory=list)
     lint_summary: str = ""
@@ -93,21 +102,39 @@ class CompileReport:
             f"{self.concepts_proposed} proposed",
             f"{self.skipped} skipped",
         ]
+        if self.assign_failed or self.recompile_failed:
+            parts.append(f"{self.assign_failed} assignment failed, {self.recompile_failed} recompile failed")
         if self.errors:
             parts.append(f"{len(self.errors)} errors")
         return ", ".join(parts)
 
 
 def _list_articles(kb_root: Path, source_dirs: tuple[str, ...]) -> list[Path]:
-    out: list[Path] = []
-    for sd in source_dirs:
-        d = kb_root / "articles" / sd
-        if not d.exists():
+    """All article dirs under kb_root/raw/. `source_dirs` retained for API
+    compatibility but ignored — frontmatter `status` is the source of truth and
+    every article lives flat under `raw/`.
+    """
+    raw_dir = kb_root / "raw"
+    if not raw_dir.exists():
+        return []
+    return [
+        d for d in sorted(raw_dir.iterdir())
+        if d.is_dir() and (d / "article.md").exists()
+    ]
+
+
+def load_schema_context(schema_dir: Path) -> str:
+    """Return compact LLM-readable wiki organization rules."""
+    chunks: list[str] = []
+    for name in DEFAULT_SCHEMA_FILES:
+        path = schema_dir / name
+        if not path.exists():
             continue
-        for article_dir in sorted(d.iterdir()):
-            if article_dir.is_dir() and (article_dir / "article.md").exists():
-                out.append(article_dir)
-    return out
+        try:
+            chunks.append(f"## {name}\n{path.read_text(encoding='utf-8').strip()}")
+        except OSError:
+            continue
+    return "\n\n".join(chunks)
 
 
 def _build_index_text(wiki_dir: Path) -> str:
@@ -170,11 +197,22 @@ def _create_proposed_concept(
     _save_concept(wiki_dir, concept)
 
 
+def _vprint(verbose: bool, message: str) -> None:
+    if verbose:
+        print(message, flush=True)
+
+
+def _source_sort_key(path_str: str, affected_paths: set[str]) -> tuple[int, str]:
+    return (0 if path_str in affected_paths else 1, path_str)
+
+
 def compile_wiki(
     kb_root: Path = ROOT,
     mode: str = "incremental",
     dry_run: bool = False,
     source_dirs: tuple[str, ...] = DEFAULT_SOURCE_DIRS,
+    max_sources_per_concept: int = 8,
+    verbose: bool = False,
 ) -> CompileReport:
     """Compile or update the wiki from articles in {reviewed, high-value}/.
 
@@ -185,8 +223,10 @@ def compile_wiki(
         raise ValueError(f"invalid mode: {mode!r}")
 
     wiki_dir = kb_root / "wiki"
+    schema_dir = kb_root / "schema"
     state_path = wiki_dir / "state.json"
     bootstrap_wiki(wiki_dir)
+    schema_text = load_schema_context(schema_dir)
 
     if mode == "rebuild":
         cdir = wiki_dir / "concepts"
@@ -211,9 +251,10 @@ def compile_wiki(
     affected_concept_slugs: set[str] = set()
     article_to_concepts: dict[Path, list[str]] = {}
 
-    for article_dir in articles:
+    for article_index, article_dir in enumerate(articles, start=1):
         article_md = article_dir / "article.md"
         existing_summary = wiki_dir / "sources" / f"{article_dir.name}.md"
+        _vprint(verbose, f"assign [{article_index}/{len(articles)}] {article_dir.name}")
 
         # Content-hash idempotency. Skip if we have a prior entry with matching
         # hash AND a source summary on disk. Orphans (feeds=[]) also count as
@@ -239,8 +280,14 @@ def compile_wiki(
             report.errors.append(f"{article_dir}: read failed — {exc}")
             continue
 
-        assignment = assign_concepts(article_frontmatter=fm, index_text=index_text)
+        assign_kwargs = {"article_frontmatter": fm, "index_text": index_text}
+        if schema_text:
+            assign_kwargs["schema_text"] = schema_text
+        assignment = assign_concepts(**assign_kwargs)
         report.concepts_assigned += 1
+        if assignment.error:
+            report.assign_failed += 1
+            report.errors.append(f"{article_dir}: assign_concepts failed — {assignment.error}")
 
         for p in assignment.proposed_new_concepts:
             if not dry_run:
@@ -252,15 +299,25 @@ def compile_wiki(
         ]
         if not dry_run:
             write_source_summary(article_dir, wiki_dir, feeds_concepts=feeds, today=today)
-            update_source_entry(state, article_md, feeds_concepts=feeds, last_seen=today)
+            if not assignment.error:
+                update_source_entry(state, article_md, feeds_concepts=feeds, last_seen=today)
+                save_wiki_state(state, state_path)
         report.sources_written += 1
 
-        for slug in assignment.existing_concepts:
-            affected_concept_slugs.add(slug)
-        article_to_concepts[article_dir] = feeds
+        if not assignment.error:
+            for slug in assignment.existing_concepts:
+                affected_concept_slugs.add(slug)
+            article_to_concepts[article_dir] = feeds
+        else:
+            article_to_concepts[article_dir] = []
+
+    if not dry_run:
+        save_wiki_state(state, state_path)
 
     # Recompile each affected concept
-    for slug in sorted(affected_concept_slugs):
+    sorted_slugs = sorted(affected_concept_slugs)
+    for concept_index, slug in enumerate(sorted_slugs, start=1):
+        _vprint(verbose, f"recompile [{concept_index}/{len(sorted_slugs)}] {slug}")
         concept = _load_concept(wiki_dir, slug)
         if concept is None:
             continue
@@ -271,9 +328,13 @@ def compile_wiki(
         for ad in sources_for_concept:
             existing_paths.add(str(ad / "article.md"))
         all_paths = sorted(existing_paths)
+        affected_paths = {str(ad / "article.md") for ad in sources_for_concept}
+        prompt_paths = sorted(all_paths, key=lambda p: _source_sort_key(p, affected_paths))
+        if max_sources_per_concept > 0:
+            prompt_paths = prompt_paths[:max_sources_per_concept]
 
         source_dicts = []
-        for path_str in all_paths:
+        for path_str in prompt_paths:
             ap = Path(path_str)
             if not ap.exists():
                 continue
@@ -284,11 +345,18 @@ def compile_wiki(
             except Exception:
                 continue
 
-        result = recompile_concept(
-            concept_slug=slug,
-            concept_title=concept.title,
-            source_articles=source_dicts,
-        )
+        recompile_kwargs = {
+            "concept_slug": slug,
+            "concept_title": concept.title,
+            "source_articles": source_dicts,
+        }
+        if schema_text:
+            recompile_kwargs["schema_text"] = schema_text
+        result = recompile_concept(**recompile_kwargs)
+        if result.error:
+            report.recompile_failed += 1
+            report.errors.append(f"{slug}: recompile_concept failed — {result.error}")
+            continue
         report.concepts_recompiled += 1
 
         new_concept = ConceptArticle(
@@ -314,6 +382,7 @@ def compile_wiki(
         if not dry_run:
             _save_concept(wiki_dir, new_concept)
             update_concept_entry(state, new_concept)
+            save_wiki_state(state, state_path)
 
     if not dry_run:
         # Update state for proposed concepts so they have entries with their (low) confidence.

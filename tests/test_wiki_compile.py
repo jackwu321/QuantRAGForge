@@ -7,7 +7,7 @@ import wiki_compile
 
 class SourceSummaryGenerationTests(unittest.TestCase):
     def _make_article(self, root: Path, dir_name: str, frontmatter: dict, body: str = "") -> Path:
-        article_dir = root / "articles" / "reviewed" / dir_name
+        article_dir = root / "raw" / dir_name
         article_dir.mkdir(parents=True, exist_ok=True)
         fm_lines = ["---"]
         for k, v in frontmatter.items():
@@ -116,7 +116,7 @@ class CompileOrchestratorTests(unittest.TestCase):
     def _setup_corpus(self, root: Path) -> None:
         from wiki_seed import bootstrap_wiki
         bootstrap_wiki(root / "wiki")
-        article_dir = root / "articles" / "reviewed" / "2026-03-22_test_article"
+        article_dir = root / "raw" / "2026-03-22_test_article"
         article_dir.mkdir(parents=True, exist_ok=True)
         (article_dir / "article.md").write_text(
             "---\n"
@@ -161,7 +161,7 @@ class CompileOrchestratorTests(unittest.TestCase):
             self.assertTrue(summary_path.exists())
             momentum_path = root / "wiki" / "concepts" / "momentum-strategies.md"
             text = momentum_path.read_text(encoding="utf-8")
-            self.assertIn("articles/reviewed/2026-03-22_test_article/article.md", text)
+            self.assertIn("raw/2026-03-22_test_article/article.md", text)
 
     def test_incremental_idempotent_skips_unchanged(self) -> None:
         from unittest.mock import patch
@@ -221,7 +221,7 @@ class CompileOrchestratorTests(unittest.TestCase):
                 base = ma.call_count + mr.call_count
 
                 # Modify the article — content hash changes
-                article_md = root / "articles" / "reviewed" / "2026-03-22_test_article" / "article.md"
+                article_md = root / "raw" / "2026-03-22_test_article" / "article.md"
                 article_md.write_text(
                     article_md.read_text(encoding="utf-8") + "\nNew paragraph.\n",
                     encoding="utf-8",
@@ -249,7 +249,7 @@ class CompileOrchestratorTests(unittest.TestCase):
             self.assertTrue(state_path.exists())
             state = wiki_state.load_wiki_state(state_path)
             self.assertIn("momentum-strategies", state.concepts)
-            article_md = str(root / "articles" / "reviewed" / "2026-03-22_test_article" / "article.md")
+            article_md = str(root / "raw" / "2026-03-22_test_article" / "article.md")
             self.assertIn(article_md, state.sources)
             self.assertEqual(
                 state.sources[article_md].feeds_concepts,

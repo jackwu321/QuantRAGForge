@@ -214,14 +214,28 @@ def parse_frontmatter(markdown: str) -> tuple[dict[str, Any], str]:
 
 
 def discover_article_dirs(kb_root: Path, source_dirs: list[str]) -> list[tuple[str, Path]]:
+    """Discover article directories under `kb_root/raw/`, optionally filtered by status.
+
+    All articles live flat under `raw/`. The frontmatter `status` field is the source of
+    truth for the article's stage. The returned label is the article's effective status
+    (e.g., "reviewed", "high_value", "raw"), not a directory bucket. `source_dirs` filters:
+    only articles whose effective status (with `_`/`-` normalized) appears in the list are
+    returned. An empty list returns all articles.
+    """
     discovered: list[tuple[str, Path]] = []
-    for source_dir in source_dirs:
-        directory = kb_root / "articles" / source_dir
-        if not directory.exists():
+    raw_dir = kb_root / "raw"
+    if not raw_dir.exists():
+        return discovered
+    wanted = {sd.replace("-", "_") for sd in source_dirs} if source_dirs else None
+    for article_dir in sorted([p for p in raw_dir.iterdir() if p.is_dir()], key=lambda p: p.name):
+        article_md = article_dir / "article.md"
+        if not article_md.exists():
             continue
-        for article_dir in sorted([p for p in directory.iterdir() if p.is_dir()], key=lambda p: p.name):
-            if (article_dir / "article.md").exists():
-                discovered.append((source_dir, article_dir))
+        fm, _ = parse_frontmatter(article_md.read_text(encoding="utf-8"))
+        status = str(fm.get("status", "")).strip().replace("-", "_") or "raw"
+        if wanted is not None and status not in wanted:
+            continue
+        discovered.append((status, article_dir))
     return discovered
 
 

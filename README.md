@@ -37,76 +37,75 @@
 
 ## Architecture
 
-### Pipeline Flow
+QuantRAGForge follows Andrej Karpathy's [LLM-built knowledge base method](https://karpathy.bearblog.dev/) prescription with three durable layers and three operational verbs. Vector RAG is preserved as supporting substrate, not the primary retrieval path.
+
+### Layout
 
 ```
-WeChat URL / Web URL / PDF / HTML
-        |
-        v
-  [1. Ingest] ──> articles/raw/{dir}/article.md + source.json
-        |         (auto-detects source type; warns on previously rejected URLs)
-        v
-  [2. Enrich] ──> LLM fills idea_blocks, transfer_targets, failure_modes, etc.
-        |         (concurrent processing, configurable via LLM_CONCURRENCY)
-        v
-  [3. Review] ──> Human reviews raw materials only; agent maintains the wiki
-        |
-        v                              ┌──> rejected ──> recorded + deleted
-  [4. Status] ──> reviewed / high_value / rejected
-        |                              └──> reviewed or high_value
-        v
-  [5. Sync]   ──> Move to articles/reviewed/ or articles/high-value/
-        |
-        v
-  [6. Compile Wiki] ──> wiki/concepts/<concept>.md, wiki/sources/<src>.md
-        |              + wiki/state.json (hashes, scores, freshness)
-        |              + wiki/lint_report.json (auto-run audit)
-        v
-  [7. Embed]  ──> ChromaDB index over articles + wiki entries
-        |         (kb_layer + status + confidence/importance/freshness in metadata)
-        v
-  [8. Query]  ──> Brainstorm: Chroma-filtered concept retrieval first
-        |         (where kb_layer=wiki_concept AND status=stable),
-        |         reranked by state.json memory score,
-        |         then complementary article chunks (excluding cited sources)
-        v
-  [9. Rethink] ──> Novelty check + Quality scoring + Rethink Report
+raw/      — incoming source articles (one dir per article: article.md + source.json + images/)
+wiki/     — LLM-built Markdown memory (the primary query surface)
+            ├── INDEX.md          — auto-maintained table of contents
+            ├── state.json        — content hashes, concept scores, retrieval hints
+            ├── lint_report.json  — last health audit
+            ├── concepts/<slug>.md
+            ├── sources/<basename>.md
+            ├── queries/<date>_<slug>_<mode>.md   — query → wiki feedback log
+            └── maintenance_report.md             — last `kb lint --maintain` output
+schema/   — rules the LLM and tools follow:
+            concept-schema.md, source-schema.md, wiki-structure.md, operations.md
+vector_store/  — ChromaDB substrate, used as fallback only
 ```
 
-### Product stance: agent-first wiki
+Articles live **flat** under `raw/`. The frontmatter `status` field (`raw`, `reviewed`, `high_value`, `rejected`) is the source of truth — there is no directory-as-status convention.
 
-The wiki layer is operational memory for the agent, not a notebook the human edits. The human role is:
+### Three operations
 
-1. Provide high-quality raw materials (URLs, PDFs, HTML).
-2. Review brainstorm/research outputs.
+```
+                                              ┌──> wiki/concepts/<slug>.md
+                                              ├──> wiki/sources/<basename>.md
+WeChat URL / Web URL / PDF / HTML             ├──> wiki/INDEX.md
+        |                                     ├──> wiki/state.json
+        v                                     │    (hashes, scores, freshness, retrieval hints)
+  [kb ingest] ──> raw/<dir>/article.md + source.json
+        |                                     ▲
+        v                                     │
+  [kb compile]  ── schema/-injected LLM ──────┘
+  (auto after ingest)
+        |
+        v
+  [kb embed]  ── ChromaDB substrate over raw/ + wiki/
+  (auto after compile)
+        |
+        v
+  [kb query]  ── wiki-first retrieval (INDEX → matched concepts → source summaries)
+        |        RAG runs ONLY when wiki has no relevant concept or audit reports degradation
+        |        (mode: ask | brainstorm; brainstorm runs Rethink Layer post-generation)
+        |
+        v
+  ┌─ outputs/brainstorms/<date>_<slug>_<mode>.md
+  └─ wiki/queries/<date>_<slug>_<mode>.md  ── append_query_log:
+                                              cited concepts get importance bump
+                                              + retrieval_hints append in state.json
 
-The agent autonomously:
-- compiles concept articles and source summaries (`compile_wiki`)
-- maintains structured scoring metadata (`wiki/state.json`: confidence, importance, freshness, conflicts, retrieval hints)
-- runs health audits (`audit_wiki` / auto-run after compile) and falls back to article-only retrieval when the wiki is unhealthy
-- only surfaces *exceptions* to the human (proposed concepts, ambiguous merges, conflicts) — not routine concept approvals
+  [kb lint]              ── schema-compliance audit (frontmatter, sections, source anchors)
+  [kb lint --fix]        ── LLM auto-repair of schema-noncompliant concepts
+  [kb lint --maintain]   ── gap analysis: unmapped source clusters, under-supported concepts,
+                            stale concepts → suggested ingestion queries / new brainstorm prompts
+                            (writes wiki/maintenance_report.md)
+  [kb lint --maintain --apply]  ── apply query-derived state updates idempotently
+```
 
-Markdown remains the inspectable interface; `wiki/state.json` and ChromaDB metadata are the operational substrate.
+### Wiki-first retrieval (load-bearing invariant)
 
-### Agent Layer
+`brainstorm_from_kb.retrieve_blocks` gates on `_should_use_wiki_memory(notes) and _wiki_is_healthy_for_query(kb_root)`. There is **no** `command == "brainstorm"` check — both `ask` and `brainstorm` pull `kb_layer=wiki_concept` blocks first (Chroma-filtered → state-score reranked → lexical fallback), then fill remaining slots with complementary article chunks excluding sources already cited by the surfaced concepts. Pure-vector retrieval is the fallback, not the default.
 
-The LangGraph ReAct agent provides 13 tools:
+### Query → wiki feedback
 
-| Tool | Description |
-|------|-------------|
-| `ingest_article` | Ingest from URL (auto: WeChat / web / PDF), batch URLs, HTML file, PDF file, PDF URL |
-| `enrich_articles` | LLM-powered structured enrichment (concurrent, with `limit` support) |
-| `list_articles` | List articles by stage (raw/reviewed/high-value) |
-| `review_articles` | Show enriched articles ready for review |
-| `set_article_status` | Batch update article status (`reviewed`, `high_value`, `rejected`) |
-| `sync_articles` | Move articles based on frontmatter status; delete rejected |
-| `embed_knowledge` | Build/update ChromaDB vector index over articles + wiki |
-| `query_knowledge_base` | RAG Q&A or brainstorm; brainstorm uses wiki concepts first |
-| `compile_wiki` | Compile/update wiki (incremental or rebuild); auto-runs lint |
-| `audit_wiki` | Wiki health report: stale concepts, unsupported claims, duplicates |
-| `list_concepts` | List wiki concepts by status (stable / proposed / deprecated) |
-| `set_concept_status` | Override: approve/deprecate/delete a concept (escape hatch) |
-| `read_wiki` | Read INDEX.md / a concept article / a source summary |
+Every `kb query` (unless `--no-file-back`) files a structured note into `wiki/queries/<date>_<slug>_<mode>.md` and bumps `state.json:concepts.<slug>.importance` + `retrieval_hints` for cited concepts. `kb lint --maintain` later distills these query logs into proposed concept-page improvements. This realizes Karpathy's *"my own explorations and queries always 'add up' in the knowledge base."*
+
+### Schema is enforced, not advisory
+
+`schema/concept-schema.md` and `schema/source-schema.md` define required frontmatter fields, valid enum values, and required section headers. `wiki_lint` checks these on every run (severity: warning), and `kb lint --fix` runs an LLM auto-repair pass via `recompile_concept` for schema-noncompliant concepts. The schema text is also injected into compile-time prompts so the LLM is told the source-anchor invariant.
 
 ### Rethink Layer
 
@@ -117,78 +116,77 @@ A post-generation validation layer that runs automatically in brainstorm mode:
 3. **Quality Scoring** — Traceability (heuristic) + Coherence & Actionability (LLM-as-judge)
 4. **Rethink Report** — Appended to output with per-idea scores and reasoning
 
-### Wiki Layer (agent operational memory)
+### Agent Layer
 
-LLM-written concept articles synthesized from your raw articles, plus structured scoring metadata:
+The LangGraph ReAct agent provides 12 tools:
 
-- `wiki/concepts/<slug>.md` — concept articles (e.g. `momentum-strategies.md`). Each has `## Synthesis`, `## Definition`, and structured sections. **Bullets in structured sections must end with `[<source_basename>]` source anchors** so every claim is traceable.
-- `wiki/sources/<article-id>.md` — short summaries of raw articles (mechanically derived from frontmatter).
-- `wiki/INDEX.md` — auto-maintained TOC.
-- `wiki/state.json` — machine-readable: per-source content hashes (idempotency), per-concept scores (confidence, importance, freshness, conflicts, retrieval hints).
-- `wiki/lint_report.json` — last health audit.
-
-**Lifecycle:**
-- Seeded: 7 starter concepts (factor-models, factor-timing, regime-detection, momentum-strategies, etf-rotation, risk-parity, volatility-targeting).
-- New articles either map to existing concepts (recompiled) or trigger an auto-proposed new concept. High-confidence proposals stabilize automatically; low-confidence/conflicting ones land as `proposed` exceptions.
-- `compile_wiki` is content-hash idempotent: rerunning over unchanged articles produces zero LLM calls.
-- `audit_wiki` blocks brainstorm only when an `error`-severity issue exists (e.g. unsupported claims, malformed concept).
-
-**Brainstorm impact:** queries pull `wiki_concept` blocks from ChromaDB filtered to `status=stable`, reranked by memory score (vector similarity + confidence + importance + freshness − conflicts), then complementary article chunks (excluding sources already cited by the wiki concepts). Falls back to pure-vector retrieval when the wiki is empty/sparse or unhealthy.
+| Tool | Description |
+|------|-------------|
+| `ingest_article` | Ingest from URL (auto: WeChat / web / PDF), batch URLs, HTML file, PDF file, PDF URL |
+| `enrich_articles` | LLM-powered structured enrichment (concurrent, with `limit` support) |
+| `list_articles` | List articles by status (raw / reviewed / high_value); all live flat under `raw/` |
+| `review_articles` | Show enriched articles ready for review |
+| `set_article_status` | Update article status field in frontmatter |
+| `embed_knowledge` | Build/update ChromaDB vector index over `raw/` + `wiki/` |
+| `query_knowledge_base` | Wiki-first Q&A or brainstorm; both modes pull stable wiki concepts before vectors |
+| `compile_wiki` | Compile/update wiki (incremental or rebuild); auto-runs lint |
+| `audit_wiki` | Wiki health report: schema violations, stale concepts, unsupported claims, duplicates |
+| `list_concepts` | List wiki concepts by status (stable / proposed / deprecated) |
+| `set_concept_status` | Override: approve/deprecate/delete a concept (escape hatch) |
+| `read_wiki` | Read INDEX.md / a concept article / a source summary |
 
 ## File Structure
 
 ```
 QuantRAGForge/
-├── agent/                          # LangGraph agent layer
-│   ├── __init__.py
-│   ├── graph.py                    # Agent creation (ReAct pattern)
-│   ├── prompts.py                  # System prompt
-│   └── tools.py                    # 13 agent tools
-├── wiki/                           # LLM-maintained agent memory
+├── kb.py                           # Unified CLI: ingest | query | lint | compile | embed
+├── raw/                            # Incoming source articles, flat (one dir per article)
+├── wiki/                           # LLM-built Markdown memory
 │   ├── INDEX.md                    # auto-maintained TOC
-│   ├── state.json                  # source hashes, concept scores
+│   ├── state.json                  # content hashes, concept scores, retrieval hints
 │   ├── lint_report.json            # last health audit
+│   ├── maintenance_report.md       # last `kb lint --maintain` output
 │   ├── concepts/                   # one .md per concept
-│   └── sources/                    # one .md per raw article (short summary)
+│   ├── sources/                    # one .md per raw article (mechanically derived)
+│   └── queries/                    # one .md per filed `kb query` (Step 7 feedback log)
+├── schema/                         # Rules followed by LLM and tools
+│   ├── concept-schema.md
+│   ├── source-schema.md
+│   ├── wiki-structure.md
+│   └── operations.md
+├── agent/                          # LangGraph agent layer (12 tools)
+│   ├── graph.py
+│   ├── prompts.py
+│   └── tools.py
 ├── _wechat.py                      # WeChat-specific extraction
 ├── _web_extract.py                 # Generic web extraction (trafilatura)
 ├── _pdf_extract.py                 # PDF extraction (pypdf)
 ├── _code_math.py                   # Code/math preservation utilities
 ├── ingest_source.py                # Unified ingest dispatcher
-├── wiki_schemas.py                 # Concept/source schemas; PyYAML frontmatter
+├── ingest_wechat_article.py        # WeChat-specific ingest
+├── enrich_articles_with_llm.py     # LLM enrichment pipeline
+├── kb_shared.py                    # Shared utilities, LLM HTTP client, paths, frontmatter
+├── brainstorm_from_kb.py           # query (ask | brainstorm) — wiki-first retrieval
+├── rethink_layer.py                # Post-generation novelty + quality validation
+├── wiki_schemas.py                 # ConceptArticle / SourceSummary dataclasses
 ├── wiki_seed.py                    # Seed taxonomy + bootstrap
-├── wiki_state.py                   # Machine state manifest + scoring
-├── wiki_compile.py                 # compile_wiki orchestrator
-├── wiki_compile_llm.py             # assign_concepts, recompile_concept
+├── wiki_state.py                   # Machine state manifest + scoring (freshness decay etc.)
+├── wiki_compile.py                 # compile_wiki orchestrator (schema-injected, soft-error)
+├── wiki_compile_llm.py             # assign_concepts + recompile_concept LLM wrappers
 ├── wiki_index.py                   # INDEX.md generator
-├── wiki_lint.py                    # Health checks + audit_wiki backend
-├── templates/                      # Article markdown templates
-│   ├── research-note-template.md
-│   └── strategy-note-template.md
-├── tests/                          # Test suite (unittest)
-│   ├── robustness/                 # Robustness & edge-case tests
-│   │   ├── conftest.py             # Shared fixtures and base classes
-│   │   ├── test_layer1_tool_robustness.py
-│   │   ├── test_layer2_workflow_integration.py
-│   │   ├── test_layer3_agent_routing.py
-│   │   └── test_layer4_llm_api_robustness.py
-│   ├── test_agent_graph.py
-│   ├── test_agent_tools.py
-│   ├── test_brainstorm_from_kb.py
-│   ├── test_build_catalog.py
-│   ├── test_embed_knowledge_base.py
-│   ├── test_enrich_articles_with_llm.py
-│   ├── test_ingest_wechat_article.py
-│   ├── test_rethink_layer.py
-│   └── test_sync_articles_by_status.py
+├── wiki_lint.py                    # Schema enforcement + health checks + auto_fix
+├── wiki_maintain.py                # append_query_log + run_maintenance (Steps 6 + 7)
+├── embed_knowledge_base.py         # ChromaDB substrate over raw/ + wiki/
+├── agent_cli.py                    # Interactive ReAct agent CLI
+├── templates/                      # Article markdown templates (research-note / strategy-note)
+├── tests/                          # unittest suite (262 tests)
+│   ├── robustness/                 # Edge-case tests (Layer 1–4)
+│   ├── test_kb_cli.py              # kb.py CLI dispatch
+│   ├── test_query_wiki_first_ask.py
+│   ├── test_wiki_lint_schema.py    # Schema enforcement + auto_fix
+│   ├── test_wiki_maintain.py       # Query feedback + maintenance
+│   └── test_*.py                   # Per-module coverage
 ├── docs/                           # Design specs and usage guides
-│   ├── brainstorm-cli-usage.md
-│   ├── brainstorm-output-spec.md
-│   ├── embed-knowledge-base-usage.md
-│   ├── ingest-script-usage.md
-│   ├── ingestion-workflow.md
-│   ├── llm-enrichment-usage.md
-│   └── metadata-schema.md
 ├── agent_cli.py                    # Interactive agent CLI
 ├── brainstorm_from_kb.py           # RAG Q&A and brainstorm engine
 ├── embed_knowledge_base.py         # ChromaDB vector indexing
@@ -234,45 +232,63 @@ export LLM_MODEL="glm-4.7"  # or gpt-4, deepseek-chat, etc.
 
 See [llm_config.example.env](llm_config.example.env) for provider-specific examples (DeepSeek, Moonshot, Qwen, OpenAI, Ollama).
 
-### 3. Ingest Your First Article
+### 3. Ingest, Compile, Embed (one command)
 
 ```bash
-# Single URL
-python3 ingest_wechat_article.py --url "https://mp.weixin.qq.com/s/..."
+# Single URL — ingest + auto-compile + auto-embed
+python3 kb.py ingest --url "https://mp.weixin.qq.com/s/..."
 
-# Batch from a file (one URL per line)
-python3 ingest_wechat_article.py --url-list urls.txt
+# Skip the auto compile/embed
+python3 kb.py ingest --url "..." --no-compile
 
-# From a saved HTML file
-python3 ingest_wechat_article.py --html-file saved.html
+# Local PDF
+python3 kb.py ingest --pdf-file paper.pdf
+
+# Saved WeChat HTML
+python3 kb.py ingest --html-file saved.html
+
+# Batch from a list (one URL per line)
+python3 kb.py ingest --url-list urls.txt
 ```
 
-### 4. Enrich with LLM
+`enrich_articles_with_llm.py` remains a separate step (run before `kb compile` if your raw articles need LLM-derived metadata first):
 
 ```bash
 python3 enrich_articles_with_llm.py                    # all raw articles (concurrent)
 python3 enrich_articles_with_llm.py --limit 10         # first 10 only
 python3 enrich_articles_with_llm.py --concurrency 5    # 5 parallel LLM requests
-python3 enrich_articles_with_llm.py --dry-run           # preview only
 ```
 
-### 5. Build Vector Index
+### 4. Query (wiki-first)
 
 ```bash
-python3 embed_knowledge_base.py
-```
+# Factual Q&A — wiki concepts first, RAG fallback only
+python3 kb.py query --mode ask --query "What momentum factors are discussed?"
 
-### 6. Query and Brainstorm
-
-```bash
-# Factual Q&A
-python3 brainstorm_from_kb.py ask --query "What momentum factors are discussed?"
-
-# Brainstorm new ideas (with Rethink Layer)
-python3 brainstorm_from_kb.py brainstorm --query "How to combine momentum and volatility timing for ETF rotation?"
+# Brainstorm new ideas (with Rethink Layer + query-feedback)
+python3 kb.py query --mode brainstorm --query "Combine momentum and volatility timing for ETF rotation"
 
 # Show retrieved context only (dry run)
-python3 brainstorm_from_kb.py brainstorm --query "..." --dry-run
+python3 kb.py query --mode brainstorm --query "..." --dry-run
+
+# Run a debug query without filing it back into wiki/queries/
+python3 kb.py query --mode ask --query "..." --no-file-back
+```
+
+### 5. Lint + Maintain
+
+```bash
+# Schema + health audit
+python3 kb.py lint
+
+# LLM auto-repair of schema-noncompliant concepts
+python3 kb.py lint --fix
+
+# Gap analysis: unmapped sources, under-supported concepts, stale concepts
+python3 kb.py lint --maintain
+
+# Apply query-derived state updates (idempotent)
+python3 kb.py lint --maintain --apply
 ```
 
 ## Agent Usage
@@ -293,7 +309,7 @@ python3 agent_cli.py --query "brainstorm: combine factor timing with risk parity
 
 ```
 You: ingest these articles: url1, url2, url3
-Agent: Ingested 3/3 articles successfully.
+Agent: Ingested 3/3 articles. Auto-compiled wiki and refreshed vector index.
 
 You: enrich the first 3 raw articles
 Agent: [1/3] ok  [2/3] ok  [3/3] ok — Enriched 3/3 articles.
@@ -302,17 +318,16 @@ You: review the new articles
 Agent: [Shows enriched articles with content types and summaries]
 
 You: set articles 1 and 3 as high_value, article 2 as rejected (low research value)
-Agent: Updated 3 articles. Article 2 recorded as rejected.
-
-You: sync and rebuild the index
-Agent: Synced — 2 moved, 1 rejected (deleted). Rebuilt vector index.
+Agent: Updated 3 articles. Article 2 recorded as rejected (URL noted to prevent re-ingest).
 
 You: ingest url2 again
 Agent: WARNING — url2 was previously rejected: "文章标题" (reason: low research value).
        Use force=True to re-ingest.
 
 You: brainstorm: how to combine momentum with volatility timing
-Agent: [Generates ideas + Rethink Report with novelty/quality scores]
+Agent: [Wiki concepts surfaced first; complementary articles fill remaining slots]
+       [LLM generates ideas; Rethink Layer scores novelty + quality]
+       [Query filed back into wiki/queries/; cited concepts gain importance]
 ```
 
 ## Configuration
@@ -348,12 +363,14 @@ Each article is classified with exactly one `content_type`:
 
 ### Article Status Lifecycle
 
-| Status | Directory | Description |
-|--------|-----------|-------------|
-| `raw` | `articles/raw/` | Ingested, pending enrichment and review |
-| `reviewed` | `articles/reviewed/` | Human-reviewed, included in vector index |
-| `high_value` | `articles/high-value/` | High research value, included in vector index |
-| `rejected` | *(deleted)* | Low value — removed from KB, source URL recorded to prevent re-ingestion |
+All articles live flat under `raw/`. The frontmatter `status` field is the source of truth.
+
+| Status | Description |
+|--------|-------------|
+| `raw` | Ingested, pending enrichment and review |
+| `reviewed` | Human-reviewed; included in wiki compilation and vector index |
+| `high_value` | High research value; included in wiki compilation and vector index |
+| `rejected` | Low value — removed from KB, source URL recorded to prevent re-ingestion |
 
 ## Running Tests
 
@@ -380,17 +397,17 @@ python3 -m unittest discover -s tests/robustness -p 'test_*.py' -v
 
 ## Design Principles
 
-- **Inspiration over execution** — The knowledge base serves idea combination, not backtested trading signals
-- **Agent-first wiki** — Routine wiki maintenance is the agent's job, not the human's. The human curates raw materials and reviews brainstorm output
-- **Hybrid memory: Markdown + structured state** — Markdown is the inspectable interface; `wiki/state.json` and ChromaDB metadata are the operational substrate (selective injection, scoring, freshness decay, conflict tracking)
-- **Per-claim provenance** — Every bullet in a concept article ends with `[<source_basename>]`; un-anchored bullets fail lint and lower confidence
-- **Content-hash idempotency** — `compile_wiki` reruns produce zero LLM calls when source hashes are unchanged (no `mtime` or date guessing)
-- **Card + idea blocks** — Full articles preserved, with extracted reusable idea units
-- **Complementary retrieval** — Brainstorm mode prioritizes complementary (not similar) content; wiki concepts surface first, complementary article chunks fill in
-- **Traceable ideas** — Every generated idea must cite which source articles inspired it
-- **Graceful degradation** — Every component handles missing dependencies without crashing; `audit_wiki` errors push brainstorm to article-only fallback
-- **CLI-first ingest** — Web URLs, WeChat URLs, local HTML, local PDFs, and remote PDFs all ingest via the same dispatcher. No Obsidian Web Clipper required
-- **Self-healing vector store** — Automatic SQLite integrity check before each ChromaDB operation; corrupted stores are cleaned up and rebuilt transparently
+- **Wiki-first, RAG-as-substrate** — Both `kb query --mode ask` and `--mode brainstorm` retrieve stable wiki concepts before vectors. ChromaDB runs only as fallback when the wiki is empty/sparse or `audit_wiki` reports degradation.
+- **Three durable verbs** — `kb ingest`, `kb query`, `kb lint` per Karpathy's prescription. `compile` and `embed` are internal operations auto-run by `ingest`.
+- **Schema is enforced** — `schema/concept-schema.md` and `schema/source-schema.md` define required frontmatter fields, valid enums, and required section headers. `wiki_lint` checks these on every run; `kb lint --fix` runs an LLM auto-repair pass.
+- **Inspiration over execution** — The knowledge base serves idea combination, not backtested trading signals.
+- **Hybrid memory: Markdown + structured state** — Markdown is the inspectable interface; `wiki/state.json` and ChromaDB metadata are the operational substrate (scoring, freshness decay, conflict tracking).
+- **Per-claim provenance** — Every bullet in a concept article ends with `[<source_basename>]`; un-anchored bullets fail lint and lower confidence.
+- **Content-hash idempotency** — `kb compile` reruns produce zero LLM calls when source hashes are unchanged (no `mtime`, no date guessing).
+- **Queries compound** — Every `kb query` files into `wiki/queries/` and bumps state.json scoring for cited concepts. `kb lint --maintain` distills the query log into proposed concept-page improvements.
+- **Complementary retrieval** — Wiki concepts surface first, then complementary article chunks fill remaining slots (excluding sources already cited by concepts).
+- **Graceful degradation** — Every component handles missing dependencies without crashing; `audit_wiki` errors push the wiki-first path to article-only fallback.
+- **Self-healing vector store** — Automatic SQLite integrity check before each ChromaDB operation; corrupted stores are cleaned up and rebuilt transparently.
 
 ## Contributing
 

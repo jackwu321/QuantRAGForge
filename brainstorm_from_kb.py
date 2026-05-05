@@ -14,8 +14,6 @@ except ImportError:  # pragma: no cover - runtime dependency
 from kb_shared import (
     ROOT,
     DEFAULT_SOURCE_DIRS,
-    WIKI_DIR,
-    WIKI_STATE_PATH,
     KnowledgeBlock,
     KnowledgeNote,
     build_blocks,
@@ -40,6 +38,9 @@ from wiki_state import (
 
 DEFAULT_OUTPUT_DIR = ROOT / "outputs" / "brainstorms"
 VECTOR_STORE_DIR = ROOT / "vector_store"
+WIKI_DIR = ROOT / "wiki"
+WIKI_STATE_PATH = WIKI_DIR / "state.json"
+SCHEMA_DIR = ROOT / "schema"
 DEFAULT_TOP_K = 8
 DEFAULT_RETRIEVAL_MODE = "hybrid"
 DEFAULT_RETRIEVAL_FETCH_MULTIPLIER = 3
@@ -79,6 +80,9 @@ def parse_args() -> argparse.Namespace:
     common = argparse.ArgumentParser(add_help=False)
     common.add_argument("--query", required=True, help="Question or brainstorm goal.")
     common.add_argument("--kb-root", default=str(ROOT), help="Knowledge base root directory.")
+    common.add_argument("--wiki-dir", help="Wiki directory, default <kb-root>/wiki.")
+    common.add_argument("--schema-dir", help="Schema directory, default <kb-root>/schema.")
+    common.add_argument("--vector-store-dir", help="Vector store directory, default <kb-root>/vector_store.")
     common.add_argument(
         "--source-dir",
         default="reviewed,high-value",
@@ -293,6 +297,7 @@ def _retrieve_concepts_via_chroma(
     query: str,
     top_k: int,
     vector_store_dir: Path,
+    wiki_dir: Path,
 ) -> list[dict] | None:
     """Vector-search Chroma for wiki concepts. Returns None if Chroma unavailable.
 
@@ -336,7 +341,7 @@ def _retrieve_concepts_via_chroma(
     if not metas:
         return None
 
-    state = load_wiki_state(WIKI_STATE_PATH)
+    state = load_wiki_state(wiki_dir / "state.json")
     scored: list[tuple[float, dict, str]] = []
     for text, meta, dist in zip(docs, metas, dists):
         slug = str(meta.get("slug", "")).strip()
@@ -370,7 +375,7 @@ def _retrieve_concepts_via_chroma(
         if slug in seen_slugs:
             continue
         seen_slugs.add(slug)
-        concept_md = WIKI_DIR / "concepts" / f"{slug}.md"
+        concept_md = wiki_dir / "concepts" / f"{slug}.md"
         if not concept_md.exists():
             continue
         try:
@@ -388,13 +393,13 @@ def _retrieve_concepts_via_chroma(
     return out or None
 
 
-def _retrieve_concepts_via_lexical(query: str, top_k: int) -> list[dict]:
+def _retrieve_concepts_via_lexical(query: str, top_k: int, wiki_dir: Path) -> list[dict]:
     """Lexical fallback for concept retrieval. Used when Chroma is unavailable.
 
     Scores concepts by token overlap of query against title + aliases +
     retrieval_hints (from state.json). Plain and deterministic.
     """
-    cdir = WIKI_DIR / "concepts"
+    cdir = wiki_dir / "concepts"
     if not cdir.exists():
         return []
     candidates = []
@@ -409,7 +414,7 @@ def _retrieve_concepts_via_lexical(query: str, top_k: int) -> list[dict]:
     if not candidates:
         return []
 
-    state = load_wiki_state(WIKI_STATE_PATH)
+    state = load_wiki_state(wiki_dir / "state.json")
     q_tokens = tokenize(query)
     scored = []
     for c in candidates:
@@ -448,6 +453,7 @@ def _retrieve_concept_articles(
     query: str,
     top_k: int = DEFAULT_CONCEPT_TOP_K,
     vector_store_dir: Path | None = None,
+    wiki_dir: Path | None = None,
 ) -> list[dict]:
     """Retrieve top-K stable wiki concepts.
 
@@ -457,27 +463,35 @@ def _retrieve_concept_articles(
     Fallback: lexical token overlap on title/aliases/retrieval_hints when
     Chroma is unavailable, the index is empty, or the query has no hits.
     """
-    if not (WIKI_DIR / "concepts").exists():
+    resolved_wiki_dir = wiki_dir or WIKI_DIR
+    if not (resolved_wiki_dir / "concepts").exists():
         return []
     store = vector_store_dir or VECTOR_STORE_DIR
-    via_chroma = _retrieve_concepts_via_chroma(query, top_k, store)
+    via_chroma = _retrieve_concepts_via_chroma(query, top_k, store, resolved_wiki_dir)
     if via_chroma:
         return via_chroma
-    return _retrieve_concepts_via_lexical(query, top_k)
+    return _retrieve_concepts_via_lexical(query, top_k, resolved_wiki_dir)
 
 
 def _concepts_to_blocks(
     query: str,
     top_k: int = DEFAULT_CONCEPT_TOP_K,
     vector_store_dir: Path | None = None,
+    wiki_dir: Path | None = None,
 ) -> list[KnowledgeBlock]:
-    concepts = _retrieve_concept_articles(query, top_k=top_k, vector_store_dir=vector_store_dir)
+    resolved_wiki_dir = wiki_dir or WIKI_DIR
+    concepts = _retrieve_concept_articles(
+        query,
+        top_k=top_k,
+        vector_store_dir=vector_store_dir,
+        wiki_dir=resolved_wiki_dir,
+    )
     if not concepts:
         return []
     blocks: list[KnowledgeBlock] = []
     for c in concepts:
         note = KnowledgeNote(
-            article_dir=WIKI_DIR / "concepts" / f"{c['slug']}.md",
+            article_dir=resolved_wiki_dir / "concepts" / f"{c['slug']}.md",
             source_dir="wiki_concepts",
             frontmatter={"title": c["title"], "content_type": ""},
             body="",
@@ -491,13 +505,18 @@ def _concepts_to_blocks(
     return blocks
 
 
-def _wiki_is_healthy_for_brainstorm() -> bool:
+def _wiki_is_healthy_for_query(kb_root: Path) -> bool:
     """Audit the wiki — return True if brainstorm should use compiled memory."""
     try:
         from wiki_lint import lint_wiki
-        return lint_wiki(ROOT).ok_for_brainstorm()
+        return lint_wiki(kb_root).ok_for_brainstorm()
     except Exception:
         return True  # absence of lint is not a blocker; the lint itself is best-effort
+
+
+def _should_use_wiki_memory(notes: list[KnowledgeNote]) -> bool:
+    """Use wiki memory only for notes loaded from a concrete KB root."""
+    return any(note.article_dir.is_absolute() for note in notes)
 
 
 def retrieve_blocks(
@@ -507,20 +526,39 @@ def retrieve_blocks(
     command: str,
     retrieval_mode: str,
     vector_store_dir: Path | None = None,
+    kb_root: Path | None = None,
+    wiki_dir: Path | None = None,
+    schema_dir: Path | None = None,
 ) -> tuple[list[KnowledgeBlock], str, str | None]:
     candidate_k = max(top_k * 2, top_k)
     keyword_blocks = _keyword_candidates(notes, query, candidate_k, command)
-    store_dir = vector_store_dir or VECTOR_STORE_DIR
+    resolved_kb_root = kb_root or ROOT
+    resolved_wiki_dir = wiki_dir or (resolved_kb_root / "wiki")
+    _resolved_schema_dir = schema_dir or (resolved_kb_root / "schema")
+    store_dir = vector_store_dir or (resolved_kb_root / "vector_store")
 
-    # Brainstorm: prepend wiki concept memory, exclude their already-cited sources
+    # Wiki-first: compiled concepts are the primary memory; articles/vectors only supplement them.
     wiki_blocks: list[KnowledgeBlock] = []
     excluded_articles: set[str] = set()
-    if command == "brainstorm" and _wiki_is_healthy_for_brainstorm():
-        wiki_blocks = _concepts_to_blocks(query, top_k=DEFAULT_CONCEPT_TOP_K, vector_store_dir=store_dir)
+    if _should_use_wiki_memory(notes) and _wiki_is_healthy_for_query(resolved_kb_root):
+        wiki_blocks = _concepts_to_blocks(
+            query,
+            top_k=DEFAULT_CONCEPT_TOP_K,
+            vector_store_dir=store_dir,
+            wiki_dir=resolved_wiki_dir,
+        )
         if wiki_blocks:
-            for c in _retrieve_concept_articles(query, top_k=DEFAULT_CONCEPT_TOP_K, vector_store_dir=store_dir):
+            for c in _retrieve_concept_articles(
+                query,
+                top_k=DEFAULT_CONCEPT_TOP_K,
+                vector_store_dir=store_dir,
+                wiki_dir=resolved_wiki_dir,
+            ):
                 for src_path in c["sources"]:
-                    excluded_articles.add(str(Path(src_path).parent))
+                    src = Path(src_path)
+                    if not src.is_absolute():
+                        src = resolved_kb_root / src
+                    excluded_articles.add(str(src.parent))
 
     remaining_k = max(0, top_k - len(wiki_blocks))
 
@@ -605,10 +643,11 @@ def slugify(value: str) -> str:
     return value[:80] or "result"
 
 
-def default_output_path(command: str, query: str) -> Path:
+def default_output_path(command: str, query: str, output_dir: Path | None = None) -> Path:
     date_part = datetime.now().strftime("%Y-%m-%d")
     suffix = "ask" if command == "ask" else "brainstorm"
-    return DEFAULT_OUTPUT_DIR / f"{date_part}_{slugify(query)}_{suffix}.md"
+    base_dir = output_dir or DEFAULT_OUTPUT_DIR
+    return base_dir / f"{date_part}_{slugify(query)}_{suffix}.md"
 
 
 def write_output(path: Path, query: str, command: str, blocks: list[KnowledgeBlock], result: str) -> Path:
@@ -641,6 +680,9 @@ def write_output(path: Path, query: str, command: str, blocks: list[KnowledgeBlo
 def main() -> int:
     args = parse_args()
     kb_root = Path(args.kb_root).expanduser().resolve()
+    wiki_dir = Path(args.wiki_dir).expanduser().resolve() if args.wiki_dir else kb_root / "wiki"
+    schema_dir = Path(args.schema_dir).expanduser().resolve() if args.schema_dir else kb_root / "schema"
+    vector_store_dir = Path(args.vector_store_dir).expanduser().resolve() if args.vector_store_dir else kb_root / "vector_store"
     source_dirs = parse_csv_arg(args.source_dir) or list(DEFAULT_SOURCE_DIRS)
     notes = load_notes(kb_root, source_dirs)
     filtered_notes = apply_filters(notes, args)
@@ -654,7 +696,10 @@ def main() -> int:
         args.top_k,
         args.command,
         args.retrieval,
-        VECTOR_STORE_DIR,
+        vector_store_dir,
+        kb_root=kb_root,
+        wiki_dir=wiki_dir,
+        schema_dir=schema_dir,
     )
     if warning:
         print(f"warning: {warning}")
@@ -670,8 +715,12 @@ def main() -> int:
 
     result = call_zhipu_chat(build_messages(args.command, args.query, context))
     if args.command == "brainstorm":
-        result = rethink(result, retrieved, args.query, VECTOR_STORE_DIR)
-    output_path = Path(args.output_file).expanduser().resolve() if args.output_file else default_output_path(args.command, args.query)
+        result = rethink(result, retrieved, args.query, vector_store_dir)
+    output_path = (
+        Path(args.output_file).expanduser().resolve()
+        if args.output_file
+        else default_output_path(args.command, args.query, kb_root / "outputs" / "brainstorms")
+    )
     saved = write_output(output_path, args.query, args.command, retrieved, result)
     print(result)
     print(f"\nsaved: {saved}")

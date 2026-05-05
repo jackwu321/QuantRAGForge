@@ -31,7 +31,8 @@ rejected_sources.json
 .obsidian/
 
 # Data directories (user-generated, not tracked)
-articles/
+raw/
+wiki/
 vector_store/
 sources/processed/
 outputs/

@@ -9,31 +9,31 @@ import kb_shared
 class EmbedKnowledgeBaseTests(unittest.TestCase):
     def test_make_block_id_includes_source_path_uniqueness(self) -> None:
         note_a = kb_shared.KnowledgeNote(
-            article_dir=Path("articles/reviewed/same"),
+            article_dir=Path("raw/same_a"),
             source_dir="reviewed",
             frontmatter={"title": "A"},
             body="",
         )
         note_b = kb_shared.KnowledgeNote(
-            article_dir=Path("articles/high-value/same"),
+            article_dir=Path("raw/same_b"),
             source_dir="high-value",
             frontmatter={"title": "B"},
             body="",
         )
         block_a = kb_shared.KnowledgeBlock(note=note_a, block_type="summary", text="x", score=0.0)
         block_b = kb_shared.KnowledgeBlock(note=note_b, block_type="summary", text="x", score=0.0)
-        kb_root = Path("articles").parent
+        kb_root = Path(".")
         self.assertNotEqual(mod.make_block_id(kb_root, block_a, 0), mod.make_block_id(kb_root, block_b, 0))
 
     def test_manifest_key_uses_relative_path(self) -> None:
         kb_root = Path("D:/kb")
         note = kb_shared.KnowledgeNote(
-            article_dir=kb_root / "articles" / "reviewed" / "note_a",
+            article_dir=kb_root / "raw" / "note_a",
             source_dir="reviewed",
             frontmatter={"title": "A"},
             body="",
         )
-        self.assertEqual(mod.manifest_key(kb_root, note), "articles/reviewed/note_a")
+        self.assertEqual(mod.manifest_key(kb_root, note), "raw/note_a")
 
     def test_block_metadata_is_minimal_and_stable(self) -> None:
         note = kb_shared.KnowledgeNote(

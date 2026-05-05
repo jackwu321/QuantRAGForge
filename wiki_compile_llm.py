@@ -20,6 +20,7 @@ class ProposedConcept:
 class ConceptAssignment:
     existing_concepts: list[str]
     proposed_new_concepts: list[ProposedConcept]
+    error: str = ""
 
 
 _ASSIGN_SYSTEM = """你是知识库概念分类助手。
@@ -27,7 +28,7 @@ _ASSIGN_SYSTEM = """你是知识库概念分类助手。
 输出严格 JSON，不要使用 markdown 代码块包装。"""
 
 
-def _build_assign_prompt(article_fm: dict, index_text: str) -> str:
+def _build_assign_prompt(article_fm: dict, index_text: str, schema_text: str = "") -> str:
     title = article_fm.get("title", "")
     ct = article_fm.get("content_type", "")
     summary = article_fm.get("summary", "") or article_fm.get("core_hypothesis", "")
@@ -36,7 +37,12 @@ def _build_assign_prompt(article_fm: dict, index_text: str) -> str:
         ideas = [str(ideas)]
     idea_text = "\n".join(f"- {i}" for i in ideas[:5])
 
-    return f"""现有概念清单:
+    schema_section = f"""KB schema / organization rules:
+{schema_text}
+
+""" if schema_text.strip() else ""
+
+    return f"""{schema_section}现有概念清单:
 {index_text or '(空)'}
 
 待分类文章:
@@ -74,21 +80,29 @@ def _strip_json_fences(text: str) -> str:
     return text.strip()
 
 
-def assign_concepts(article_frontmatter: dict, index_text: str) -> ConceptAssignment:
-    prompt = _build_assign_prompt(article_frontmatter, index_text)
+def assign_concepts(article_frontmatter: dict, index_text: str, schema_text: str = "") -> ConceptAssignment:
+    prompt = _build_assign_prompt(article_frontmatter, index_text, schema_text=schema_text)
     messages = [
         {"role": "system", "content": _ASSIGN_SYSTEM},
         {"role": "user", "content": prompt},
     ]
     try:
         raw = call_llm_chat(messages, temperature=0.1)
-    except Exception:
-        return ConceptAssignment(existing_concepts=[], proposed_new_concepts=[])
+    except Exception as exc:
+        return ConceptAssignment(
+            existing_concepts=[],
+            proposed_new_concepts=[],
+            error=f"{type(exc).__name__}: {exc}",
+        )
 
     try:
         data = json.loads(_strip_json_fences(raw))
-    except json.JSONDecodeError:
-        return ConceptAssignment(existing_concepts=[], proposed_new_concepts=[])
+    except json.JSONDecodeError as exc:
+        return ConceptAssignment(
+            existing_concepts=[],
+            proposed_new_concepts=[],
+            error=f"JSONDecodeError: {exc}",
+        )
 
     existing = [str(s) for s in data.get("existing_concepts", []) if s]
     proposed = []
@@ -119,6 +133,7 @@ class RecompileResult:
     failure_modes: list[str]
     open_questions: list[str]
     related_concepts: list[str]
+    error: str = ""
 
 
 _RECOMPILE_SYSTEM = """你是量化投研知识库的概念合成助手。
@@ -153,8 +168,14 @@ def recompile_concept(
     concept_slug: str,
     concept_title: str,
     source_articles: list[dict],
+    schema_text: str = "",
 ) -> RecompileResult:
-    user_prompt = f"""概念 slug: {concept_slug}
+    schema_section = f"""KB schema / organization rules:
+{schema_text}
+
+""" if schema_text.strip() else ""
+
+    user_prompt = f"""{schema_section}概念 slug: {concept_slug}
 概念 title: {concept_title}
 
 来源文章列表:
@@ -178,13 +199,13 @@ def recompile_concept(
     ]
     try:
         raw = call_llm_chat(messages, temperature=0.2)
-    except Exception:
-        return RecompileResult("", "", [], [], [], [], [], [], [])
+    except Exception as exc:
+        return RecompileResult("", "", [], [], [], [], [], [], [], error=f"{type(exc).__name__}: {exc}")
 
     try:
         data = json.loads(_strip_json_fences(raw))
-    except json.JSONDecodeError:
-        return RecompileResult("", "", [], [], [], [], [], [], [])
+    except json.JSONDecodeError as exc:
+        return RecompileResult("", "", [], [], [], [], [], [], [], error=f"JSONDecodeError: {exc}")
 
     def _list(key: str) -> list[str]:
         v = data.get(key, [])

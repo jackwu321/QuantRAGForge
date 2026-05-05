@@ -301,8 +301,8 @@ def review_articles(source_dir: str = "raw", enriched_only: bool = True) -> str:
 def set_article_status(article_paths: list[str], status: str, reason: str = "") -> str:
     """Batch-update the status field in article frontmatter. Accepts a list
     of article directory paths and a target status (reviewed, high_value, or rejected).
-    This modifies the status: line in each article.md's YAML frontmatter,
-    preparing them for sync_articles to move to the correct directory.
+    This modifies the status: line in each article.md's YAML frontmatter.
+    Articles live flat under raw/; the status field is the source of truth.
     When status is 'rejected', the article's source URL and title are recorded
     so that future re-ingestion of the same source will trigger a warning.
     Use 'reason' to note why articles are rejected (e.g. 'low research value')."""
@@ -363,32 +363,7 @@ def set_article_status(article_paths: list[str], status: str, reason: str = "") 
 
 
 # ---------------------------------------------------------------------------
-# Tool 6: sync_articles
-# ---------------------------------------------------------------------------
-
-
-@tool
-def sync_articles(source_dir: Optional[str] = None) -> str:
-    """Move articles from raw/ to reviewed/ or high-value/ based on their
-    frontmatter status field. Run this after set_article_status."""
-    from sync_articles_by_status import sync_by_status, ARTICLES_DIR, DEFAULT_SOURCE_DIR
-
-    src = Path(source_dir).expanduser().resolve() if source_dir else DEFAULT_SOURCE_DIR
-    try:
-        results = sync_by_status(src, dry_run=False)
-    except Exception as exc:
-        return f"Error during sync: {exc}"
-
-    moved = [r for r in results if r.moved]
-    skipped = [r for r in results if not r.moved]
-    lines = [f"Sync complete: {len(moved)} moved, {len(skipped)} skipped."]
-    for r in moved:
-        lines.append(f"  {Path(r.article_dir).name} → {r.target_dir} (status={r.status})")
-    return "\n".join(lines)
-
-
-# ---------------------------------------------------------------------------
-# Tool 7: embed_knowledge
+# Tool 6: embed_knowledge
 # ---------------------------------------------------------------------------
 
 
@@ -729,7 +704,6 @@ ALL_TOOLS = [
     list_articles,
     review_articles,
     set_article_status,
-    sync_articles,
     embed_knowledge,
     query_knowledge_base,
     compile_wiki,

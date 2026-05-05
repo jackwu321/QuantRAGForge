@@ -99,7 +99,7 @@ class TestListArticles(unittest.TestCase):
         from agent.tools import list_articles
 
         tmp = Path("/tmp/test_kb")
-        article_dir = tmp / "articles" / "raw" / "test_article"
+        article_dir = tmp / "raw" / "test_article"
         mock_discover.return_value = [("raw", article_dir)]
 
         mock_fm.return_value = (

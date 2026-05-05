@@ -19,7 +19,8 @@ from tests.robustness.conftest import (
 
 
 class TestFullPipelineReviewToQuery(RobustTestBase):
-    """End-to-end: create raw article → review → set status → sync → embed → query."""
+    """End-to-end: create raw article → review → set status → embed → query.
+    Articles stay in raw/; the frontmatter status field decides their stage."""
 
     @patch("kb_shared.embed_text")
     @patch("kb_shared.post_llm_json")
@@ -28,7 +29,6 @@ class TestFullPipelineReviewToQuery(RobustTestBase):
         from agent.tools import (
             review_articles,
             set_article_status,
-            sync_articles,
             embed_knowledge,
             query_knowledge_base,
         )
@@ -52,20 +52,14 @@ class TestFullPipelineReviewToQuery(RobustTestBase):
         self.assertIn("Momentum Strategy Research", review_result)
         self.assertIn("strategy", review_result)
 
-        # 3. Set status to reviewed
+        # 3. Set status to reviewed (frontmatter only; article stays in raw/)
         status_result = set_article_status.invoke(
             {"article_paths": [str(article_dir)], "status": "reviewed"}
         )
         self.assertIn("reviewed", status_result)
+        self.assertTrue(article_dir.exists(), "Article stays in raw/ after status change")
 
-        # 4. Sync — article moves from raw/ to reviewed/
-        sync_result = sync_articles.invoke({})
-        self.assertIn("1 moved", sync_result)
-        self.assertFalse(article_dir.exists(), "Original raw dir should be gone")
-        reviewed_dir = self.tmp_root / "articles" / "reviewed" / "momentum_strategy"
-        self.assertTrue(reviewed_dir.exists(), "Should exist in reviewed/")
-
-        # 5. Embed
+        # 4. Embed
         embed_result = embed_knowledge.invoke({"force": True})
         self.assertIn("1 indexed", embed_result)
 
@@ -85,7 +79,7 @@ class TestPipelineMultipleArticles(RobustTestBase):
     @patch("kb_shared.embed_text")
     @patch("kb_shared.get_llm_config", return_value=("fake-key", "https://fake.url/v4", "glm-4.7"))
     def test_multiple_articles_different_statuses(self, mock_config, mock_embed):
-        from agent.tools import set_article_status, sync_articles, embed_knowledge
+        from agent.tools import set_article_status, embed_knowledge
 
         mock_embed.side_effect = lambda text, model=None: MockLLMFactory.make_embed_text_mock()(text, model)
 
@@ -100,7 +94,7 @@ class TestPipelineMultipleArticles(RobustTestBase):
             self.tmp_root, "article_3", title="Article Three", content_type="allocation"
         )
 
-        # Set statuses
+        # Set statuses — articles all stay flat in raw/, status lives in frontmatter
         set_article_status.invoke(
             {"article_paths": [str(a1), str(a2)], "status": "high_value"}
         )
@@ -108,20 +102,10 @@ class TestPipelineMultipleArticles(RobustTestBase):
             {"article_paths": [str(a3)], "status": "reviewed"}
         )
 
-        # Sync
-        sync_result = sync_articles.invoke({})
-        self.assertIn("3 moved", sync_result)
-
-        # Verify locations
-        self.assertTrue(
-            (self.tmp_root / "articles" / "high-value" / "article_1").exists()
-        )
-        self.assertTrue(
-            (self.tmp_root / "articles" / "high-value" / "article_2").exists()
-        )
-        self.assertTrue(
-            (self.tmp_root / "articles" / "reviewed" / "article_3").exists()
-        )
+        # All three still under raw/
+        self.assertTrue((self.tmp_root / "raw" / "article_1").exists())
+        self.assertTrue((self.tmp_root / "raw" / "article_2").exists())
+        self.assertTrue((self.tmp_root / "raw" / "article_3").exists())
 
         # Embed all
         embed_result = embed_knowledge.invoke({"force": True})

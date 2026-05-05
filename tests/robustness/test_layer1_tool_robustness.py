@@ -40,7 +40,7 @@ class TestSetArticleStatusRobust(RobustTestBase):
         """Frontmatter exists but has no status: field — tests insert branch."""
         from agent.tools import set_article_status
 
-        article_dir = self.tmp_root / "articles" / "raw" / "no_status"
+        article_dir = self.tmp_root / "raw" / "no_status"
         article_dir.mkdir(parents=True)
         (article_dir / "article.md").write_text(
             "---\ntitle: No Status Article\ncontent_type: methodology\n---\n\nBody\n",
@@ -57,7 +57,7 @@ class TestSetArticleStatusRobust(RobustTestBase):
         """File has no --- delimiters at all."""
         from agent.tools import set_article_status
 
-        article_dir = self.tmp_root / "articles" / "raw" / "no_fm"
+        article_dir = self.tmp_root / "raw" / "no_fm"
         article_dir.mkdir(parents=True)
         (article_dir / "article.md").write_text("Just plain text, no frontmatter.\n")
         result = set_article_status.invoke(
@@ -130,7 +130,7 @@ class TestListArticlesRobust(RobustTestBase):
         """Directory exists but article.md is absent."""
         from agent.tools import list_articles
 
-        (self.tmp_root / "articles" / "raw" / "empty_dir").mkdir(parents=True)
+        (self.tmp_root / "raw" / "empty_dir").mkdir(parents=True)
         result = list_articles.invoke({"source_dir": "raw"})
         # Should not crash; directory without article.md is skipped
         self.assertIn("0 articles", result)
@@ -144,7 +144,7 @@ class TestListArticlesRobust(RobustTestBase):
         from agent.tools import list_articles
 
         ArticleFixtureFactory.create_raw_article(self.tmp_root, "real_article", title="Real Article")
-        (self.tmp_root / "articles" / "raw" / "empty_dir").mkdir()
+        (self.tmp_root / "raw" / "empty_dir").mkdir()
         result = list_articles.invoke({"source_dir": "raw"})
         self.assertIn("Real Article", result)
         self.assertIn("1 articles", result)
@@ -171,7 +171,7 @@ class TestReviewArticlesRobust(RobustTestBase):
     def test_missing_frontmatter_fields(self):
         from agent.tools import review_articles
 
-        article_dir = self.tmp_root / "articles" / "raw" / "minimal"
+        article_dir = self.tmp_root / "raw" / "minimal"
         article_dir.mkdir(parents=True)
         (article_dir / "article.md").write_text(
             "---\ntitle: Minimal\n---\n\nBody\n", encoding="utf-8"
@@ -180,42 +180,6 @@ class TestReviewArticlesRobust(RobustTestBase):
         result = review_articles.invoke({"source_dir": "raw"})
         self.assertIn("Minimal", result)
         self.assertIsInstance(result, str)
-
-
-# ===========================================================================
-# sync_articles
-# ===========================================================================
-
-
-class TestSyncArticlesRobust(RobustTestBase):
-
-    def test_no_syncable_articles(self):
-        """All articles have status=raw, nothing to sync."""
-        from agent.tools import sync_articles
-
-        ArticleFixtureFactory.create_raw_article(self.tmp_root, "stay_raw")
-        result = sync_articles.invoke({})
-        self.assertIn("0 moved", result)
-
-    def test_target_directory_collision(self):
-        """Target reviewed/ dir already has a directory with same name."""
-        from agent.tools import sync_articles
-
-        ArticleFixtureFactory.create_raw_article(
-            self.tmp_root, "collide", status="reviewed"
-        )
-        # Pre-create collision target
-        (self.tmp_root / "articles" / "reviewed" / "collide").mkdir(parents=True)
-        result = sync_articles.invoke({})
-        # Should handle collision (timestamped suffix or skip)
-        self.assertIsInstance(result, str)
-
-    def test_directory_without_article_md(self):
-        from agent.tools import sync_articles
-
-        (self.tmp_root / "articles" / "raw" / "no_md").mkdir(parents=True)
-        result = sync_articles.invoke({})
-        self.assertIn("0 moved", result)
 
 
 # ===========================================================================
@@ -253,7 +217,7 @@ class TestIngestArticleRobust(RobustTestBase):
         import ingest_wechat_article as ingest_mod
 
         original_raw_dir = ingest_mod.ARTICLES_RAW_DIR
-        ingest_mod.ARTICLES_RAW_DIR = self.tmp_root / "articles" / "raw"
+        ingest_mod.ARTICLES_RAW_DIR = self.tmp_root / "raw"
         try:
             # First ingest
             result1 = ingest_article.invoke({"url": "https://mp.weixin.qq.com/s/article1"})
@@ -274,7 +238,7 @@ class TestIngestArticleRobust(RobustTestBase):
         import ingest_wechat_article as ingest_mod
 
         original_raw_dir = ingest_mod.ARTICLES_RAW_DIR
-        ingest_mod.ARTICLES_RAW_DIR = self.tmp_root / "articles" / "raw"
+        ingest_mod.ARTICLES_RAW_DIR = self.tmp_root / "raw"
         try:
             # First ingest
             result1 = ingest_article.invoke({"url": "https://mp.weixin.qq.com/s/article1"})
@@ -289,26 +253,19 @@ class TestIngestArticleRobust(RobustTestBase):
 
     @patch("ingest_wechat_article.fetch_html", return_value="<html><body><h1>Test</h1><p>Content here for testing purposes.</p></body></html>")
     @patch("ingest_wechat_article.download_binary", return_value=(b"", "image/png"))
-    def test_duplicate_detected_across_stages(self, mock_download, mock_fetch):
-        """Article already in reviewed/ should be detected as duplicate from raw/ ingest."""
+    def test_duplicate_detected_in_raw(self, mock_download, mock_fetch):
+        """Article already in raw/ should be detected as duplicate on re-ingest."""
         from agent.tools import ingest_article
         import ingest_wechat_article as ingest_mod
 
         original_raw_dir = ingest_mod.ARTICLES_RAW_DIR
-        ingest_mod.ARTICLES_RAW_DIR = self.tmp_root / "articles" / "raw"
+        ingest_mod.ARTICLES_RAW_DIR = self.tmp_root / "raw"
         try:
-            # First ingest to raw/
+            # First ingest writes to raw/
             result1 = ingest_article.invoke({"url": "https://mp.weixin.qq.com/s/article2"})
             self.assertIn("1 ingested", result1)
 
-            # Move to reviewed/ (simulating the pipeline)
-            raw_dirs = list((self.tmp_root / "articles" / "raw").iterdir())
-            for d in raw_dirs:
-                if d.is_dir():
-                    import shutil
-                    shutil.move(str(d), str(self.tmp_root / "articles" / "reviewed" / d.name))
-
-            # Try to ingest again — should detect in reviewed/
+            # Second ingest of the same URL should detect the existing article in raw/
             result2 = ingest_article.invoke({"url": "https://mp.weixin.qq.com/s/article2"})
             self.assertIn("skipped", result2.lower())
         finally:

@@ -40,9 +40,8 @@ class RobustTestBase(unittest.TestCase):
 
         # Create full directory structure
         for d in (
-            "articles/raw",
-            "articles/reviewed",
-            "articles/high-value",
+            "raw",
+            "schema",
             "vector_store",
             "sources/processed",
             "outputs/brainstorms",
@@ -52,7 +51,6 @@ class RobustTestBase(unittest.TestCase):
         # Import modules whose constants need patching
         import kb_shared
         import agent.tools as tools_mod
-        import sync_articles_by_status as sync_mod
         import embed_knowledge_base as embed_mod
         import brainstorm_from_kb as brainstorm_mod
 
@@ -62,8 +60,6 @@ class RobustTestBase(unittest.TestCase):
             "kb_shared.WIKI_DIR": kb_shared.WIKI_DIR,
             "kb_shared.WIKI_STATE_PATH": kb_shared.WIKI_STATE_PATH,
             "tools.KB_ROOT": tools_mod.KB_ROOT,
-            "sync.ARTICLES_DIR": sync_mod.ARTICLES_DIR,
-            "sync.DEFAULT_SOURCE_DIR": sync_mod.DEFAULT_SOURCE_DIR,
             "embed.VECTOR_STORE_DIR": embed_mod.VECTOR_STORE_DIR,
             "embed.FAILURE_LIST_PATH": embed_mod.FAILURE_LIST_PATH,
             "brainstorm.VECTOR_STORE_DIR": brainstorm_mod.VECTOR_STORE_DIR,
@@ -75,8 +71,6 @@ class RobustTestBase(unittest.TestCase):
         kb_shared.WIKI_DIR = self.tmp_root / "wiki"
         kb_shared.WIKI_STATE_PATH = self.tmp_root / "wiki" / "state.json"
         tools_mod.KB_ROOT = self.tmp_root
-        sync_mod.ARTICLES_DIR = self.tmp_root / "articles"
-        sync_mod.DEFAULT_SOURCE_DIR = self.tmp_root / "articles" / "raw"
         embed_mod.VECTOR_STORE_DIR = self.tmp_root / "vector_store"
         embed_mod.FAILURE_LIST_PATH = (
             self.tmp_root / "sources" / "processed" / "embed_failures.txt"
@@ -87,7 +81,6 @@ class RobustTestBase(unittest.TestCase):
     def tearDown(self):
         import kb_shared
         import agent.tools as tools_mod
-        import sync_articles_by_status as sync_mod
         import embed_knowledge_base as embed_mod
         import brainstorm_from_kb as brainstorm_mod
 
@@ -95,8 +88,6 @@ class RobustTestBase(unittest.TestCase):
         kb_shared.WIKI_DIR = self._originals["kb_shared.WIKI_DIR"]
         kb_shared.WIKI_STATE_PATH = self._originals["kb_shared.WIKI_STATE_PATH"]
         tools_mod.KB_ROOT = self._originals["tools.KB_ROOT"]
-        sync_mod.ARTICLES_DIR = self._originals["sync.ARTICLES_DIR"]
-        sync_mod.DEFAULT_SOURCE_DIR = self._originals["sync.DEFAULT_SOURCE_DIR"]
         embed_mod.VECTOR_STORE_DIR = self._originals["embed.VECTOR_STORE_DIR"]
         embed_mod.FAILURE_LIST_PATH = self._originals["embed.FAILURE_LIST_PATH"]
         brainstorm_mod.VECTOR_STORE_DIR = self._originals["brainstorm.VECTOR_STORE_DIR"]
@@ -160,19 +151,19 @@ class ArticleFixtureFactory:
 
     @classmethod
     def create_raw_article(cls, tmp_root: Path, article_id: str, **kwargs) -> Path:
-        base = tmp_root / "articles" / "raw"
+        base = tmp_root / "raw"
         kwargs.setdefault("status", "raw")
         return cls.create_article(base, article_id, **kwargs)
 
     @classmethod
     def create_reviewed_article(cls, tmp_root: Path, article_id: str, **kwargs) -> Path:
-        base = tmp_root / "articles" / "reviewed"
+        base = tmp_root / "raw"
         kwargs.setdefault("status", "reviewed")
         return cls.create_article(base, article_id, **kwargs)
 
     @classmethod
     def create_high_value_article(cls, tmp_root: Path, article_id: str, **kwargs) -> Path:
-        base = tmp_root / "articles" / "high-value"
+        base = tmp_root / "raw"
         kwargs.setdefault("status", "high_value")
         return cls.create_article(base, article_id, **kwargs)
 

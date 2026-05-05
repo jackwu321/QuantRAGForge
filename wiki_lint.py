@@ -40,6 +40,26 @@ from wiki_state import load_wiki_state, source_content_hash
 SEVERITY = Literal["info", "warning", "error"]
 DEFAULT_OVERSIZED_BYTES = 8192  # ≈ 1500-2000 tokens; conservative budget
 
+VALID_BRAINSTORM_VALUE = {"low", "medium", "high", ""}
+VALID_CONCEPT_STATUS = {"stable", "proposed", "deprecated"}
+REQUIRED_CONCEPT_SECTIONS = (
+    "Synthesis",
+    "Definition",
+    "Key Idea Blocks",
+    "Variants & Implementations",
+    "Common Combinations",
+    "Transfer Targets",
+    "Failure Modes",
+    "Open Questions",
+    "Sources",
+)
+REQUIRED_SOURCE_SECTIONS = (
+    "One-line takeaway",
+    "Idea Blocks",
+    "Why it's in the KB",
+    "Feeds concepts",
+)
+
 
 @dataclass
 class WikiLintIssue:
@@ -220,6 +240,73 @@ def _check_duplicate_aliases(concepts: list[ConceptArticle]) -> list[WikiLintIss
     return issues
 
 
+def _check_concept_sections(c: ConceptArticle, raw_text: str, path: Path) -> list[WikiLintIssue]:
+    """Schema-compliance: every concept page must contain the required section headers.
+
+    Seed stubs (compile_version=0) are exempt from "empty synthesis/definition" checks —
+    they're awaiting ingest. The existing seed_stub info-issue covers that case.
+    """
+    if c.status == "deprecated":
+        return []
+    issues: list[WikiLintIssue] = []
+    for section in REQUIRED_CONCEPT_SECTIONS:
+        # Anchored: a real section header begins a line and is followed by newline.
+        marker = f"\n## {section}\n"
+        if marker not in raw_text and not raw_text.startswith(f"## {section}\n"):
+            issues.append(WikiLintIssue(
+                severity="warning",
+                kind="schema_missing_section",
+                path=str(path),
+                message=f"Required concept section '{section}' is missing.",
+                suggested_action="Recompile the concept (kb compile or kb lint --fix).",
+            ))
+    if c.status == "stable" and c.compile_version > 0:
+        if not c.synthesis.strip() or c.synthesis.strip().startswith("_pending"):
+            issues.append(WikiLintIssue(
+                severity="warning",
+                kind="schema_empty_synthesis",
+                path=str(path),
+                message="Stable concept has empty Synthesis section.",
+                suggested_action="Recompile the concept; synthesis is the load-bearing wiki-first answer.",
+            ))
+        if not c.definition.strip() or c.definition.strip().startswith("_pending"):
+            issues.append(WikiLintIssue(
+                severity="warning",
+                kind="schema_empty_definition",
+                path=str(path),
+                message="Stable concept has empty Definition section.",
+                suggested_action="Recompile the concept.",
+            ))
+    return issues
+
+
+def _check_source_summary_schema(summary, raw_text: str, path: Path) -> list[WikiLintIssue]:
+    """Schema-compliance: source summaries must have valid enums and the required sections."""
+    issues: list[WikiLintIssue] = []
+    if summary.brainstorm_value and summary.brainstorm_value not in VALID_BRAINSTORM_VALUE:
+        issues.append(WikiLintIssue(
+            severity="warning",
+            kind="schema_invalid_enum",
+            path=str(path),
+            message=(
+                f"brainstorm_value={summary.brainstorm_value!r} is not in "
+                f"{sorted(v for v in VALID_BRAINSTORM_VALUE if v)}."
+            ),
+            suggested_action="Re-enrich the source article or correct the field manually.",
+        ))
+    for section in REQUIRED_SOURCE_SECTIONS:
+        # Source summaries use bold-prefix markers, not ## headers.
+        if f"**{section}" not in raw_text:
+            issues.append(WikiLintIssue(
+                severity="info",
+                kind="schema_missing_section",
+                path=str(path),
+                message=f"Source summary section '{section}' marker is missing.",
+                suggested_action="Re-run compile_wiki to regenerate the summary.",
+            ))
+    return issues
+
+
 def _check_orphan_sources(wiki_dir: Path, concepts: list[ConceptArticle]) -> list[WikiLintIssue]:
     sources_dir = wiki_dir / "sources"
     if not sources_dir.exists():
@@ -269,8 +356,9 @@ def lint_wiki(
     cdir = wiki_dir / "concepts"
     if cdir.exists():
         for md in sorted(cdir.glob("*.md")):
+            raw_text = md.read_text(encoding="utf-8")
             try:
-                concept = parse_concept(md.read_text(encoding="utf-8"))
+                concept = parse_concept(raw_text)
             except Exception as exc:
                 report.issues.append(WikiLintIssue(
                     severity="error",
@@ -285,6 +373,24 @@ def lint_wiki(
             report.issues.extend(_check_unsupported_claims(concept, md))
             report.issues.extend(_check_orphan_concept(concept, md))
             report.issues.extend(_check_oversized(concept, md, oversized_byte_limit))
+            report.issues.extend(_check_concept_sections(concept, raw_text, md))
+
+    sources_dir = wiki_dir / "sources"
+    if sources_dir.exists():
+        for md in sorted(sources_dir.glob("*.md")):
+            raw_text = md.read_text(encoding="utf-8")
+            try:
+                summary = parse_source_summary(raw_text)
+            except Exception as exc:
+                report.issues.append(WikiLintIssue(
+                    severity="warning",
+                    kind="malformed_source_summary",
+                    path=str(md),
+                    message=f"Failed to parse: {exc}",
+                    suggested_action="Re-run compile_wiki to regenerate.",
+                ))
+                continue
+            report.issues.extend(_check_source_summary_schema(summary, raw_text, md))
 
     state = load_wiki_state(state_path)
     report.issues.extend(_check_stale_sources(state, kb_root))
@@ -299,3 +405,107 @@ def lint_wiki(
         pass
 
     return report
+
+
+# ---------------------------------------------------------------------------
+# Auto-fix — LLM-driven repair pass for schema-noncompliant concepts
+# ---------------------------------------------------------------------------
+
+
+_FIXABLE_KINDS = {
+    "unsupported_bullets",
+    "unsupported_claims",
+    "schema_missing_section",
+    "schema_empty_synthesis",
+    "schema_empty_definition",
+}
+
+
+def auto_fix(kb_root: Path, report: WikiLintReport) -> int:
+    """Attempt to auto-repair schema-noncompliant concepts by recompiling them.
+
+    Recompile uses schema/-injected prompts (see wiki_compile_llm), so the LLM
+    is told the required sections and source-anchor invariant. Returns the
+    number of concept slugs the fix pass attempted to repair.
+    """
+    offenders: dict[str, Path] = {}
+    for issue in report.issues:
+        if issue.kind not in _FIXABLE_KINDS:
+            continue
+        path = Path(issue.path)
+        if path.suffix != ".md" or path.parent.name != "concepts":
+            continue
+        offenders[path.stem] = path
+    if not offenders:
+        return 0
+
+    from wiki_compile import load_schema_context, _save_concept
+    from wiki_compile_llm import recompile_concept
+    from wiki_state import load_wiki_state, save_wiki_state, update_concept_entry
+    from wiki_schemas import ConceptArticle, parse_concept
+    from kb_shared import parse_frontmatter
+
+    schema_text = load_schema_context(kb_root / "schema")
+    state = load_wiki_state(kb_root / "wiki" / "state.json")
+    raw_dir = kb_root / "raw"
+
+    fixed = 0
+    for slug, concept_path in offenders.items():
+        try:
+            concept = parse_concept(concept_path.read_text(encoding="utf-8"))
+        except Exception:
+            continue
+
+        # Gather source articles whose recorded feeds_concepts include this slug.
+        source_dicts: list[dict] = []
+        for path_str, entry in state.sources.items():
+            if slug not in entry.feeds_concepts:
+                continue
+            article_md = Path(path_str)
+            if not article_md.exists():
+                continue
+            fm, _ = parse_frontmatter(article_md.read_text(encoding="utf-8"))
+            source_dicts.append({**fm, "_basename": article_md.parent.name})
+        if not source_dicts:
+            continue
+
+        kwargs = {
+            "concept_slug": slug,
+            "concept_title": concept.title,
+            "source_articles": source_dicts,
+        }
+        if schema_text:
+            kwargs["schema_text"] = schema_text
+        try:
+            result = recompile_concept(**kwargs)
+        except Exception:
+            continue
+        if result.error:
+            continue
+
+        new_concept = ConceptArticle(
+            title=concept.title,
+            slug=concept.slug,
+            aliases=concept.aliases,
+            status=concept.status,
+            related_concepts=result.related_concepts or concept.related_concepts,
+            sources=concept.sources,
+            content_types=concept.content_types,
+            last_compiled=concept.last_compiled,
+            compile_version=concept.compile_version + 1,
+            synthesis=result.synthesis,
+            definition=result.definition,
+            key_idea_blocks=result.key_idea_blocks,
+            variants=result.variants,
+            common_combinations=result.common_combinations,
+            transfer_targets=result.transfer_targets,
+            failure_modes=result.failure_modes,
+            open_questions=result.open_questions,
+            source_basenames=concept.source_basenames,
+        )
+        _save_concept(kb_root / "wiki", new_concept)
+        update_concept_entry(state, new_concept)
+        fixed += 1
+
+    save_wiki_state(state, kb_root / "wiki" / "state.json")
+    return fixed

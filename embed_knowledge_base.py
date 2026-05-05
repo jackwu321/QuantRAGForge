@@ -38,7 +38,7 @@ def parse_args() -> argparse.Namespace:
     parser.add_argument(
         "--source-dir",
         default="reviewed,high-value",
-        help="Comma-separated article source dirs under articles/.",
+        help="Comma-separated status filters; articles live flat under raw/.",
     )
     parser.add_argument("--force", action="store_true", help="Re-index all articles even if already indexed.")
     parser.add_argument("--dry-run", action="store_true", help="Show what would be indexed without writing.")
@@ -228,8 +228,7 @@ def main() -> int:
             failures.append({"article_dir": str(note.article_dir), "error": str(exc)})
 
     # Index wiki/ entries (best-effort; missing wiki dir is fine)
-    from kb_shared import WIKI_DIR
-    wiki_dir = WIKI_DIR
+    wiki_dir = kb_root / "wiki"
     if wiki_dir.exists() and not args.dry_run and collection is not None:
         for block in iter_wiki_blocks(wiki_dir):
             try:

@@ -120,8 +120,8 @@ class BrainstormFromKbTests(unittest.TestCase):
     def test_load_notes_from_reviewed_and_high_value(self) -> None:
         with tempfile.TemporaryDirectory() as tmpdir:
             root = Path(tmpdir)
-            reviewed_dir = root / "articles" / "reviewed" / "note_a"
-            high_value_dir = root / "articles" / "high-value" / "note_b"
+            reviewed_dir = root / "raw" / "note_a"
+            high_value_dir = root / "raw" / "note_b"
             reviewed_dir.mkdir(parents=True)
             high_value_dir.mkdir(parents=True)
             reviewed_dir.joinpath("article.md").write_text(
