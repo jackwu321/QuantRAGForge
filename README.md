@@ -1,4 +1,4 @@
-# QuantRAGForge: AI-Powered Quant Research Knowledge Base & Brainstorm Agent
+# Quant_LLM_Wiki: A Karpathy-shaped wiki-first knowledge base for quant research
 
 <p align="center">
   <a href="#features">Features</a> |
@@ -19,7 +19,7 @@
 
 ---
 
-**QuantRAGForge** is an open-source AI agent that turns WeChat articles and research reports into a structured, searchable knowledge base for quantitative investment research. It ingests articles, enriches them with LLM-generated metadata, builds a vector index, and supports RAG-based Q&A and brainstorming for new strategy ideas — with a built-in **Rethink Layer** that validates idea novelty and quality before output.
+**Quant_LLM_Wiki** turns WeChat articles, web pages, and research PDFs into an LLM-built Markdown knowledge base for quantitative investment research. It follows Andrej Karpathy's [LLM-built KB method](https://karpathy.bearblog.dev/): a `raw/` ingest layer, an LLM-compiled `wiki/` of concept articles, and a `schema/` that the LLM and tools both follow. Vector RAG is preserved as a fallback substrate, **not** the primary retrieval path. Three durable verbs — `ingest`, `query`, `lint` — drive everything. A built-in **Rethink Layer** scores novelty and quality of brainstormed ideas before output.
 
 > The goal is **research inspiration and cross-document idea combination**, not producing trade-ready strategies.
 
@@ -37,7 +37,7 @@
 
 ## Architecture
 
-QuantRAGForge follows Andrej Karpathy's [LLM-built knowledge base method](https://karpathy.bearblog.dev/) prescription with three durable layers and three operational verbs. Vector RAG is preserved as supporting substrate, not the primary retrieval path.
+The system has three durable layers and three operational verbs. Vector RAG is preserved as supporting substrate, not the primary retrieval path.
 
 ### Layout
 
@@ -138,7 +138,7 @@ The LangGraph ReAct agent provides 12 tools:
 ## File Structure
 
 ```
-QuantRAGForge/
+Quant_LLM_Wiki/
 ├── kb.py                           # Unified CLI: ingest | query | lint | compile | embed
 ├── raw/                            # Incoming source articles, flat (one dir per article)
 ├── wiki/                           # LLM-built Markdown memory
@@ -205,8 +205,8 @@ QuantRAGForge/
 ### 1. Clone and Setup
 
 ```bash
-git clone https://github.com/jackwu321/QuantRAGForge.git
-cd QuantRAGForge
+git clone https://github.com/jackwu321/Quant_LLM_Wiki.git
+cd Quant_LLM_Wiki
 
 python3 -m venv .venv
 source .venv/bin/activate
@@ -334,7 +334,7 @@ Agent: [Wiki concepts surfaced first; complementary articles fill remaining slot
 
 ### LLM Provider
 
-QuantRAGForge works with **any OpenAI-compatible API**. Configure via `.env` file (auto-loaded) or environment variables:
+Quant_LLM_Wiki works with **any OpenAI-compatible API**. Configure via `.env` file (auto-loaded) or environment variables:
 
 | Variable | Default | Description |
 |----------|---------|-------------|
@@ -426,4 +426,4 @@ This project is licensed under the MIT License — see the [LICENSE](LICENSE) fi
 
 ## Disclaimer
 
-QuantRAGForge is a research tool for generating investment strategy ideas. It does **not** produce trade-ready strategies or financial advice. All generated ideas require independent validation, backtesting, and risk assessment before any real-world application. Use at your own risk.
+Quant_LLM_Wiki is a research tool for generating investment strategy ideas. It does **not** produce trade-ready strategies or financial advice. All generated ideas require independent validation, backtesting, and risk assessment before any real-world application. Use at your own risk.
