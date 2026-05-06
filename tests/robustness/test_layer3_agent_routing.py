@@ -100,7 +100,7 @@ class TestAgentRouting(RobustTestBase):
         )
         self.assertTrue(len(fake.calls_made) >= 1)
 
-    @patch("ingest_wechat_article.fetch_html", side_effect=Exception("Network error"))
+    @patch("quant_llm_wiki.ingest.wechat.fetch_html", side_effect=Exception("Network error"))
     def test_route_ingest_article(self, mock_fetch):
         result, fake = self._run_agent_with_fake_llm(
             "ingest_article",

@@ -2,7 +2,7 @@ import tempfile
 import unittest
 from pathlib import Path
 
-import ingest_wechat_article as mod
+import quant_llm_wiki.ingest.wechat as mod
 
 
 class IngestWechatArticleTests(unittest.TestCase):

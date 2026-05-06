@@ -39,7 +39,7 @@ def _today() -> str:
 
 def _dispatch_wechat(url: str, content_type: str | None = None, force: bool = False) -> str:
     """Delegate to existing WeChat ingest pipeline."""
-    from ingest_wechat_article import ingest_single_url, DuplicateArticleError
+    from quant_llm_wiki.ingest.wechat import ingest_single_url, DuplicateArticleError
     args = argparse.Namespace(title=None, content_type=content_type, dry_run=False, force=force)
     result = ingest_single_url(url, args)
     if result.skipped:
@@ -209,7 +209,7 @@ def main() -> int:
         print(f"Ingested PDF: {out}")
         return 0
     if args.html_file:
-        from ingest_wechat_article import extract_article_data, write_article
+        from quant_llm_wiki.ingest.wechat import extract_article_data, write_article
         html = Path(args.html_file).expanduser().read_text(encoding="utf-8")
         article = extract_article_data(html, "", None)
         if args.content_type:

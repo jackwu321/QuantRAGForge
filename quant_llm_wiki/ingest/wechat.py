@@ -62,7 +62,7 @@ from _wechat import (
 )
 
 
-ROOT = Path(__file__).resolve().parent
+ROOT = Path(__file__).resolve().parent.parent.parent
 TEMPLATES_DIR = ROOT / "templates"
 ARTICLES_RAW_DIR = ROOT / "articles" / "raw"
 SOURCES_PROCESSED_DIR = ROOT / "sources" / "processed"

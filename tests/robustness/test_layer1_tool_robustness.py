@@ -209,12 +209,12 @@ class TestIngestArticleRobust(RobustTestBase):
         result = ingest_article.invoke({"url_list_file": "/nonexistent/urls.txt"})
         self.assertIn("Error", result)
 
-    @patch("ingest_wechat_article.fetch_html", return_value="<html><body><h1>Test</h1><p>Content here for testing purposes.</p></body></html>")
-    @patch("ingest_wechat_article.download_binary", return_value=(b"", "image/png"))
+    @patch("quant_llm_wiki.ingest.wechat.fetch_html", return_value="<html><body><h1>Test</h1><p>Content here for testing purposes.</p></body></html>")
+    @patch("quant_llm_wiki.ingest.wechat.download_binary", return_value=(b"", "image/png"))
     def test_duplicate_url_skipped(self, mock_download, mock_fetch):
         """Second ingestion of same URL should be skipped."""
         from agent.tools import ingest_article
-        import ingest_wechat_article as ingest_mod
+        import quant_llm_wiki.ingest.wechat as ingest_mod
 
         original_raw_dir = ingest_mod.ARTICLES_RAW_DIR
         ingest_mod.ARTICLES_RAW_DIR = self.tmp_root / "raw"
@@ -230,12 +230,12 @@ class TestIngestArticleRobust(RobustTestBase):
         finally:
             ingest_mod.ARTICLES_RAW_DIR = original_raw_dir
 
-    @patch("ingest_wechat_article.fetch_html", return_value="<html><body><h1>Test</h1><p>Content here for testing purposes.</p></body></html>")
-    @patch("ingest_wechat_article.download_binary", return_value=(b"", "image/png"))
+    @patch("quant_llm_wiki.ingest.wechat.fetch_html", return_value="<html><body><h1>Test</h1><p>Content here for testing purposes.</p></body></html>")
+    @patch("quant_llm_wiki.ingest.wechat.download_binary", return_value=(b"", "image/png"))
     def test_duplicate_url_force_reingest(self, mock_download, mock_fetch):
         """With force=True, duplicate should be re-ingested."""
         from agent.tools import ingest_article
-        import ingest_wechat_article as ingest_mod
+        import quant_llm_wiki.ingest.wechat as ingest_mod
 
         original_raw_dir = ingest_mod.ARTICLES_RAW_DIR
         ingest_mod.ARTICLES_RAW_DIR = self.tmp_root / "raw"
@@ -251,12 +251,12 @@ class TestIngestArticleRobust(RobustTestBase):
         finally:
             ingest_mod.ARTICLES_RAW_DIR = original_raw_dir
 
-    @patch("ingest_wechat_article.fetch_html", return_value="<html><body><h1>Test</h1><p>Content here for testing purposes.</p></body></html>")
-    @patch("ingest_wechat_article.download_binary", return_value=(b"", "image/png"))
+    @patch("quant_llm_wiki.ingest.wechat.fetch_html", return_value="<html><body><h1>Test</h1><p>Content here for testing purposes.</p></body></html>")
+    @patch("quant_llm_wiki.ingest.wechat.download_binary", return_value=(b"", "image/png"))
     def test_duplicate_detected_in_raw(self, mock_download, mock_fetch):
         """Article already in raw/ should be detected as duplicate on re-ingest."""
         from agent.tools import ingest_article
-        import ingest_wechat_article as ingest_mod
+        import quant_llm_wiki.ingest.wechat as ingest_mod
 
         original_raw_dir = ingest_mod.ARTICLES_RAW_DIR
         ingest_mod.ARTICLES_RAW_DIR = self.tmp_root / "raw"

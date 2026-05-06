@@ -55,7 +55,7 @@ def ingest_article(
 
     Set force=True to re-ingest articles that already exist."""
     import ingest_source
-    from ingest_wechat_article import (
+    from quant_llm_wiki.ingest.wechat import (
         extract_article_data,
         write_article,
         detect_blocked_wechat_page,

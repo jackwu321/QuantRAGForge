@@ -180,7 +180,7 @@ class TestToolsReturnStrings(unittest.TestCase):
     def test_ingest_article_bad_url(self):
         from agent.tools import ingest_article
 
-        with patch("ingest_wechat_article.fetch_html", side_effect=Exception("Network error")):
+        with patch("quant_llm_wiki.ingest.wechat.fetch_html", side_effect=Exception("Network error")):
             result = ingest_article.invoke({"url": "https://bad.url"})
             self.assertIsInstance(result, str)
             self.assertIn("failed", result.lower())
