@@ -1,0 +1,27 @@
+[build-system]
+requires = ["setuptools>=68", "wheel"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "quant_llm_wiki"
+version = "0.2.0"
+description = "AI-powered quant research knowledge base & brainstorm agent"
+readme = "README.md"
+requires-python = ">=3.10"
+license = {text = "MIT"}
+authors = [{name = "jackwu321"}]
+dependencies = [
+    "requests>=2.28.0",
+    "beautifulsoup4>=4.12.0",
+    "chromadb>=0.4.0",
+    "langgraph>=0.2.0",
+    "langchain-core>=0.3.0",
+    "langchain-community>=0.3.0",
+    "langchain-openai>=0.3.0",
+    "python-dotenv>=1.0.0",
+]
+
+# [project.scripts] is added in Task 7 once the package exists.
+
+[tool.setuptools.packages.find]
+include = ["quant_llm_wiki*"]

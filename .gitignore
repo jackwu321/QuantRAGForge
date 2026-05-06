@@ -51,3 +51,9 @@ CLAUDE.md
 
 # Git worktrees
 .worktrees/
+
+# Local API key store (never commit)
+.api_management/
+
+# Spurious file from accidental pip invocation
+=1.0.0
