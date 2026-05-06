@@ -570,7 +570,7 @@ class TestConfigurationRobustness(unittest.TestCase):
 class TestToolAPIFailures(RobustTestBase):
     """Test that tools gracefully handle API failures and return error strings."""
 
-    @patch("enrich_articles_with_llm.get_llm_config", return_value=("fake-key", "https://fake.url/v4", "glm-4.7"))
+    @patch("quant_llm_wiki.enrich.get_llm_config", return_value=("fake-key", "https://fake.url/v4", "glm-4.7"))
     @patch("quant_llm_wiki.shared.get_llm_config", return_value=("fake-key", "https://fake.url/v4", "glm-4.7"))
     @patch("quant_llm_wiki.shared.post_llm_json")
     def test_enrich_articles_api_failure(self, mock_post, mock_config, mock_enrich_config):

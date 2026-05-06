@@ -185,7 +185,7 @@ def cmd_compile(args: argparse.Namespace) -> int:
 
 
 def cmd_embed(args: argparse.Namespace) -> int:
-    import embed_knowledge_base
+    import quant_llm_wiki.embed as embed_knowledge_base
     forwarded = ["--kb-root", str(Path(args.kb_root).expanduser().resolve())]
     if args.force:
         forwarded.append("--force")

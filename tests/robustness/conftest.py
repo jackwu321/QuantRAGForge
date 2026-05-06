@@ -51,7 +51,7 @@ class RobustTestBase(unittest.TestCase):
         # Import modules whose constants need patching
         import quant_llm_wiki.shared as kb_shared
         import agent.tools as tools_mod
-        import embed_knowledge_base as embed_mod
+        import quant_llm_wiki.embed as embed_mod
         import brainstorm_from_kb as brainstorm_mod
 
         # Store originals
@@ -81,7 +81,7 @@ class RobustTestBase(unittest.TestCase):
     def tearDown(self):
         import quant_llm_wiki.shared as kb_shared
         import agent.tools as tools_mod
-        import embed_knowledge_base as embed_mod
+        import quant_llm_wiki.embed as embed_mod
         import brainstorm_from_kb as brainstorm_mod
 
         kb_shared.ROOT = self._originals["kb_shared.ROOT"]

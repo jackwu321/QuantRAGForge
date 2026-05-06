@@ -170,7 +170,7 @@ def enrich_articles(
     Use 'limit' to cap the number of articles processed (recommended for
     interactive use to avoid long waits).
     Articles are processed concurrently for speed (configurable via LLM_CONCURRENCY env var)."""
-    from enrich_articles_with_llm import (
+    from quant_llm_wiki.enrich import (
         discover_article_dirs as enrich_discover,
         run_enrich_batch,
         get_concurrency,
@@ -371,7 +371,7 @@ def set_article_status(article_paths: list[str], status: str, reason: str = "") 
 def embed_knowledge(force: bool = False) -> str:
     """Build or update the ChromaDB vector index from reviewed and high-value
     articles. Use force=True to re-index all articles."""
-    from embed_knowledge_base import (
+    from quant_llm_wiki.embed import (
         open_collection,
         CorruptedVectorStoreError,
         load_manifest,
