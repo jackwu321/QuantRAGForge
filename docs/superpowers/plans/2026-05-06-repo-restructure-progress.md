@@ -19,7 +19,7 @@ If a future session needs to resume: read this file + `git log --oneline | head 
 | Task | Status | Commit SHA | Reviewed at | Notes |
 |------|--------|------------|-------------|-------|
 | Pre-flight | – | – | – | Baseline test counts captured (see below) |
-| Task 1 — gitignore + pyproject skeleton + remove =1.0.0 | pending | – | – | |
+| Task 1 — gitignore + pyproject skeleton + remove =1.0.0 | ✅ done | `df683d0` | 2026-05-06 | `=1.0.0` was untracked → removed via `rm` instead of `git rm` (no git impact); tests 262 + 72 OK |
 | Task 2 — move shared + sync | pending | – | – | |
 | Task 3 — move ingest_wechat | pending | – | – | |
 | Task 4 — move enrich + embed | pending | – | – | |
