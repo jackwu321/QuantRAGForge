@@ -1,7 +1,7 @@
 import unittest
 from pathlib import Path
 
-from rethink_layer import BrainstormIdea, parse_ideas
+from quant_llm_wiki.query.rethink import BrainstormIdea, parse_ideas
 
 
 class ParseIdeasTests(unittest.TestCase):
@@ -97,7 +97,7 @@ class ParseIdeasTests(unittest.TestCase):
 
 
 from unittest.mock import patch, MagicMock
-from rethink_layer import NoveltyResult, check_novelty, NOVELTY_THRESHOLD
+from quant_llm_wiki.query.rethink import NoveltyResult, check_novelty, NOVELTY_THRESHOLD
 
 
 class CheckNoveltyTests(unittest.TestCase):
@@ -122,8 +122,8 @@ class CheckNoveltyTests(unittest.TestCase):
             "metadatas": [[{"article_dir": "/path/a", "block_type": "summary"}]],
             "distances": [[0.5]],  # score = 0.5, below threshold
         }
-        with patch("rethink_layer.embed_text", return_value=[0.1] * 10):
-            with patch("rethink_layer._open_rethink_collection", return_value=mock_collection):
+        with patch("quant_llm_wiki.query.rethink.embed_text", return_value=[0.1] * 10):
+            with patch("quant_llm_wiki.query.rethink._open_rethink_collection", return_value=mock_collection):
                 results = check_novelty([idea])
         self.assertEqual(len(results), 1)
         self.assertTrue(results[0].is_novel)
@@ -137,8 +137,8 @@ class CheckNoveltyTests(unittest.TestCase):
             "metadatas": [[{"article_dir": "/path/a", "block_type": "idea_blocks"}]],
             "distances": [[0.1]],  # score = 0.9, above threshold
         }
-        with patch("rethink_layer.embed_text", return_value=[0.1] * 10):
-            with patch("rethink_layer._open_rethink_collection", return_value=mock_collection):
+        with patch("quant_llm_wiki.query.rethink.embed_text", return_value=[0.1] * 10):
+            with patch("quant_llm_wiki.query.rethink._open_rethink_collection", return_value=mock_collection):
                 results = check_novelty([idea])
         self.assertEqual(len(results), 1)
         self.assertFalse(results[0].is_novel)
@@ -146,14 +146,14 @@ class CheckNoveltyTests(unittest.TestCase):
 
     def test_no_vector_store_returns_novel_with_empty_matches(self) -> None:
         idea = self._make_idea()
-        with patch("rethink_layer._open_rethink_collection", side_effect=RuntimeError("no store")):
+        with patch("quant_llm_wiki.query.rethink._open_rethink_collection", side_effect=RuntimeError("no store")):
             results = check_novelty([idea])
         self.assertEqual(len(results), 1)
         self.assertTrue(results[0].is_novel)
         self.assertEqual(results[0].all_matches, [])
 
 
-from rethink_layer import score_traceability, QualityScore
+from quant_llm_wiki.query.rethink import score_traceability, QualityScore
 from quant_llm_wiki.shared import KnowledgeNote, KnowledgeBlock
 
 
@@ -206,7 +206,7 @@ class ScoreTraceabilityTests(unittest.TestCase):
 
 
 import json
-from rethink_layer import score_coherence_actionability
+from quant_llm_wiki.query.rethink import score_coherence_actionability
 
 
 class ScoreCoherenceActionabilityTests(unittest.TestCase):
@@ -228,7 +228,7 @@ class ScoreCoherenceActionabilityTests(unittest.TestCase):
             {"idea_index": 0, "coherence": 0.8, "actionability": 0.7, "coherence_reasoning": "ok", "actionability_reasoning": "ok"},
             {"idea_index": 1, "coherence": 0.6, "actionability": 0.9, "coherence_reasoning": "so-so", "actionability_reasoning": "great"},
         ])
-        with patch("rethink_layer.call_llm_chat", return_value=mock_response):
+        with patch("quant_llm_wiki.query.rethink.call_llm_chat", return_value=mock_response):
             results = score_coherence_actionability(ideas)
         self.assertEqual(len(results), 2)
         self.assertAlmostEqual(results[0]["coherence"], 0.8)
@@ -236,7 +236,7 @@ class ScoreCoherenceActionabilityTests(unittest.TestCase):
 
     def test_llm_failure_returns_defaults(self) -> None:
         ideas = [self._make_idea()]
-        with patch("rethink_layer.call_llm_chat", side_effect=RuntimeError("API down")):
+        with patch("quant_llm_wiki.query.rethink.call_llm_chat", side_effect=RuntimeError("API down")):
             results = score_coherence_actionability(ideas)
         self.assertEqual(len(results), 1)
         self.assertAlmostEqual(results[0]["coherence"], 0.5)
@@ -244,13 +244,13 @@ class ScoreCoherenceActionabilityTests(unittest.TestCase):
 
     def test_malformed_json_returns_defaults(self) -> None:
         ideas = [self._make_idea()]
-        with patch("rethink_layer.call_llm_chat", return_value="not json"):
+        with patch("quant_llm_wiki.query.rethink.call_llm_chat", return_value="not json"):
             results = score_coherence_actionability(ideas)
         self.assertEqual(len(results), 1)
         self.assertAlmostEqual(results[0]["coherence"], 0.5)
 
 
-from rethink_layer import build_rethink_report
+from quant_llm_wiki.query.rethink import build_rethink_report
 
 
 class BuildRethinkReportTests(unittest.TestCase):
@@ -295,7 +295,7 @@ class BuildRethinkReportTests(unittest.TestCase):
         self.assertEqual(report, "")
 
 
-from rethink_layer import rethink
+from quant_llm_wiki.query.rethink import rethink
 
 
 class RethinkEntryPointTests(unittest.TestCase):
@@ -322,8 +322,8 @@ class RethinkEntryPointTests(unittest.TestCase):
             {"idea_index": 0, "coherence": 0.8, "actionability": 0.7,
              "coherence_reasoning": "ok", "actionability_reasoning": "ok"},
         ])
-        with patch("rethink_layer._open_rethink_collection", side_effect=RuntimeError("no store")):
-            with patch("rethink_layer.call_llm_chat", return_value=mock_judge):
+        with patch("quant_llm_wiki.query.rethink._open_rethink_collection", side_effect=RuntimeError("no store")):
+            with patch("quant_llm_wiki.query.rethink.call_llm_chat", return_value=mock_judge):
                 result = rethink(self.BRAINSTORM_OUTPUT, blocks, "test query")
         self.assertIn("## Rethink Report", result)
         self.assertIn("动量+波动率组合策略", result)

@@ -9,7 +9,7 @@ import unittest
 from pathlib import Path
 from unittest.mock import patch
 
-import brainstorm_from_kb as mod
+import quant_llm_wiki.query.brainstorm as mod
 from quant_llm_wiki.shared import KnowledgeNote
 from wiki_seed import bootstrap_wiki
 

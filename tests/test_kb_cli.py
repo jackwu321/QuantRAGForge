@@ -41,7 +41,7 @@ class KbCliDispatchTests(unittest.TestCase):
         m.assert_called_once()
 
     def test_query_dispatch_invokes_brainstorm_main(self) -> None:
-        with patch("brainstorm_from_kb.main", return_value=0) as m:
+        with patch("quant_llm_wiki.query.brainstorm.main", return_value=0) as m:
             rc = kb.cmd_query(kb.build_parser().parse_args(
                 ["query", "--query", "test", "--no-file-back"]
             ))

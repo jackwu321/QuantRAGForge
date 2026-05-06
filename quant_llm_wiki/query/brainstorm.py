@@ -28,7 +28,7 @@ from quant_llm_wiki.shared import (
     require_requests,
     embed_text,
 )
-from rethink_layer import rethink
+from quant_llm_wiki.query.rethink import rethink
 from wiki_schemas import parse_concept
 from wiki_state import (
     concept_memory_score,

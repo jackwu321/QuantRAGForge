@@ -52,7 +52,7 @@ class RobustTestBase(unittest.TestCase):
         import quant_llm_wiki.shared as kb_shared
         import agent.tools as tools_mod
         import quant_llm_wiki.embed as embed_mod
-        import brainstorm_from_kb as brainstorm_mod
+        import quant_llm_wiki.query.brainstorm as brainstorm_mod
 
         # Store originals
         self._originals = {
@@ -82,7 +82,7 @@ class RobustTestBase(unittest.TestCase):
         import quant_llm_wiki.shared as kb_shared
         import agent.tools as tools_mod
         import quant_llm_wiki.embed as embed_mod
-        import brainstorm_from_kb as brainstorm_mod
+        import quant_llm_wiki.query.brainstorm as brainstorm_mod
 
         kb_shared.ROOT = self._originals["kb_shared.ROOT"]
         kb_shared.WIKI_DIR = self._originals["kb_shared.WIKI_DIR"]

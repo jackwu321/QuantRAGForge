@@ -3,7 +3,7 @@ import unittest
 from pathlib import Path
 from unittest.mock import MagicMock, patch
 
-import brainstorm_from_kb
+import quant_llm_wiki.query.brainstorm as brainstorm_from_kb
 
 
 class ConceptRetrievalLexicalFallbackTests(unittest.TestCase):

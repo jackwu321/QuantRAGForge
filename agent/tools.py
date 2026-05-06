@@ -481,7 +481,7 @@ def query_knowledge_base(
     """Query the knowledge base. mode='ask' for factual Q&A, mode='brainstorm'
     for idea generation by combining insights across articles.
     Returns the LLM response with source attributions."""
-    from brainstorm_from_kb import (
+    from quant_llm_wiki.query.brainstorm import (
         retrieve_blocks,
         format_context,
         build_messages,
@@ -525,7 +525,7 @@ def query_knowledge_base(
         return f"LLM error: {exc}"
 
     if mode == "brainstorm":
-        from rethink_layer import rethink
+        from quant_llm_wiki.query.rethink import rethink
         result = rethink(result, retrieved, query, VECTOR_STORE_DIR)
 
     try:

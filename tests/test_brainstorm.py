@@ -3,7 +3,7 @@ import unittest
 from argparse import Namespace
 from pathlib import Path
 
-import brainstorm_from_kb as mod
+import quant_llm_wiki.query.brainstorm as mod
 
 
 class BrainstormFromKbTests(unittest.TestCase):

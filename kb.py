@@ -93,7 +93,7 @@ def cmd_query(args: argparse.Namespace) -> int:
         forwarded.extend(["--retrieval", args.retrieval])
 
     # Save argv, swap, and call brainstorm_from_kb.main()
-    import brainstorm_from_kb
+    import quant_llm_wiki.query.brainstorm as brainstorm_from_kb
     original_argv = sys.argv[:]
     sys.argv = ["kb query"] + forwarded
     try:
