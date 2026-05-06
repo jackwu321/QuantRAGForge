@@ -23,7 +23,7 @@ from quant_llm_wiki.shared import (
 )
 
 
-ROOT = Path(__file__).resolve().parent
+ROOT = Path(__file__).resolve().parent.parent
 DEFAULT_ARTICLES_ROOT = ROOT / "articles" / "raw"
 SOURCES_PROCESSED_DIR = ROOT / "sources" / "processed"
 DEFAULT_STATUS_FILTER = "raw"
@@ -544,8 +544,20 @@ def run_enrich_batch(
     return results
 
 
-def main() -> int:
-    args = parse_args()
+def register(parser: argparse.ArgumentParser) -> None:
+    """Attach this module's CLI flags to `parser`. Called by quant_llm_wiki.cli."""
+    parser.add_argument("--article-dir", help="Path to a single article directory.")
+    parser.add_argument("--articles-root", default=str(DEFAULT_ARTICLES_ROOT), help="Root directory of articles.")
+    parser.add_argument("--status-filter", default=DEFAULT_STATUS_FILTER, help="Only process articles with this status.")
+    parser.add_argument("--limit", type=int, help="Maximum number of articles to process.")
+    parser.add_argument("--dry-run", action="store_true", help="Do not write files; print enhanced JSON only.")
+    parser.add_argument("--force", action="store_true", help="Re-run even if already enriched.")
+    parser.add_argument("--concurrency", type=int, default=None, help="Number of concurrent LLM requests (default: LLM_CONCURRENCY env or 3).")
+    parser.set_defaults(func=_run)
+
+
+def _run(args) -> int:
+    """The module's command body. Receives parsed args from the dispatcher."""
     article_dirs = discover_article_dirs(args)
     concurrency = get_concurrency(args)
 
@@ -572,6 +584,14 @@ def main() -> int:
     }
     print(json.dumps(summary, ensure_ascii=False, indent=2))
     return 0 if not failures else 1
+
+
+def main() -> int:
+    """Standalone entry: python -m quant_llm_wiki.enrich ..."""
+    parser = argparse.ArgumentParser(description="Enhance ingested articles with LLM-generated structured metadata.")
+    register(parser)
+    args = parser.parse_args()
+    return args.func(args)
 
 
 if __name__ == "__main__":

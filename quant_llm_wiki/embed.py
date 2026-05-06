@@ -178,8 +178,23 @@ def write_failure_list(failures: list[dict[str, str]], path: Path) -> None:
     path.write_text("\n".join(lines) + "\n", encoding="utf-8")
 
 
-def main() -> int:
-    args = parse_args()
+def register(parser: argparse.ArgumentParser) -> None:
+    """Attach this module's CLI flags to `parser`. Called by quant_llm_wiki.cli."""
+    parser.add_argument("--kb-root", default=str(ROOT), help="Knowledge base root.")
+    parser.add_argument(
+        "--source-dir",
+        default="reviewed,high-value",
+        help="Comma-separated status filters; articles live flat under raw/.",
+    )
+    parser.add_argument("--force", action="store_true", help="Re-index all articles even if already indexed.")
+    parser.add_argument("--dry-run", action="store_true", help="Show what would be indexed without writing.")
+    parser.add_argument("--embedding-model", default=DEFAULT_EMBEDDING_MODEL, help="Zhipu embedding model name.")
+    parser.add_argument("--vector-store-dir", default=str(VECTOR_STORE_DIR), help="Directory for the persistent ChromaDB store.")
+    parser.set_defaults(func=_run)
+
+
+def _run(args) -> int:
+    """The module's command body. Receives parsed args from the dispatcher."""
     kb_root = Path(args.kb_root).expanduser().resolve()
     vector_store_dir = Path(args.vector_store_dir).expanduser().resolve()
     source_dirs = parse_csv_arg(args.source_dir) or list(DEFAULT_SOURCE_DIRS)
@@ -255,6 +270,14 @@ def main() -> int:
     }
     print(json.dumps(summary, ensure_ascii=False, indent=2))
     return 0 if not failures else 1
+
+
+def main() -> int:
+    """Standalone entry: python -m quant_llm_wiki.embed ..."""
+    parser = argparse.ArgumentParser(description="Build or update the ChromaDB vector index for the knowledge base.")
+    register(parser)
+    args = parser.parse_args()
+    return args.func(args)
 
 
 def iter_wiki_blocks(wiki_dir: Path):

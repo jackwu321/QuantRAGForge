@@ -15,6 +15,10 @@ from pathlib import Path
 from typing import Optional
 from urllib.parse import urljoin, urlparse
 
+_ROOT = Path(__file__).resolve().parent.parent.parent
+if str(_ROOT) not in sys.path:
+    sys.path.insert(0, str(_ROOT))
+
 try:
     import requests
 except ImportError:  # pragma: no cover - optional dependency at runtime
@@ -429,8 +433,35 @@ def ingest_url_list(path: str, args: argparse.Namespace) -> int:
     return 0 if failure_count == 0 else 1
 
 
-def main() -> int:
-    args = parse_args()
+def register(parser: argparse.ArgumentParser) -> None:
+    """Attach this module's CLI flags to `parser`. Called by quant_llm_wiki.cli."""
+    parser.add_argument("--url", help="Original article URL.")
+    parser.add_argument("--url-list", help="Path to a txt file containing one article URL per line.")
+    parser.add_argument("--html-file", help="Path to a previously saved HTML file.")
+    parser.add_argument(
+        "--title",
+        help="Override the detected title. Useful when the page title is noisy.",
+    )
+    parser.add_argument(
+        "--content-type",
+        choices=SUPPORTED_CONTENT_TYPES,
+        help="Override the detected content_type classification.",
+    )
+    parser.add_argument(
+        "--force",
+        action="store_true",
+        help="Re-ingest even if the article already exists in the knowledge base.",
+    )
+    parser.add_argument(
+        "--dry-run",
+        action="store_true",
+        help="Print the parsed result without writing files.",
+    )
+    parser.set_defaults(func=_run)
+
+
+def _run(args) -> int:
+    """The module's command body. Receives parsed args from the dispatcher."""
     if args.url_list:
         return ingest_url_list(args.url_list, args)
 
@@ -452,6 +483,16 @@ def main() -> int:
         return 0
     print(f"created: {out_dir}")
     return 0
+
+
+def main() -> int:
+    """Standalone entry: python -m quant_llm_wiki.ingest.wechat ..."""
+    parser = argparse.ArgumentParser(
+        description="Ingest WeChat articles into the local markdown knowledge base."
+    )
+    register(parser)
+    args = parser.parse_args()
+    return args.func(args)
 
 
 if __name__ == "__main__":

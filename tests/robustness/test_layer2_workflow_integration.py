@@ -26,7 +26,7 @@ class TestFullPipelineReviewToQuery(RobustTestBase):
     @patch("quant_llm_wiki.shared.post_llm_json")
     @patch("quant_llm_wiki.shared.get_llm_config", return_value=("fake-key", "https://fake.url/v4", "glm-4.7"))
     def test_full_pipeline(self, mock_config, mock_post, mock_embed):
-        from agent.tools import (
+        from quant_llm_wiki.agent.tools import (
             review_articles,
             set_article_status,
             embed_knowledge,
@@ -79,7 +79,7 @@ class TestPipelineMultipleArticles(RobustTestBase):
     @patch("quant_llm_wiki.shared.embed_text")
     @patch("quant_llm_wiki.shared.get_llm_config", return_value=("fake-key", "https://fake.url/v4", "glm-4.7"))
     def test_multiple_articles_different_statuses(self, mock_config, mock_embed):
-        from agent.tools import set_article_status, embed_knowledge
+        from quant_llm_wiki.agent.tools import set_article_status, embed_knowledge
 
         mock_embed.side_effect = lambda text, model=None: MockLLMFactory.make_embed_text_mock()(text, model)
 
@@ -118,7 +118,7 @@ class TestPipelineErrorRecoveryEmbedPartial(RobustTestBase):
     @patch("quant_llm_wiki.shared.embed_text")
     @patch("quant_llm_wiki.shared.get_llm_config", return_value=("fake-key", "https://fake.url/v4", "glm-4.7"))
     def test_partial_embed_failure(self, mock_config, mock_embed):
-        from agent.tools import embed_knowledge
+        from quant_llm_wiki.agent.tools import embed_knowledge
 
         # Track which article is being embedded by text content
         succeeded_articles = set()
@@ -155,7 +155,7 @@ class TestIdempotentEmbed(RobustTestBase):
     @patch("quant_llm_wiki.shared.embed_text")
     @patch("quant_llm_wiki.shared.get_llm_config", return_value=("fake-key", "https://fake.url/v4", "glm-4.7"))
     def test_idempotent(self, mock_config, mock_embed):
-        from agent.tools import embed_knowledge
+        from quant_llm_wiki.agent.tools import embed_knowledge
 
         mock_embed.side_effect = lambda text, model=None: MockLLMFactory.make_embed_text_mock()(text, model)
 
@@ -179,7 +179,7 @@ class TestSyncThenEmbedRoundtrip(RobustTestBase):
     @patch("quant_llm_wiki.shared.embed_text")
     @patch("quant_llm_wiki.shared.get_llm_config", return_value=("fake-key", "https://fake.url/v4", "glm-4.7"))
     def test_roundtrip(self, mock_config, mock_embed):
-        from agent.tools import embed_knowledge, list_articles
+        from quant_llm_wiki.agent.tools import embed_knowledge, list_articles
 
         mock_embed.side_effect = lambda text, model=None: MockLLMFactory.make_embed_text_mock()(text, model)
 

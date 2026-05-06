@@ -12,25 +12,25 @@ sys.path.insert(0, str(ROOT))
 class TestAgentGraph(unittest.TestCase):
     """Test agent graph creation and basic behavior."""
 
-    @patch("agent.graph.get_llm_config")
-    @patch("agent.graph.ChatOpenAI")
+    @patch("quant_llm_wiki.agent.graph.get_llm_config")
+    @patch("quant_llm_wiki.agent.graph.ChatOpenAI")
     def test_create_agent_returns_compiled_graph(self, mock_llm_cls, mock_config):
         mock_config.return_value = ("fake-key", "https://fake.url/v4", "glm-4.7")
         mock_llm_cls.return_value = MagicMock()
 
-        from agent.graph import create_agent
+        from quant_llm_wiki.agent.graph import create_agent
 
         agent = create_agent()
         # The compiled graph should have an invoke method
         self.assertTrue(hasattr(agent, "invoke"))
 
-    @patch("agent.graph.get_llm_config")
-    @patch("agent.graph.ChatOpenAI")
+    @patch("quant_llm_wiki.agent.graph.get_llm_config")
+    @patch("quant_llm_wiki.agent.graph.ChatOpenAI")
     def test_create_agent_uses_correct_model(self, mock_llm_cls, mock_config):
         mock_config.return_value = ("test-key", "https://test.url/v4", "glm-4.7")
         mock_llm_cls.return_value = MagicMock()
 
-        from agent.graph import create_agent
+        from quant_llm_wiki.agent.graph import create_agent
 
         create_agent()
         mock_llm_cls.assert_called_once_with(
@@ -41,7 +41,7 @@ class TestAgentGraph(unittest.TestCase):
         )
 
     def test_all_tools_registered(self):
-        from agent.tools import ALL_TOOLS
+        from quant_llm_wiki.agent.tools import ALL_TOOLS
 
         tool_names = {t.name for t in ALL_TOOLS}
         expected = {
@@ -61,7 +61,7 @@ class TestAgentGraph(unittest.TestCase):
         self.assertEqual(tool_names, expected)
 
     def test_all_tools_have_descriptions(self):
-        from agent.tools import ALL_TOOLS
+        from quant_llm_wiki.agent.tools import ALL_TOOLS
 
         for tool in ALL_TOOLS:
             self.assertTrue(

@@ -21,7 +21,8 @@ dependencies = [
     "python-dotenv>=1.0.0",
 ]
 
-# [project.scripts] is added in Task 7 once the package exists.
+[project.scripts]
+qlw = "quant_llm_wiki.cli:main"
 
 [tool.setuptools.packages.find]
 include = ["quant_llm_wiki*"]

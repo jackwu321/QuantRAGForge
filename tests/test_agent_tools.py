@@ -34,7 +34,7 @@ class TestSetArticleStatus(unittest.TestCase):
         return article_dir
 
     def test_update_status_to_reviewed(self):
-        from agent.tools import set_article_status
+        from quant_llm_wiki.agent.tools import set_article_status
 
         with tempfile.TemporaryDirectory() as tmp:
             article_dir = self._make_article(Path(tmp), "raw")
@@ -47,7 +47,7 @@ class TestSetArticleStatus(unittest.TestCase):
             self.assertNotIn("status: raw", content)
 
     def test_update_status_to_high_value(self):
-        from agent.tools import set_article_status
+        from quant_llm_wiki.agent.tools import set_article_status
 
         with tempfile.TemporaryDirectory() as tmp:
             article_dir = self._make_article(Path(tmp), "raw")
@@ -59,7 +59,7 @@ class TestSetArticleStatus(unittest.TestCase):
             self.assertIn("status: high_value", content)
 
     def test_invalid_status_rejected(self):
-        from agent.tools import set_article_status
+        from quant_llm_wiki.agent.tools import set_article_status
 
         result = set_article_status.invoke(
             {"article_paths": ["/nonexistent"], "status": "invalid"}
@@ -67,7 +67,7 @@ class TestSetArticleStatus(unittest.TestCase):
         self.assertIn("Invalid status", result)
 
     def test_preserves_other_frontmatter(self):
-        from agent.tools import set_article_status
+        from quant_llm_wiki.agent.tools import set_article_status
 
         with tempfile.TemporaryDirectory() as tmp:
             article_dir = self._make_article(Path(tmp), "raw")
@@ -81,7 +81,7 @@ class TestSetArticleStatus(unittest.TestCase):
             self.assertIn("## Main Content", content)
 
     def test_missing_article_md(self):
-        from agent.tools import set_article_status
+        from quant_llm_wiki.agent.tools import set_article_status
 
         with tempfile.TemporaryDirectory() as tmp:
             result = set_article_status.invoke(
@@ -93,10 +93,10 @@ class TestSetArticleStatus(unittest.TestCase):
 class TestListArticles(unittest.TestCase):
     """Test list_articles tool."""
 
-    @patch("agent.tools.discover_article_dirs")
-    @patch("agent.tools.parse_frontmatter")
+    @patch("quant_llm_wiki.agent.tools.discover_article_dirs")
+    @patch("quant_llm_wiki.agent.tools.parse_frontmatter")
     def test_list_articles_output(self, mock_fm, mock_discover):
-        from agent.tools import list_articles
+        from quant_llm_wiki.agent.tools import list_articles
 
         tmp = Path("/tmp/test_kb")
         article_dir = tmp / "raw" / "test_article"
@@ -112,9 +112,9 @@ class TestListArticles(unittest.TestCase):
         self.assertIn("raw", result)
 
     def test_no_articles(self):
-        from agent.tools import list_articles
+        from quant_llm_wiki.agent.tools import list_articles
 
-        with patch("agent.tools.discover_article_dirs", return_value=[]):
+        with patch("quant_llm_wiki.agent.tools.discover_article_dirs", return_value=[]):
             result = list_articles.invoke({"source_dir": "nonexistent"})
             self.assertIn("0 articles", result)
 
@@ -123,14 +123,14 @@ class TestReviewArticles(unittest.TestCase):
     """Test review_articles tool."""
 
     def test_no_articles_found(self):
-        from agent.tools import review_articles
+        from quant_llm_wiki.agent.tools import review_articles
 
-        with patch("agent.tools.discover_article_dirs", return_value=[]):
+        with patch("quant_llm_wiki.agent.tools.discover_article_dirs", return_value=[]):
             result = review_articles.invoke({"source_dir": "raw"})
             self.assertIn("No articles", result)
 
     def test_review_output_format(self):
-        from agent.tools import review_articles
+        from quant_llm_wiki.agent.tools import review_articles
 
         with tempfile.TemporaryDirectory() as tmp:
             article_dir = Path(tmp) / "test_article"
@@ -151,7 +151,7 @@ class TestReviewArticles(unittest.TestCase):
             (article_dir / "article.md").write_text(md, encoding="utf-8")
             (article_dir / "source.json").write_text('{"llm_enriched": true}', encoding="utf-8")
 
-            with patch("agent.tools.discover_article_dirs", return_value=[("raw", article_dir)]):
+            with patch("quant_llm_wiki.agent.tools.discover_article_dirs", return_value=[("raw", article_dir)]):
                 result = review_articles.invoke({"source_dir": "raw"})
                 self.assertIn("Test Strategy", result)
                 self.assertIn("strategy", result)
@@ -163,13 +163,13 @@ class AuditWikiToolTests(unittest.TestCase):
     def test_audit_wiki_returns_summary(self) -> None:
         import tempfile
         from pathlib import Path
-        from agent.tools import audit_wiki as audit_wiki_tool
+        from quant_llm_wiki.agent.tools import audit_wiki as audit_wiki_tool
         from wiki_seed import bootstrap_wiki
 
         with tempfile.TemporaryDirectory() as tmp:
             wiki_dir = Path(tmp) / "wiki"
             bootstrap_wiki(wiki_dir)
-            with patch("agent.tools.KB_ROOT", Path(tmp)):
+            with patch("quant_llm_wiki.agent.tools.KB_ROOT", Path(tmp)):
                 result = audit_wiki_tool.invoke({})
             self.assertIn("Wiki health", result)
 
@@ -178,7 +178,7 @@ class TestToolsReturnStrings(unittest.TestCase):
     """Verify all tools return strings on error conditions."""
 
     def test_ingest_article_bad_url(self):
-        from agent.tools import ingest_article
+        from quant_llm_wiki.agent.tools import ingest_article
 
         with patch("quant_llm_wiki.ingest.wechat.fetch_html", side_effect=Exception("Network error")):
             result = ingest_article.invoke({"url": "https://bad.url"})
@@ -186,9 +186,9 @@ class TestToolsReturnStrings(unittest.TestCase):
             self.assertIn("failed", result.lower())
 
     def test_query_no_articles(self):
-        from agent.tools import query_knowledge_base
+        from quant_llm_wiki.agent.tools import query_knowledge_base
 
-        with patch("agent.tools.load_notes", return_value=[]):
+        with patch("quant_llm_wiki.agent.tools.load_notes", return_value=[]):
             result = query_knowledge_base.invoke({"query": "test", "mode": "ask"})
             self.assertIsInstance(result, str)
             self.assertIn("No candidate", result)
@@ -197,7 +197,7 @@ class TestToolsReturnStrings(unittest.TestCase):
 class CompileWikiToolTests(unittest.TestCase):
     def test_compile_wiki_invokes_orchestrator(self) -> None:
         from unittest.mock import patch
-        from agent.tools import compile_wiki as compile_wiki_tool
+        from quant_llm_wiki.agent.tools import compile_wiki as compile_wiki_tool
         import wiki_compile
 
         fake_report = wiki_compile.CompileReport(
@@ -214,13 +214,13 @@ class ListConceptsToolTests(unittest.TestCase):
         import tempfile
         from pathlib import Path
         from unittest.mock import patch
-        from agent.tools import list_concepts as list_concepts_tool
+        from quant_llm_wiki.agent.tools import list_concepts as list_concepts_tool
         from wiki_seed import bootstrap_wiki
 
         with tempfile.TemporaryDirectory() as tmp:
             wiki_dir = Path(tmp) / "wiki"
             bootstrap_wiki(wiki_dir)
-            with patch("agent.tools.KB_ROOT", Path(tmp)):
+            with patch("quant_llm_wiki.agent.tools.KB_ROOT", Path(tmp)):
                 result = list_concepts_tool.invoke({"status": "stable"})
             self.assertIn("momentum-strategies", result)
             self.assertIn("(stable)", result)
@@ -231,7 +231,7 @@ class SetConceptStatusToolTests(unittest.TestCase):
         import tempfile
         from pathlib import Path
         from unittest.mock import patch
-        from agent.tools import set_concept_status as set_status_tool
+        from quant_llm_wiki.agent.tools import set_concept_status as set_status_tool
         from wiki_schemas import ConceptArticle, parse_concept, serialize_concept
 
         with tempfile.TemporaryDirectory() as tmp:
@@ -248,7 +248,7 @@ class SetConceptStatusToolTests(unittest.TestCase):
             )
             (wiki_dir / "concepts" / "x-test.md").write_text(serialize_concept(proposed), encoding="utf-8")
 
-            with patch("agent.tools.KB_ROOT", Path(tmp)):
+            with patch("quant_llm_wiki.agent.tools.KB_ROOT", Path(tmp)):
                 result = set_status_tool.invoke(
                     {"slug": "x-test", "status": "stable", "reason": "approved"}
                 )
@@ -260,7 +260,7 @@ class SetConceptStatusToolTests(unittest.TestCase):
         import tempfile
         from pathlib import Path
         from unittest.mock import patch
-        from agent.tools import set_concept_status as set_status_tool
+        from quant_llm_wiki.agent.tools import set_concept_status as set_status_tool
         from wiki_schemas import ConceptArticle, serialize_concept
 
         with tempfile.TemporaryDirectory() as tmp:
@@ -276,7 +276,7 @@ class SetConceptStatusToolTests(unittest.TestCase):
             )
             (wiki_dir / "concepts" / "x-test.md").write_text(serialize_concept(c), encoding="utf-8")
 
-            with patch("agent.tools.KB_ROOT", Path(tmp)):
+            with patch("quant_llm_wiki.agent.tools.KB_ROOT", Path(tmp)):
                 set_status_tool.invoke({"slug": "x-test", "status": "deleted", "reason": "rejected"})
             self.assertFalse((wiki_dir / "concepts" / "x-test.md").exists())
 
@@ -284,11 +284,11 @@ class SetConceptStatusToolTests(unittest.TestCase):
         import tempfile
         from pathlib import Path
         from unittest.mock import patch
-        from agent.tools import set_concept_status as set_status_tool
+        from quant_llm_wiki.agent.tools import set_concept_status as set_status_tool
 
         with tempfile.TemporaryDirectory() as tmp:
             (Path(tmp) / "wiki" / "concepts").mkdir(parents=True)
-            with patch("agent.tools.KB_ROOT", Path(tmp)):
+            with patch("quant_llm_wiki.agent.tools.KB_ROOT", Path(tmp)):
                 result = set_status_tool.invoke({"slug": "missing", "status": "stable", "reason": "x"})
             self.assertIn("not found", result.lower())
 
@@ -298,7 +298,7 @@ class ReadWikiToolTests(unittest.TestCase):
         import tempfile
         from pathlib import Path
         from unittest.mock import patch
-        from agent.tools import read_wiki as read_wiki_tool
+        from quant_llm_wiki.agent.tools import read_wiki as read_wiki_tool
         from wiki_seed import bootstrap_wiki
         from wiki_index import write_index
 
@@ -306,7 +306,7 @@ class ReadWikiToolTests(unittest.TestCase):
             wiki_dir = Path(tmp) / "wiki"
             bootstrap_wiki(wiki_dir)
             write_index(wiki_dir)
-            with patch("agent.tools.KB_ROOT", Path(tmp)):
+            with patch("quant_llm_wiki.agent.tools.KB_ROOT", Path(tmp)):
                 result = read_wiki_tool.invoke({"target": "index"})
             self.assertIn("# Knowledge Base Index", result)
 
@@ -314,13 +314,13 @@ class ReadWikiToolTests(unittest.TestCase):
         import tempfile
         from pathlib import Path
         from unittest.mock import patch
-        from agent.tools import read_wiki as read_wiki_tool
+        from quant_llm_wiki.agent.tools import read_wiki as read_wiki_tool
         from wiki_seed import bootstrap_wiki
 
         with tempfile.TemporaryDirectory() as tmp:
             wiki_dir = Path(tmp) / "wiki"
             bootstrap_wiki(wiki_dir)
-            with patch("agent.tools.KB_ROOT", Path(tmp)):
+            with patch("quant_llm_wiki.agent.tools.KB_ROOT", Path(tmp)):
                 result = read_wiki_tool.invoke({"target": "momentum-strategies"})
             self.assertIn("Momentum Strategies", result)
 
@@ -328,11 +328,11 @@ class ReadWikiToolTests(unittest.TestCase):
         import tempfile
         from pathlib import Path
         from unittest.mock import patch
-        from agent.tools import read_wiki as read_wiki_tool
+        from quant_llm_wiki.agent.tools import read_wiki as read_wiki_tool
 
         with tempfile.TemporaryDirectory() as tmp:
             (Path(tmp) / "wiki").mkdir(parents=True)
-            with patch("agent.tools.KB_ROOT", Path(tmp)):
+            with patch("quant_llm_wiki.agent.tools.KB_ROOT", Path(tmp)):
                 result = read_wiki_tool.invoke({"target": "nonexistent"})
             self.assertIn("not found", result.lower())
 
@@ -340,7 +340,7 @@ class ReadWikiToolTests(unittest.TestCase):
 class IngestArticleDispatchTests(unittest.TestCase):
     @patch("ingest_source.dispatch_url")
     def test_url_routes_through_dispatch_url_for_pdf(self, mock_dispatch) -> None:
-        from agent.tools import ingest_article
+        from quant_llm_wiki.agent.tools import ingest_article
         mock_dispatch.return_value = "/tmp/out"
         result = ingest_article.invoke({"url": "https://example.com/paper.pdf"})
         mock_dispatch.assert_called_once()
@@ -349,7 +349,7 @@ class IngestArticleDispatchTests(unittest.TestCase):
 
     @patch("ingest_source.dispatch_pdf_file")
     def test_pdf_file_param_routes_to_pdf_dispatcher(self, mock_pdf) -> None:
-        from agent.tools import ingest_article
+        from quant_llm_wiki.agent.tools import ingest_article
         mock_pdf.return_value = "/tmp/out"
         result = ingest_article.invoke({"pdf_file": "/tmp/x.pdf"})
         mock_pdf.assert_called_once_with("/tmp/x.pdf", content_type=None)

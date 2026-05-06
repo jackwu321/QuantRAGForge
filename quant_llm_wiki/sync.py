@@ -38,6 +38,38 @@ def parse_args() -> argparse.Namespace:
     return parser.parse_args()
 
 
+def register(parser: argparse.ArgumentParser) -> None:
+    """Attach this module's CLI flags to `parser`. Called by quant_llm_wiki.cli."""
+    parser.add_argument("--source-dir", default=str(DEFAULT_SOURCE_DIR), help="Source directory, default articles/raw.")
+    parser.add_argument("--dry-run", action="store_true", help="Preview moves without changing files.")
+    parser.set_defaults(func=_run)
+
+
+def _run(args) -> int:
+    """The module's command body. Receives parsed args from the dispatcher."""
+    source_dir = Path(args.source_dir).expanduser().resolve()
+    results = sync_by_status(source_dir, dry_run=args.dry_run)
+    moved = [r for r in results if r.moved]
+    skipped = [r for r in results if not r.moved]
+    summary = {
+        "source_dir": str(source_dir),
+        "dry_run": bool(args.dry_run),
+        "total": len(results),
+        "moved": len(moved),
+        "skipped": len(skipped),
+        "moved_items": [
+            {"article_dir": r.article_dir, "status": r.status, "target_dir": r.target_dir}
+            for r in moved
+        ],
+        "skipped_items": [
+            {"article_dir": r.article_dir, "status": r.status, "reason": r.reason}
+            for r in skipped
+        ],
+    }
+    print(json.dumps(summary, ensure_ascii=False, indent=2))
+    return 0
+
+
 def parse_status(article_md: Path) -> str:
     text = article_md.read_text(encoding="utf-8", errors="ignore")
     if text.startswith("---\n"):
@@ -125,28 +157,13 @@ def sync_by_status(source_dir: Path, dry_run: bool) -> list[SyncResult]:
 
 
 def main() -> int:
-    args = parse_args()
-    source_dir = Path(args.source_dir).expanduser().resolve()
-    results = sync_by_status(source_dir, dry_run=args.dry_run)
-    moved = [r for r in results if r.moved]
-    skipped = [r for r in results if not r.moved]
-    summary = {
-        "source_dir": str(source_dir),
-        "dry_run": bool(args.dry_run),
-        "total": len(results),
-        "moved": len(moved),
-        "skipped": len(skipped),
-        "moved_items": [
-            {"article_dir": r.article_dir, "status": r.status, "target_dir": r.target_dir}
-            for r in moved
-        ],
-        "skipped_items": [
-            {"article_dir": r.article_dir, "status": r.status, "reason": r.reason}
-            for r in skipped
-        ],
-    }
-    print(json.dumps(summary, ensure_ascii=False, indent=2))
-    return 0
+    """Standalone entry: python -m quant_llm_wiki.sync ..."""
+    parser = argparse.ArgumentParser(
+        description="Move article folders from raw to reviewed/high-value based on frontmatter status."
+    )
+    register(parser)
+    args = parser.parse_args()
+    return args.func(args)
 
 
 if __name__ == "__main__":

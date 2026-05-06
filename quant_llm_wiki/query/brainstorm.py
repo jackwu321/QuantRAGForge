@@ -108,6 +108,148 @@ def parse_args() -> argparse.Namespace:
     return parser.parse_args()
 
 
+def _add_common_args(parser: argparse.ArgumentParser) -> None:
+    """Attach the shared --query/--top-k/... flags. Called by both register_*."""
+    parser.add_argument("--query", required=True, help="Question or brainstorm goal.")
+    parser.add_argument("--kb-root", default=str(ROOT), help="Knowledge base root directory.")
+    parser.add_argument("--wiki-dir", help="Wiki directory, default <kb-root>/wiki.")
+    parser.add_argument("--schema-dir", help="Schema directory, default <kb-root>/schema.")
+    parser.add_argument("--vector-store-dir", help="Vector store directory, default <kb-root>/vector_store.")
+    parser.add_argument(
+        "--source-dir",
+        default="reviewed,high-value",
+        help="Comma-separated article source directories under articles/, default reviewed,high-value.",
+    )
+    parser.add_argument("--content-type", help="Filter by comma-separated content_type values.")
+    parser.add_argument("--market", help="Filter by comma-separated market values.")
+    parser.add_argument("--asset-type", help="Filter by comma-separated asset_type values.")
+    parser.add_argument("--strategy-type", help="Filter by comma-separated strategy_type values.")
+    parser.add_argument("--brainstorm-value", help="Filter by comma-separated brainstorm_value values.")
+    parser.add_argument("--top-k", type=int, default=DEFAULT_TOP_K, help="Maximum number of retrieved blocks.")
+    parser.add_argument(
+        "--retrieval",
+        choices=["keyword", "vector", "hybrid"],
+        default=DEFAULT_RETRIEVAL_MODE,
+        help="Retrieval mode: keyword, vector, or hybrid.",
+    )
+    parser.add_argument("--output-file", help="Optional explicit output file path.")
+    parser.add_argument("--dry-run", action="store_true", help="Print retrieved context without calling the model.")
+
+
+def register_ask(parser: argparse.ArgumentParser) -> None:
+    """Attach ask subcommand flags to `parser`. Called by quant_llm_wiki.cli."""
+    _add_common_args(parser)
+    parser.set_defaults(func=_run_ask)
+
+
+def register_brainstorm(parser: argparse.ArgumentParser) -> None:
+    """Attach brainstorm subcommand flags to `parser`. Called by quant_llm_wiki.cli."""
+    _add_common_args(parser)
+    parser.set_defaults(func=_run_brainstorm)
+
+
+def _run_ask(args) -> int:
+    """The ask command body. Receives parsed args from the dispatcher."""
+    args.command = "ask"
+    kb_root = Path(args.kb_root).expanduser().resolve()
+    wiki_dir = Path(args.wiki_dir).expanduser().resolve() if args.wiki_dir else kb_root / "wiki"
+    schema_dir = Path(args.schema_dir).expanduser().resolve() if args.schema_dir else kb_root / "schema"
+    vector_store_dir = Path(args.vector_store_dir).expanduser().resolve() if args.vector_store_dir else kb_root / "vector_store"
+    source_dirs = parse_csv_arg(args.source_dir) or list(DEFAULT_SOURCE_DIRS)
+    notes = load_notes(kb_root, source_dirs)
+    filtered_notes = apply_filters(notes, args)
+    if not filtered_notes:
+        print("no candidate notes found after applying source/status/metadata filters")
+        return 1
+
+    retrieved, resolved_mode, warning = retrieve_blocks(
+        filtered_notes,
+        args.query,
+        args.top_k,
+        args.command,
+        args.retrieval,
+        vector_store_dir,
+        kb_root=kb_root,
+        wiki_dir=wiki_dir,
+        schema_dir=schema_dir,
+    )
+    if warning:
+        print(f"warning: {warning}")
+    print(f"retrieval_mode: {resolved_mode}")
+    if not retrieved:
+        print("no relevant knowledge blocks found for the query")
+        return 1
+
+    context = format_context(retrieved)
+    if args.dry_run:
+        print(context)
+        return 0
+
+    result = call_zhipu_chat(build_messages(args.command, args.query, context))
+    if args.command == "brainstorm":
+        result = rethink(result, retrieved, args.query, vector_store_dir)
+    output_path = (
+        Path(args.output_file).expanduser().resolve()
+        if args.output_file
+        else default_output_path(args.command, args.query, kb_root / "outputs" / "brainstorms")
+    )
+    saved = write_output(output_path, args.query, args.command, retrieved, result)
+    print(result)
+    print(f"\nsaved: {saved}")
+    return 0
+
+
+def _run_brainstorm(args) -> int:
+    """The brainstorm command body. Receives parsed args from the dispatcher."""
+    args.command = "brainstorm"
+    kb_root = Path(args.kb_root).expanduser().resolve()
+    wiki_dir = Path(args.wiki_dir).expanduser().resolve() if args.wiki_dir else kb_root / "wiki"
+    schema_dir = Path(args.schema_dir).expanduser().resolve() if args.schema_dir else kb_root / "schema"
+    vector_store_dir = Path(args.vector_store_dir).expanduser().resolve() if args.vector_store_dir else kb_root / "vector_store"
+    source_dirs = parse_csv_arg(args.source_dir) or list(DEFAULT_SOURCE_DIRS)
+    notes = load_notes(kb_root, source_dirs)
+    filtered_notes = apply_filters(notes, args)
+    if not filtered_notes:
+        print("no candidate notes found after applying source/status/metadata filters")
+        return 1
+
+    retrieved, resolved_mode, warning = retrieve_blocks(
+        filtered_notes,
+        args.query,
+        args.top_k,
+        args.command,
+        args.retrieval,
+        vector_store_dir,
+        kb_root=kb_root,
+        wiki_dir=wiki_dir,
+        schema_dir=schema_dir,
+    )
+    if warning:
+        print(f"warning: {warning}")
+    print(f"retrieval_mode: {resolved_mode}")
+    if not retrieved:
+        print("no relevant knowledge blocks found for the query")
+        return 1
+
+    context = format_context(retrieved)
+    if args.dry_run:
+        print(context)
+        return 0
+
+    result = call_zhipu_chat(build_messages(args.command, args.query, context))
+    if args.command == "brainstorm":
+        result = rethink(result, retrieved, args.query, vector_store_dir)
+    output_path = (
+        Path(args.output_file).expanduser().resolve()
+        if args.output_file
+        else default_output_path(args.command, args.query, kb_root / "outputs" / "brainstorms")
+    )
+    saved = write_output(output_path, args.query, args.command, retrieved, result)
+    print(result)
+    print(f"\nsaved: {saved}")
+    return 0
+
+
 def apply_filters(notes: list[KnowledgeNote], args: argparse.Namespace) -> list[KnowledgeNote]:
     return filter_notes(
         notes,
@@ -678,53 +820,13 @@ def write_output(path: Path, query: str, command: str, blocks: list[KnowledgeBlo
 
 
 def main() -> int:
-    args = parse_args()
-    kb_root = Path(args.kb_root).expanduser().resolve()
-    wiki_dir = Path(args.wiki_dir).expanduser().resolve() if args.wiki_dir else kb_root / "wiki"
-    schema_dir = Path(args.schema_dir).expanduser().resolve() if args.schema_dir else kb_root / "schema"
-    vector_store_dir = Path(args.vector_store_dir).expanduser().resolve() if args.vector_store_dir else kb_root / "vector_store"
-    source_dirs = parse_csv_arg(args.source_dir) or list(DEFAULT_SOURCE_DIRS)
-    notes = load_notes(kb_root, source_dirs)
-    filtered_notes = apply_filters(notes, args)
-    if not filtered_notes:
-        print("no candidate notes found after applying source/status/metadata filters")
-        return 1
-
-    retrieved, resolved_mode, warning = retrieve_blocks(
-        filtered_notes,
-        args.query,
-        args.top_k,
-        args.command,
-        args.retrieval,
-        vector_store_dir,
-        kb_root=kb_root,
-        wiki_dir=wiki_dir,
-        schema_dir=schema_dir,
-    )
-    if warning:
-        print(f"warning: {warning}")
-    print(f"retrieval_mode: {resolved_mode}")
-    if not retrieved:
-        print("no relevant knowledge blocks found for the query")
-        return 1
-
-    context = format_context(retrieved)
-    if args.dry_run:
-        print(context)
-        return 0
-
-    result = call_zhipu_chat(build_messages(args.command, args.query, context))
-    if args.command == "brainstorm":
-        result = rethink(result, retrieved, args.query, vector_store_dir)
-    output_path = (
-        Path(args.output_file).expanduser().resolve()
-        if args.output_file
-        else default_output_path(args.command, args.query, kb_root / "outputs" / "brainstorms")
-    )
-    saved = write_output(output_path, args.query, args.command, retrieved, result)
-    print(result)
-    print(f"\nsaved: {saved}")
-    return 0
+    """Standalone entry: python -m quant_llm_wiki.query.brainstorm ask|brainstorm ..."""
+    parser = argparse.ArgumentParser(description="Read the knowledge base and generate answers or brainstorm ideas.")
+    sub = parser.add_subparsers(dest="command", required=True)
+    register_ask(sub.add_parser("ask"))
+    register_brainstorm(sub.add_parser("brainstorm"))
+    args = parser.parse_args()
+    return args.func(args)
 
 
 if __name__ == "__main__":

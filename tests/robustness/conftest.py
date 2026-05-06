@@ -50,7 +50,7 @@ class RobustTestBase(unittest.TestCase):
 
         # Import modules whose constants need patching
         import quant_llm_wiki.shared as kb_shared
-        import agent.tools as tools_mod
+        import quant_llm_wiki.agent.tools as tools_mod
         import quant_llm_wiki.embed as embed_mod
         import quant_llm_wiki.query.brainstorm as brainstorm_mod
 
@@ -80,7 +80,7 @@ class RobustTestBase(unittest.TestCase):
 
     def tearDown(self):
         import quant_llm_wiki.shared as kb_shared
-        import agent.tools as tools_mod
+        import quant_llm_wiki.agent.tools as tools_mod
         import quant_llm_wiki.embed as embed_mod
         import quant_llm_wiki.query.brainstorm as brainstorm_mod
 

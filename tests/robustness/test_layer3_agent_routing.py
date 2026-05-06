@@ -23,8 +23,8 @@ class TestAgentRouting(RobustTestBase):
     def _run_agent_with_fake_llm(self, tool_name, tool_args, user_message="test"):
         """Build agent with FakeChatOpenAI, invoke it, return result and fake LLM."""
         from langgraph.prebuilt import create_react_agent
-        from agent.tools import ALL_TOOLS
-        from agent.prompts import SYSTEM_PROMPT
+        from quant_llm_wiki.agent.tools import ALL_TOOLS
+        from quant_llm_wiki.agent.prompts import SYSTEM_PROMPT
 
         fake_llm = FakeChatOpenAI(
             tool_sequence=[(tool_name, tool_args)],
@@ -115,8 +115,8 @@ class TestMultiTurnRouting(RobustTestBase):
 
     def test_review_then_set_status(self):
         from langgraph.prebuilt import create_react_agent
-        from agent.tools import ALL_TOOLS
-        from agent.prompts import SYSTEM_PROMPT
+        from quant_llm_wiki.agent.tools import ALL_TOOLS
+        from quant_llm_wiki.agent.prompts import SYSTEM_PROMPT
 
         article_dir = ArticleFixtureFactory.create_raw_article(
             self.tmp_root, "multi_turn_article", title="Multi-Turn Test"

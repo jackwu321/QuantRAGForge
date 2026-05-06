@@ -574,7 +574,7 @@ class TestToolAPIFailures(RobustTestBase):
     @patch("quant_llm_wiki.shared.get_llm_config", return_value=("fake-key", "https://fake.url/v4", "glm-4.7"))
     @patch("quant_llm_wiki.shared.post_llm_json")
     def test_enrich_articles_api_failure(self, mock_post, mock_config, mock_enrich_config):
-        from agent.tools import enrich_articles
+        from quant_llm_wiki.agent.tools import enrich_articles
 
         mock_post.side_effect = requests_lib.exceptions.ConnectionError("API unreachable")
 
@@ -592,7 +592,7 @@ class TestToolAPIFailures(RobustTestBase):
     @patch("quant_llm_wiki.shared.call_llm_chat")
     @patch("quant_llm_wiki.shared.get_llm_config", return_value=("fake-key", "https://fake.url/v4", "glm-4.7"))
     def test_query_kb_api_failure(self, mock_config, mock_chat):
-        from agent.tools import query_knowledge_base
+        from quant_llm_wiki.agent.tools import query_knowledge_base
 
         mock_chat.side_effect = requests_lib.exceptions.ReadTimeout("Read timed out")
 
@@ -613,7 +613,7 @@ class TestToolAPIFailures(RobustTestBase):
     @patch("quant_llm_wiki.shared.embed_text")
     @patch("quant_llm_wiki.shared.get_llm_config", return_value=("fake-key", "https://fake.url/v4", "glm-4.7"))
     def test_embed_knowledge_api_failure(self, mock_config, mock_embed):
-        from agent.tools import embed_knowledge
+        from quant_llm_wiki.agent.tools import embed_knowledge
 
         mock_embed.side_effect = requests_lib.exceptions.HTTPError("503 Service Unavailable")
 

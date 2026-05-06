@@ -25,12 +25,12 @@ from tests.robustness.conftest import (
 class TestSetArticleStatusRobust(RobustTestBase):
 
     def test_empty_article_paths_list(self):
-        from agent.tools import set_article_status
+        from quant_llm_wiki.agent.tools import set_article_status
         result = set_article_status.invoke({"article_paths": [], "status": "reviewed"})
         self.assertIn("0", result)
 
     def test_nonexistent_directory(self):
-        from agent.tools import set_article_status
+        from quant_llm_wiki.agent.tools import set_article_status
         result = set_article_status.invoke(
             {"article_paths": ["/nonexistent/path/xyz"], "status": "reviewed"}
         )
@@ -38,7 +38,7 @@ class TestSetArticleStatusRobust(RobustTestBase):
 
     def test_article_without_status_line(self):
         """Frontmatter exists but has no status: field — tests insert branch."""
-        from agent.tools import set_article_status
+        from quant_llm_wiki.agent.tools import set_article_status
 
         article_dir = self.tmp_root / "raw" / "no_status"
         article_dir.mkdir(parents=True)
@@ -55,7 +55,7 @@ class TestSetArticleStatusRobust(RobustTestBase):
 
     def test_article_with_no_frontmatter(self):
         """File has no --- delimiters at all."""
-        from agent.tools import set_article_status
+        from quant_llm_wiki.agent.tools import set_article_status
 
         article_dir = self.tmp_root / "raw" / "no_fm"
         article_dir.mkdir(parents=True)
@@ -68,7 +68,7 @@ class TestSetArticleStatusRobust(RobustTestBase):
 
     def test_duplicate_status_update_idempotent(self):
         """Setting status to the same value twice should not duplicate the line."""
-        from agent.tools import set_article_status
+        from quant_llm_wiki.agent.tools import set_article_status
 
         article_dir = ArticleFixtureFactory.create_raw_article(
             self.tmp_root, "idem", status="raw"
@@ -85,7 +85,7 @@ class TestSetArticleStatusRobust(RobustTestBase):
 
     def test_status_update_different_values(self):
         """Setting status twice to different values should update correctly."""
-        from agent.tools import set_article_status
+        from quant_llm_wiki.agent.tools import set_article_status
 
         article_dir = ArticleFixtureFactory.create_raw_article(
             self.tmp_root, "diff", status="raw"
@@ -101,7 +101,7 @@ class TestSetArticleStatusRobust(RobustTestBase):
         self.assertNotIn("status: reviewed", content)
 
     def test_unicode_chinese_path(self):
-        from agent.tools import set_article_status
+        from quant_llm_wiki.agent.tools import set_article_status
 
         article_dir = ArticleFixtureFactory.create_raw_article(
             self.tmp_root, "量化策略研究", title="中文标题文章"
@@ -122,13 +122,13 @@ class TestSetArticleStatusRobust(RobustTestBase):
 class TestListArticlesRobust(RobustTestBase):
 
     def test_empty_knowledge_base(self):
-        from agent.tools import list_articles
+        from quant_llm_wiki.agent.tools import list_articles
         result = list_articles.invoke({"source_dir": "raw"})
         self.assertIn("0 articles", result)
 
     def test_article_md_missing(self):
         """Directory exists but article.md is absent."""
-        from agent.tools import list_articles
+        from quant_llm_wiki.agent.tools import list_articles
 
         (self.tmp_root / "raw" / "empty_dir").mkdir(parents=True)
         result = list_articles.invoke({"source_dir": "raw"})
@@ -136,12 +136,12 @@ class TestListArticlesRobust(RobustTestBase):
         self.assertIn("0 articles", result)
 
     def test_nonexistent_source_dir(self):
-        from agent.tools import list_articles
+        from quant_llm_wiki.agent.tools import list_articles
         result = list_articles.invoke({"source_dir": "nonexistent_stage"})
         self.assertIn("0 articles", result)
 
     def test_mixed_populated_and_empty_dirs(self):
-        from agent.tools import list_articles
+        from quant_llm_wiki.agent.tools import list_articles
 
         ArticleFixtureFactory.create_raw_article(self.tmp_root, "real_article", title="Real Article")
         (self.tmp_root / "raw" / "empty_dir").mkdir()
@@ -158,7 +158,7 @@ class TestListArticlesRobust(RobustTestBase):
 class TestReviewArticlesRobust(RobustTestBase):
 
     def test_summary_truncation(self):
-        from agent.tools import review_articles
+        from quant_llm_wiki.agent.tools import review_articles
 
         long_summary = "A" * 200
         ArticleFixtureFactory.create_raw_article(
@@ -169,7 +169,7 @@ class TestReviewArticlesRobust(RobustTestBase):
         self.assertNotIn("A" * 200, result)
 
     def test_missing_frontmatter_fields(self):
-        from agent.tools import review_articles
+        from quant_llm_wiki.agent.tools import review_articles
 
         article_dir = self.tmp_root / "raw" / "minimal"
         article_dir.mkdir(parents=True)
@@ -190,22 +190,22 @@ class TestReviewArticlesRobust(RobustTestBase):
 class TestIngestArticleRobust(RobustTestBase):
 
     def test_no_input_provided(self):
-        from agent.tools import ingest_article
+        from quant_llm_wiki.agent.tools import ingest_article
         result = ingest_article.invoke({})
         self.assertIn("provide", result.lower())
 
     def test_empty_urls_string(self):
-        from agent.tools import ingest_article
+        from quant_llm_wiki.agent.tools import ingest_article
         result = ingest_article.invoke({"urls": ""})
         self.assertIn("provide", result.lower())
 
     def test_html_file_not_found(self):
-        from agent.tools import ingest_article
+        from quant_llm_wiki.agent.tools import ingest_article
         result = ingest_article.invoke({"html_file": "/nonexistent/file.html"})
         self.assertIn("Error", result)
 
     def test_url_list_file_not_found(self):
-        from agent.tools import ingest_article
+        from quant_llm_wiki.agent.tools import ingest_article
         result = ingest_article.invoke({"url_list_file": "/nonexistent/urls.txt"})
         self.assertIn("Error", result)
 
@@ -213,7 +213,7 @@ class TestIngestArticleRobust(RobustTestBase):
     @patch("quant_llm_wiki.ingest.wechat.download_binary", return_value=(b"", "image/png"))
     def test_duplicate_url_skipped(self, mock_download, mock_fetch):
         """Second ingestion of same URL should be skipped."""
-        from agent.tools import ingest_article
+        from quant_llm_wiki.agent.tools import ingest_article
         import quant_llm_wiki.ingest.wechat as ingest_mod
 
         original_raw_dir = ingest_mod.ARTICLES_RAW_DIR
@@ -234,7 +234,7 @@ class TestIngestArticleRobust(RobustTestBase):
     @patch("quant_llm_wiki.ingest.wechat.download_binary", return_value=(b"", "image/png"))
     def test_duplicate_url_force_reingest(self, mock_download, mock_fetch):
         """With force=True, duplicate should be re-ingested."""
-        from agent.tools import ingest_article
+        from quant_llm_wiki.agent.tools import ingest_article
         import quant_llm_wiki.ingest.wechat as ingest_mod
 
         original_raw_dir = ingest_mod.ARTICLES_RAW_DIR
@@ -255,7 +255,7 @@ class TestIngestArticleRobust(RobustTestBase):
     @patch("quant_llm_wiki.ingest.wechat.download_binary", return_value=(b"", "image/png"))
     def test_duplicate_detected_in_raw(self, mock_download, mock_fetch):
         """Article already in raw/ should be detected as duplicate on re-ingest."""
-        from agent.tools import ingest_article
+        from quant_llm_wiki.agent.tools import ingest_article
         import quant_llm_wiki.ingest.wechat as ingest_mod
 
         original_raw_dir = ingest_mod.ARTICLES_RAW_DIR
@@ -280,14 +280,14 @@ class TestIngestArticleRobust(RobustTestBase):
 class TestEmbedKnowledgeRobust(RobustTestBase):
 
     def test_no_articles_to_embed(self):
-        from agent.tools import embed_knowledge
+        from quant_llm_wiki.agent.tools import embed_knowledge
         result = embed_knowledge.invoke({})
         self.assertIn("No articles", result)
 
     @patch("quant_llm_wiki.shared.embed_text")
     @patch("quant_llm_wiki.shared.get_llm_config", return_value=("fake-key", "https://fake.url/v4", "glm-4.7"))
     def test_single_article_embed(self, mock_config, mock_embed):
-        from agent.tools import embed_knowledge
+        from quant_llm_wiki.agent.tools import embed_knowledge
 
         mock_embed.side_effect = lambda text, model=None: MockLLMFactory.make_embed_text_mock()(text, model)
         ArticleFixtureFactory.create_reviewed_article(
@@ -303,7 +303,7 @@ class TestEmbedKnowledgeRobust(RobustTestBase):
     @patch("quant_llm_wiki.shared.embed_text")
     @patch("quant_llm_wiki.shared.get_llm_config", return_value=("fake-key", "https://fake.url/v4", "glm-4.7"))
     def test_force_reindex(self, mock_config, mock_embed):
-        from agent.tools import embed_knowledge
+        from quant_llm_wiki.agent.tools import embed_knowledge
 
         mock_embed.side_effect = lambda text, model=None: MockLLMFactory.make_embed_text_mock()(text, model)
         ArticleFixtureFactory.create_reviewed_article(
@@ -325,7 +325,7 @@ class TestEmbedKnowledgeRobust(RobustTestBase):
     @patch("quant_llm_wiki.shared.embed_text")
     @patch("quant_llm_wiki.shared.get_llm_config", return_value=("fake-key", "https://fake.url/v4", "glm-4.7"))
     def test_embedding_failure_mid_batch(self, mock_config, mock_embed):
-        from agent.tools import embed_knowledge
+        from quant_llm_wiki.agent.tools import embed_knowledge
 
         call_count = [0]
 
@@ -356,12 +356,12 @@ class TestEmbedKnowledgeRobust(RobustTestBase):
 class TestQueryKnowledgeBaseRobust(RobustTestBase):
 
     def test_invalid_mode(self):
-        from agent.tools import query_knowledge_base
+        from quant_llm_wiki.agent.tools import query_knowledge_base
         result = query_knowledge_base.invoke({"query": "test", "mode": "invalid"})
         self.assertIn("Invalid mode", result)
 
     def test_no_matching_filters(self):
-        from agent.tools import query_knowledge_base
+        from quant_llm_wiki.agent.tools import query_knowledge_base
 
         ArticleFixtureFactory.create_reviewed_article(
             self.tmp_root, "method_article", content_type="methodology"
@@ -374,7 +374,7 @@ class TestQueryKnowledgeBaseRobust(RobustTestBase):
         self.assertIn("No candidate", result)
 
     def test_empty_query(self):
-        from agent.tools import query_knowledge_base
+        from quant_llm_wiki.agent.tools import query_knowledge_base
         result = query_knowledge_base.invoke({"query": "", "mode": "ask"})
         self.assertIsInstance(result, str)
 
