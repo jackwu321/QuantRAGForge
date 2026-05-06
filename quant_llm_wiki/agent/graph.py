@@ -3,15 +3,15 @@ from __future__ import annotations
 import sys
 from pathlib import Path
 
-ROOT = Path(__file__).resolve().parent.parent
+ROOT = Path(__file__).resolve().parent.parent.parent
 if str(ROOT) not in sys.path:
     sys.path.insert(0, str(ROOT))
 
 from langchain_openai import ChatOpenAI
 from langgraph.prebuilt import create_react_agent
 
-from agent.prompts import SYSTEM_PROMPT
-from agent.tools import ALL_TOOLS
+from quant_llm_wiki.agent.prompts import SYSTEM_PROMPT
+from quant_llm_wiki.agent.tools import ALL_TOOLS
 from quant_llm_wiki.shared import get_llm_config
 
 

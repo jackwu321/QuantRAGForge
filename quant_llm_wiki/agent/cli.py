@@ -16,7 +16,7 @@ from pathlib import Path
 
 from langchain_core.messages import HumanMessage
 
-ROOT = Path(__file__).resolve().parent
+ROOT = Path(__file__).resolve().parent.parent.parent
 if str(ROOT) not in sys.path:
     sys.path.insert(0, str(ROOT))
 
@@ -81,10 +81,15 @@ def interactive_loop(agent) -> None:
             print(f"\nError ({type(exc).__name__}): {exc}")
 
 
-def main() -> int:
-    args = parse_args()
+def register(parser: argparse.ArgumentParser) -> None:
+    """Attach this module's CLI flags to `parser`. Called by quant_llm_wiki.cli."""
+    parser.add_argument("--query", help="Single query to run (non-interactive mode)")
+    parser.set_defaults(func=_run)
 
-    from agent import create_agent
+
+def _run(args) -> int:
+    """The module's command body. Receives parsed args from the dispatcher."""
+    from quant_llm_wiki.agent import create_agent
 
     agent = create_agent()
 
@@ -99,6 +104,14 @@ def main() -> int:
 
     interactive_loop(agent)
     return 0
+
+
+def main() -> int:
+    """Standalone entry: python -m quant_llm_wiki.agent.cli ..."""
+    parser = argparse.ArgumentParser(description="Knowledge base agent CLI")
+    register(parser)
+    args = parser.parse_args()
+    return args.func(args)
 
 
 if __name__ == "__main__":

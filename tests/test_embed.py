@@ -2,7 +2,7 @@ import tempfile
 import unittest
 from pathlib import Path
 
-import embed_knowledge_base as mod
+import quant_llm_wiki.embed as mod
 import quant_llm_wiki.shared as kb_shared
 
 

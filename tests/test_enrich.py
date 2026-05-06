@@ -4,7 +4,7 @@ import unittest
 from pathlib import Path
 from unittest.mock import patch
 
-import enrich_articles_with_llm as mod
+import quant_llm_wiki.enrich as mod
 import quant_llm_wiki.shared as kb_shared
 
 
@@ -123,7 +123,7 @@ signal_framework:
             else:
                 mod.os.environ["ZHIPU_CODE_BLOCK_CHAR_LIMIT"] = old_char_limit
 
-    @patch("enrich_articles_with_llm.get_llm_config")
+    @patch("quant_llm_wiki.enrich.get_llm_config")
     def test_update_source_json_sets_llm_metadata(self, mock_config) -> None:
         mock_config.return_value = ("key", "https://api.example.com/v1", "test-model")
         updated = mod.update_source_json({}, {"summary": "x"}, "{\"summary\":\"x\"}")

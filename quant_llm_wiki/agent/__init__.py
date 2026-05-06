@@ -1,3 +1,3 @@
-from agent.graph import create_agent
+from quant_llm_wiki.agent.graph import create_agent
 
 __all__ = ["create_agent"]
