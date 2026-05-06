@@ -10,7 +10,7 @@ from datetime import datetime
 from pathlib import Path
 from typing import Any
 
-from kb_shared import (
+from quant_llm_wiki.shared import (
     get_llm_config,
     post_llm_json,
     require_requests,

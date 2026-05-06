@@ -4,7 +4,7 @@ from dataclasses import dataclass, field
 from datetime import date
 from pathlib import Path
 
-from kb_shared import parse_frontmatter, ROOT, DEFAULT_SOURCE_DIRS
+from quant_llm_wiki.shared import parse_frontmatter, ROOT, DEFAULT_SOURCE_DIRS
 from wiki_schemas import SourceSummary, serialize_source_summary, ConceptArticle, parse_concept, serialize_concept
 from wiki_compile_llm import (
     ConceptAssignment, ProposedConcept, RecompileResult,

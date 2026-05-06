@@ -28,7 +28,7 @@ from dataclasses import dataclass, field
 from datetime import datetime, timezone
 from pathlib import Path
 
-from kb_shared import parse_frontmatter
+from quant_llm_wiki.shared import parse_frontmatter
 from wiki_state import (
     ConceptEntry,
     load_wiki_state,

@@ -11,7 +11,7 @@ try:
 except ImportError:  # pragma: no cover - runtime dependency
     chromadb = None
 
-from kb_shared import (
+from quant_llm_wiki.shared import (
     ROOT,
     DEFAULT_SOURCE_DIRS,
     KnowledgeBlock,

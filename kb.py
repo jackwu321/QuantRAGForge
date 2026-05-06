@@ -160,7 +160,7 @@ def cmd_lint(args: argparse.Namespace) -> int:
 
 def cmd_compile(args: argparse.Namespace) -> int:
     from wiki_compile import compile_wiki
-    from kb_shared import DEFAULT_SOURCE_DIRS
+    from quant_llm_wiki.shared import DEFAULT_SOURCE_DIRS
 
     kb_root = Path(getattr(args, "kb_root", str(ROOT))).expanduser().resolve()
     report = compile_wiki(

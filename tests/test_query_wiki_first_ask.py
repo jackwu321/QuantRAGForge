@@ -10,7 +10,7 @@ from pathlib import Path
 from unittest.mock import patch
 
 import brainstorm_from_kb as mod
-from kb_shared import KnowledgeNote
+from quant_llm_wiki.shared import KnowledgeNote
 from wiki_seed import bootstrap_wiki
 
 

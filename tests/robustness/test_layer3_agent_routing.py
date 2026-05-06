@@ -71,8 +71,8 @@ class TestAgentRouting(RobustTestBase):
         content = (article_dir / "article.md").read_text(encoding="utf-8")
         self.assertIn("status: high_value", content)
 
-    @patch("kb_shared.embed_text")
-    @patch("kb_shared.get_llm_config", return_value=("fake-key", "https://fake.url/v4", "glm-4.7"))
+    @patch("quant_llm_wiki.shared.embed_text")
+    @patch("quant_llm_wiki.shared.get_llm_config", return_value=("fake-key", "https://fake.url/v4", "glm-4.7"))
     def test_route_embed_knowledge(self, mock_config, mock_embed):
         from tests.robustness.conftest import MockLLMFactory
         mock_embed.side_effect = lambda text, model=None: MockLLMFactory.make_embed_text_mock()(text, model)

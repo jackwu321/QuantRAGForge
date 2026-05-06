@@ -49,7 +49,7 @@ class RobustTestBase(unittest.TestCase):
             (self.tmp_root / d).mkdir(parents=True, exist_ok=True)
 
         # Import modules whose constants need patching
-        import kb_shared
+        import quant_llm_wiki.shared as kb_shared
         import agent.tools as tools_mod
         import embed_knowledge_base as embed_mod
         import brainstorm_from_kb as brainstorm_mod
@@ -79,7 +79,7 @@ class RobustTestBase(unittest.TestCase):
         brainstorm_mod.WIKI_DIR = self.tmp_root / "wiki"
 
     def tearDown(self):
-        import kb_shared
+        import quant_llm_wiki.shared as kb_shared
         import agent.tools as tools_mod
         import embed_knowledge_base as embed_mod
         import brainstorm_from_kb as brainstorm_mod

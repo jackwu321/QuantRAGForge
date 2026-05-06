@@ -4,7 +4,7 @@ import json
 import re
 from dataclasses import dataclass
 
-from kb_shared import call_llm_chat
+from quant_llm_wiki.shared import call_llm_chat
 
 
 @dataclass

@@ -12,7 +12,7 @@ from langgraph.prebuilt import create_react_agent
 
 from agent.prompts import SYSTEM_PROMPT
 from agent.tools import ALL_TOOLS
-from kb_shared import get_llm_config
+from quant_llm_wiki.shared import get_llm_config
 
 
 def create_agent():

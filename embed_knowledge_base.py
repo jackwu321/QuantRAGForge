@@ -11,7 +11,7 @@ try:
 except ImportError:  # pragma: no cover - runtime dependency
     chromadb = None
 
-from kb_shared import (
+from quant_llm_wiki.shared import (
     ROOT,
     DEFAULT_EMBEDDING_MODEL,
     DEFAULT_SOURCE_DIRS,
@@ -266,7 +266,7 @@ def iter_wiki_blocks(wiki_dir: Path):
     filter to `where={"kb_layer": "wiki_concept", "status": "stable"}` and rerank
     using the score fields.
     """
-    from kb_shared import KnowledgeNote
+    from quant_llm_wiki.shared import KnowledgeNote
     from wiki_schemas import parse_concept, parse_source_summary
     from wiki_state import load_wiki_state
 

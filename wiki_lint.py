@@ -27,7 +27,7 @@ from dataclasses import asdict, dataclass, field
 from pathlib import Path
 from typing import Literal
 
-from kb_shared import ROOT, WIKI_DIR, WIKI_LINT_PATH, WIKI_STATE_PATH
+from quant_llm_wiki.shared import ROOT, WIKI_DIR, WIKI_LINT_PATH, WIKI_STATE_PATH
 from wiki_schemas import (
     ConceptArticle,
     bullet_sources,
@@ -443,7 +443,7 @@ def auto_fix(kb_root: Path, report: WikiLintReport) -> int:
     from wiki_compile_llm import recompile_concept
     from wiki_state import load_wiki_state, save_wiki_state, update_concept_entry
     from wiki_schemas import ConceptArticle, parse_concept
-    from kb_shared import parse_frontmatter
+    from quant_llm_wiki.shared import parse_frontmatter
 
     schema_text = load_schema_context(kb_root / "schema")
     state = load_wiki_state(kb_root / "wiki" / "state.json")

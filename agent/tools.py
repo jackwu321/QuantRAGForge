@@ -14,7 +14,7 @@ ROOT = Path(__file__).resolve().parent.parent
 if str(ROOT) not in sys.path:
     sys.path.insert(0, str(ROOT))
 
-from kb_shared import (
+from quant_llm_wiki.shared import (
     ROOT as KB_ROOT,
     DEFAULT_SOURCE_DIRS,
     discover_article_dirs,
@@ -387,8 +387,8 @@ def embed_knowledge(force: bool = False) -> str:
         INDEX_MANIFEST_FILENAME,
         INDEX_SCHEMA_VERSION,
     )
-    from kb_shared import WIKI_DIR
-    from kb_shared import (
+    from quant_llm_wiki.shared import WIKI_DIR
+    from quant_llm_wiki.shared import (
         article_content_hash,
         build_blocks,
         embed_text,
@@ -489,7 +489,7 @@ def query_knowledge_base(
         default_output_path,
         VECTOR_STORE_DIR,
     )
-    from kb_shared import call_zhipu_chat
+    from quant_llm_wiki.shared import call_zhipu_chat
 
     if mode not in ("ask", "brainstorm"):
         return f"Invalid mode '{mode}'. Must be 'ask' or 'brainstorm'."

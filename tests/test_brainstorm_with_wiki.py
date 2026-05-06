@@ -49,7 +49,7 @@ class ConceptRetrievalLexicalFallbackTests(unittest.TestCase):
 
 class FormatContextTests(unittest.TestCase):
     def test_format_context_distinguishes_wiki_from_article(self) -> None:
-        from kb_shared import KnowledgeBlock, KnowledgeNote
+        from quant_llm_wiki.shared import KnowledgeBlock, KnowledgeNote
         wiki_block = KnowledgeBlock(
             note=KnowledgeNote(
                 article_dir=Path("wiki/concepts/momentum.md"),

@@ -22,9 +22,9 @@ class TestFullPipelineReviewToQuery(RobustTestBase):
     """End-to-end: create raw article → review → set status → embed → query.
     Articles stay in raw/; the frontmatter status field decides their stage."""
 
-    @patch("kb_shared.embed_text")
-    @patch("kb_shared.post_llm_json")
-    @patch("kb_shared.get_llm_config", return_value=("fake-key", "https://fake.url/v4", "glm-4.7"))
+    @patch("quant_llm_wiki.shared.embed_text")
+    @patch("quant_llm_wiki.shared.post_llm_json")
+    @patch("quant_llm_wiki.shared.get_llm_config", return_value=("fake-key", "https://fake.url/v4", "glm-4.7"))
     def test_full_pipeline(self, mock_config, mock_post, mock_embed):
         from agent.tools import (
             review_articles,
@@ -76,8 +76,8 @@ class TestFullPipelineReviewToQuery(RobustTestBase):
 class TestPipelineMultipleArticles(RobustTestBase):
     """Multiple articles with different target statuses."""
 
-    @patch("kb_shared.embed_text")
-    @patch("kb_shared.get_llm_config", return_value=("fake-key", "https://fake.url/v4", "glm-4.7"))
+    @patch("quant_llm_wiki.shared.embed_text")
+    @patch("quant_llm_wiki.shared.get_llm_config", return_value=("fake-key", "https://fake.url/v4", "glm-4.7"))
     def test_multiple_articles_different_statuses(self, mock_config, mock_embed):
         from agent.tools import set_article_status, embed_knowledge
 
@@ -115,8 +115,8 @@ class TestPipelineMultipleArticles(RobustTestBase):
 class TestPipelineErrorRecoveryEmbedPartial(RobustTestBase):
     """Embed partially fails — one article succeeds, another fails."""
 
-    @patch("kb_shared.embed_text")
-    @patch("kb_shared.get_llm_config", return_value=("fake-key", "https://fake.url/v4", "glm-4.7"))
+    @patch("quant_llm_wiki.shared.embed_text")
+    @patch("quant_llm_wiki.shared.get_llm_config", return_value=("fake-key", "https://fake.url/v4", "glm-4.7"))
     def test_partial_embed_failure(self, mock_config, mock_embed):
         from agent.tools import embed_knowledge
 
@@ -152,8 +152,8 @@ class TestPipelineErrorRecoveryEmbedPartial(RobustTestBase):
 class TestIdempotentEmbed(RobustTestBase):
     """Embedding twice without force should skip on second run."""
 
-    @patch("kb_shared.embed_text")
-    @patch("kb_shared.get_llm_config", return_value=("fake-key", "https://fake.url/v4", "glm-4.7"))
+    @patch("quant_llm_wiki.shared.embed_text")
+    @patch("quant_llm_wiki.shared.get_llm_config", return_value=("fake-key", "https://fake.url/v4", "glm-4.7"))
     def test_idempotent(self, mock_config, mock_embed):
         from agent.tools import embed_knowledge
 
@@ -176,8 +176,8 @@ class TestIdempotentEmbed(RobustTestBase):
 class TestSyncThenEmbedRoundtrip(RobustTestBase):
     """Create reviewed articles directly, embed, verify index populated."""
 
-    @patch("kb_shared.embed_text")
-    @patch("kb_shared.get_llm_config", return_value=("fake-key", "https://fake.url/v4", "glm-4.7"))
+    @patch("quant_llm_wiki.shared.embed_text")
+    @patch("quant_llm_wiki.shared.get_llm_config", return_value=("fake-key", "https://fake.url/v4", "glm-4.7"))
     def test_roundtrip(self, mock_config, mock_embed):
         from agent.tools import embed_knowledge, list_articles
 

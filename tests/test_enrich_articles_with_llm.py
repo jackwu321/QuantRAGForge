@@ -5,7 +5,7 @@ from pathlib import Path
 from unittest.mock import patch
 
 import enrich_articles_with_llm as mod
-import kb_shared
+import quant_llm_wiki.shared as kb_shared
 
 
 class EnrichArticlesWithLlmTests(unittest.TestCase):

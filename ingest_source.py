@@ -7,7 +7,7 @@ from datetime import datetime
 from pathlib import Path
 from urllib.parse import urlparse
 
-from kb_shared import ROOT
+from quant_llm_wiki.shared import ROOT
 import _web_extract
 import _pdf_extract
 

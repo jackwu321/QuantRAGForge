@@ -154,7 +154,7 @@ class CheckNoveltyTests(unittest.TestCase):
 
 
 from rethink_layer import score_traceability, QualityScore
-from kb_shared import KnowledgeNote, KnowledgeBlock
+from quant_llm_wiki.shared import KnowledgeNote, KnowledgeBlock
 
 
 class ScoreTraceabilityTests(unittest.TestCase):

@@ -3,7 +3,7 @@ import unittest
 from pathlib import Path
 
 import embed_knowledge_base as mod
-import kb_shared
+import quant_llm_wiki.shared as kb_shared
 
 
 class EmbedKnowledgeBaseTests(unittest.TestCase):
@@ -62,7 +62,7 @@ class EmbedKnowledgeBaseTests(unittest.TestCase):
 
 class EmbedWikiTests(unittest.TestCase):
     def test_block_metadata_includes_kb_layer(self) -> None:
-        from kb_shared import KnowledgeNote, KnowledgeBlock
+        from quant_llm_wiki.shared import KnowledgeNote, KnowledgeBlock
         note = kb_shared.KnowledgeNote(
             article_dir=Path("a"), source_dir="reviewed",
             frontmatter={"content_type": "methodology", "brainstorm_value": "high"},

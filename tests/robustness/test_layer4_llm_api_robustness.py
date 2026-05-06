@@ -56,14 +56,14 @@ class TestConnectionFailures(unittest.TestCase):
     """Test post_llm_json behavior under network failures."""
 
     def setUp(self):
-        import kb_shared
+        import quant_llm_wiki.shared as kb_shared
         kb_shared._last_llm_call_ts = 0.0
 
-    @patch("kb_shared.get_llm_config", side_effect=_mock_get_llm_config)
-    @patch("kb_shared.time.sleep")
-    @patch("kb_shared.requests.post")
+    @patch("quant_llm_wiki.shared.get_llm_config", side_effect=_mock_get_llm_config)
+    @patch("quant_llm_wiki.shared.time.sleep")
+    @patch("quant_llm_wiki.shared.requests.post")
     def test_connection_timeout(self, mock_post, mock_sleep, mock_config):
-        from kb_shared import post_llm_json
+        from quant_llm_wiki.shared import post_llm_json
 
         mock_post.side_effect = requests_lib.exceptions.ConnectTimeout("Connection timed out")
 
@@ -73,11 +73,11 @@ class TestConnectionFailures(unittest.TestCase):
         # Default max_retries=2 → 3 total attempts
         self.assertEqual(mock_post.call_count, 3)
 
-    @patch("kb_shared.get_llm_config", side_effect=_mock_get_llm_config)
-    @patch("kb_shared.time.sleep")
-    @patch("kb_shared.requests.post")
+    @patch("quant_llm_wiki.shared.get_llm_config", side_effect=_mock_get_llm_config)
+    @patch("quant_llm_wiki.shared.time.sleep")
+    @patch("quant_llm_wiki.shared.requests.post")
     def test_read_timeout(self, mock_post, mock_sleep, mock_config):
-        from kb_shared import post_llm_json
+        from quant_llm_wiki.shared import post_llm_json
 
         mock_post.side_effect = requests_lib.exceptions.ReadTimeout("Read timed out")
 
@@ -86,11 +86,11 @@ class TestConnectionFailures(unittest.TestCase):
 
         self.assertEqual(mock_post.call_count, 3)
 
-    @patch("kb_shared.get_llm_config", side_effect=_mock_get_llm_config)
-    @patch("kb_shared.time.sleep")
-    @patch("kb_shared.requests.post")
+    @patch("quant_llm_wiki.shared.get_llm_config", side_effect=_mock_get_llm_config)
+    @patch("quant_llm_wiki.shared.time.sleep")
+    @patch("quant_llm_wiki.shared.requests.post")
     def test_connection_refused(self, mock_post, mock_sleep, mock_config):
-        from kb_shared import post_llm_json
+        from quant_llm_wiki.shared import post_llm_json
 
         mock_post.side_effect = requests_lib.exceptions.ConnectionError("Connection refused")
 
@@ -99,11 +99,11 @@ class TestConnectionFailures(unittest.TestCase):
 
         self.assertEqual(mock_post.call_count, 3)
 
-    @patch("kb_shared.get_llm_config", side_effect=_mock_get_llm_config)
-    @patch("kb_shared.time.sleep")
-    @patch("kb_shared.requests.post")
+    @patch("quant_llm_wiki.shared.get_llm_config", side_effect=_mock_get_llm_config)
+    @patch("quant_llm_wiki.shared.time.sleep")
+    @patch("quant_llm_wiki.shared.requests.post")
     def test_dns_resolution_failure(self, mock_post, mock_sleep, mock_config):
-        from kb_shared import post_llm_json
+        from quant_llm_wiki.shared import post_llm_json
 
         mock_post.side_effect = requests_lib.exceptions.ConnectionError(
             "Name or service not known"
@@ -114,11 +114,11 @@ class TestConnectionFailures(unittest.TestCase):
 
         self.assertIn("Name or service not known", str(ctx.exception))
 
-    @patch("kb_shared.get_llm_config", side_effect=_mock_get_llm_config)
-    @patch("kb_shared.time.sleep")
-    @patch("kb_shared.requests.post")
+    @patch("quant_llm_wiki.shared.get_llm_config", side_effect=_mock_get_llm_config)
+    @patch("quant_llm_wiki.shared.time.sleep")
+    @patch("quant_llm_wiki.shared.requests.post")
     def test_ssl_error(self, mock_post, mock_sleep, mock_config):
-        from kb_shared import post_llm_json
+        from quant_llm_wiki.shared import post_llm_json
 
         mock_post.side_effect = requests_lib.exceptions.SSLError("SSL certificate verify failed")
 
@@ -142,14 +142,14 @@ class TestHTTPErrors(unittest.TestCase):
     """Test post_llm_json behavior with HTTP error responses."""
 
     def setUp(self):
-        import kb_shared
+        import quant_llm_wiki.shared as kb_shared
         kb_shared._last_llm_call_ts = 0.0
 
-    @patch("kb_shared.get_llm_config", side_effect=_mock_get_llm_config)
-    @patch("kb_shared.time.sleep")
-    @patch("kb_shared.requests.post")
+    @patch("quant_llm_wiki.shared.get_llm_config", side_effect=_mock_get_llm_config)
+    @patch("quant_llm_wiki.shared.time.sleep")
+    @patch("quant_llm_wiki.shared.requests.post")
     def test_http_401_unauthorized(self, mock_post, mock_sleep, mock_config):
-        from kb_shared import post_llm_json
+        from quant_llm_wiki.shared import post_llm_json
 
         http_error = requests_lib.exceptions.HTTPError("401 Unauthorized")
         mock_post.return_value = _make_mock_response(401, raise_for_status=http_error)
@@ -157,11 +157,11 @@ class TestHTTPErrors(unittest.TestCase):
         with self.assertRaises(requests_lib.exceptions.HTTPError):
             post_llm_json("/chat/completions", {"model": "test", "messages": []})
 
-    @patch("kb_shared.get_llm_config", side_effect=_mock_get_llm_config)
-    @patch("kb_shared.time.sleep")
-    @patch("kb_shared.requests.post")
+    @patch("quant_llm_wiki.shared.get_llm_config", side_effect=_mock_get_llm_config)
+    @patch("quant_llm_wiki.shared.time.sleep")
+    @patch("quant_llm_wiki.shared.requests.post")
     def test_http_429_rate_limit(self, mock_post, mock_sleep, mock_config):
-        from kb_shared import post_llm_json
+        from quant_llm_wiki.shared import post_llm_json
 
         http_error = requests_lib.exceptions.HTTPError("429 Too Many Requests")
         mock_post.return_value = _make_mock_response(429, raise_for_status=http_error)
@@ -172,11 +172,11 @@ class TestHTTPErrors(unittest.TestCase):
         # Should retry
         self.assertEqual(mock_post.call_count, 3)
 
-    @patch("kb_shared.get_llm_config", side_effect=_mock_get_llm_config)
-    @patch("kb_shared.time.sleep")
-    @patch("kb_shared.requests.post")
+    @patch("quant_llm_wiki.shared.get_llm_config", side_effect=_mock_get_llm_config)
+    @patch("quant_llm_wiki.shared.time.sleep")
+    @patch("quant_llm_wiki.shared.requests.post")
     def test_http_500_server_error(self, mock_post, mock_sleep, mock_config):
-        from kb_shared import post_llm_json
+        from quant_llm_wiki.shared import post_llm_json
 
         http_error = requests_lib.exceptions.HTTPError("500 Internal Server Error")
         mock_post.return_value = _make_mock_response(500, raise_for_status=http_error)
@@ -186,11 +186,11 @@ class TestHTTPErrors(unittest.TestCase):
 
         self.assertEqual(mock_post.call_count, 3)
 
-    @patch("kb_shared.get_llm_config", side_effect=_mock_get_llm_config)
-    @patch("kb_shared.time.sleep")
-    @patch("kb_shared.requests.post")
+    @patch("quant_llm_wiki.shared.get_llm_config", side_effect=_mock_get_llm_config)
+    @patch("quant_llm_wiki.shared.time.sleep")
+    @patch("quant_llm_wiki.shared.requests.post")
     def test_http_502_bad_gateway(self, mock_post, mock_sleep, mock_config):
-        from kb_shared import post_llm_json
+        from quant_llm_wiki.shared import post_llm_json
 
         http_error = requests_lib.exceptions.HTTPError("502 Bad Gateway")
         mock_post.return_value = _make_mock_response(502, raise_for_status=http_error)
@@ -200,11 +200,11 @@ class TestHTTPErrors(unittest.TestCase):
 
         self.assertEqual(mock_post.call_count, 3)
 
-    @patch("kb_shared.get_llm_config", side_effect=_mock_get_llm_config)
-    @patch("kb_shared.time.sleep")
-    @patch("kb_shared.requests.post")
+    @patch("quant_llm_wiki.shared.get_llm_config", side_effect=_mock_get_llm_config)
+    @patch("quant_llm_wiki.shared.time.sleep")
+    @patch("quant_llm_wiki.shared.requests.post")
     def test_http_503_service_unavailable(self, mock_post, mock_sleep, mock_config):
-        from kb_shared import post_llm_json
+        from quant_llm_wiki.shared import post_llm_json
 
         http_error = requests_lib.exceptions.HTTPError("503 Service Unavailable")
         mock_post.return_value = _make_mock_response(503, raise_for_status=http_error)
@@ -229,15 +229,15 @@ class TestRetryBehavior(unittest.TestCase):
     """Test retry mechanics of post_llm_json."""
 
     def setUp(self):
-        import kb_shared
+        import quant_llm_wiki.shared as kb_shared
         kb_shared._last_llm_call_ts = 0.0
 
-    @patch("kb_shared.get_llm_config", side_effect=_mock_get_llm_config)
-    @patch("kb_shared.time.sleep")
-    @patch("kb_shared.requests.post")
+    @patch("quant_llm_wiki.shared.get_llm_config", side_effect=_mock_get_llm_config)
+    @patch("quant_llm_wiki.shared.time.sleep")
+    @patch("quant_llm_wiki.shared.requests.post")
     @patch.dict(os.environ, {"LLM_MAX_RETRIES": "3"})
     def test_retry_count_matches_config(self, mock_post, mock_sleep, mock_config):
-        from kb_shared import post_llm_json
+        from quant_llm_wiki.shared import post_llm_json
 
         mock_post.side_effect = requests_lib.exceptions.ConnectionError("fail")
 
@@ -247,11 +247,11 @@ class TestRetryBehavior(unittest.TestCase):
         # 3 retries + 1 initial = 4 attempts
         self.assertEqual(mock_post.call_count, 4)
 
-    @patch("kb_shared.get_llm_config", side_effect=_mock_get_llm_config)
-    @patch("kb_shared.time.sleep")
-    @patch("kb_shared.requests.post")
+    @patch("quant_llm_wiki.shared.get_llm_config", side_effect=_mock_get_llm_config)
+    @patch("quant_llm_wiki.shared.time.sleep")
+    @patch("quant_llm_wiki.shared.requests.post")
     def test_retry_succeeds_on_second_attempt(self, mock_post, mock_sleep, mock_config):
-        from kb_shared import post_llm_json
+        from quant_llm_wiki.shared import post_llm_json
 
         success_response = _make_mock_response(200, {"result": "ok"})
         mock_post.side_effect = [
@@ -263,13 +263,13 @@ class TestRetryBehavior(unittest.TestCase):
         self.assertEqual(result, {"result": "ok"})
         self.assertEqual(mock_post.call_count, 2)
 
-    @patch("kb_shared.random.uniform", return_value=0.0)
-    @patch("kb_shared.get_llm_config", side_effect=_mock_get_llm_config)
-    @patch("kb_shared.time.sleep")
-    @patch("kb_shared.requests.post")
+    @patch("quant_llm_wiki.shared.random.uniform", return_value=0.0)
+    @patch("quant_llm_wiki.shared.get_llm_config", side_effect=_mock_get_llm_config)
+    @patch("quant_llm_wiki.shared.time.sleep")
+    @patch("quant_llm_wiki.shared.requests.post")
     @patch.dict(os.environ, {"LLM_MAX_RETRIES": "2"})
     def test_retry_backoff_timing(self, mock_post, mock_sleep, mock_config, mock_uniform):
-        from kb_shared import post_llm_json
+        from quant_llm_wiki.shared import post_llm_json
 
         mock_post.side_effect = requests_lib.exceptions.ConnectionError("fail")
 
@@ -283,12 +283,12 @@ class TestRetryBehavior(unittest.TestCase):
         self.assertAlmostEqual(calls[0], 1.0, places=2)
         self.assertAlmostEqual(calls[1], 2.0, places=2)
 
-    @patch("kb_shared.get_llm_config", side_effect=_mock_get_llm_config)
-    @patch("kb_shared.time.sleep")
-    @patch("kb_shared.requests.post")
+    @patch("quant_llm_wiki.shared.get_llm_config", side_effect=_mock_get_llm_config)
+    @patch("quant_llm_wiki.shared.time.sleep")
+    @patch("quant_llm_wiki.shared.requests.post")
     @patch.dict(os.environ, {"LLM_MAX_RETRIES": "0"})
     def test_zero_retries_fails_immediately(self, mock_post, mock_sleep, mock_config):
-        from kb_shared import post_llm_json
+        from quant_llm_wiki.shared import post_llm_json
 
         mock_post.side_effect = requests_lib.exceptions.ConnectionError("fail")
 
@@ -298,12 +298,12 @@ class TestRetryBehavior(unittest.TestCase):
         self.assertEqual(mock_post.call_count, 1)
         mock_sleep.assert_not_called()
 
-    @patch("kb_shared.get_llm_config", side_effect=_mock_get_llm_config)
-    @patch("kb_shared.time.sleep")
-    @patch("kb_shared.requests.post")
+    @patch("quant_llm_wiki.shared.get_llm_config", side_effect=_mock_get_llm_config)
+    @patch("quant_llm_wiki.shared.time.sleep")
+    @patch("quant_llm_wiki.shared.requests.post")
     def test_error_message_includes_url_and_attempts(self, mock_post, mock_sleep, mock_config):
         """Verify error messages include the target URL and attempt count."""
-        from kb_shared import post_llm_json
+        from quant_llm_wiki.shared import post_llm_json
 
         mock_post.side_effect = requests_lib.exceptions.ConnectionError("Connection refused")
 
@@ -315,16 +315,16 @@ class TestRetryBehavior(unittest.TestCase):
         self.assertIn("attempt", error_msg)
         self.assertIn("Connection refused", error_msg)
 
-    @patch("kb_shared.random.uniform", return_value=0.0)
-    @patch("kb_shared.get_llm_config", side_effect=_mock_get_llm_config)
-    @patch("kb_shared.time.sleep")
-    @patch("kb_shared.requests.post")
+    @patch("quant_llm_wiki.shared.random.uniform", return_value=0.0)
+    @patch("quant_llm_wiki.shared.get_llm_config", side_effect=_mock_get_llm_config)
+    @patch("quant_llm_wiki.shared.time.sleep")
+    @patch("quant_llm_wiki.shared.requests.post")
     @patch.dict(os.environ, {"LLM_MAX_RETRIES": "1"})
     def test_429_uses_longer_backoff_than_network_errors(
         self, mock_post, mock_sleep, mock_config, mock_uniform
     ):
         """429 uses base=5s; network errors use base=1s."""
-        from kb_shared import post_llm_json
+        from quant_llm_wiki.shared import post_llm_json
 
         # 429 case
         http_429 = requests_lib.exceptions.HTTPError("429")
@@ -341,13 +341,13 @@ class TestRetryBehavior(unittest.TestCase):
         self.assertEqual(len(sleeps_429), 1)
         self.assertAlmostEqual(sleeps_429[0], 5.0, places=2)
 
-    @patch("kb_shared.get_llm_config", side_effect=_mock_get_llm_config)
-    @patch("kb_shared.time.sleep")
-    @patch("kb_shared.requests.post")
+    @patch("quant_llm_wiki.shared.get_llm_config", side_effect=_mock_get_llm_config)
+    @patch("quant_llm_wiki.shared.time.sleep")
+    @patch("quant_llm_wiki.shared.requests.post")
     @patch.dict(os.environ, {"LLM_MAX_RETRIES": "1"})
     def test_429_honors_retry_after_header(self, mock_post, mock_sleep, mock_config):
         """When the server sends Retry-After, use that exact value (capped at 60s)."""
-        from kb_shared import post_llm_json
+        from quant_llm_wiki.shared import post_llm_json
 
         http_429 = requests_lib.exceptions.HTTPError("429 Too Many Requests")
         resp = _make_mock_response(429, raise_for_status=http_429)
@@ -362,13 +362,13 @@ class TestRetryBehavior(unittest.TestCase):
         self.assertEqual(len(sleeps), 1)
         self.assertAlmostEqual(sleeps[0], 7.0, places=2)
 
-    @patch("kb_shared.get_llm_config", side_effect=_mock_get_llm_config)
-    @patch("kb_shared.time.sleep")
-    @patch("kb_shared.requests.post")
+    @patch("quant_llm_wiki.shared.get_llm_config", side_effect=_mock_get_llm_config)
+    @patch("quant_llm_wiki.shared.time.sleep")
+    @patch("quant_llm_wiki.shared.requests.post")
     @patch.dict(os.environ, {"LLM_MAX_RETRIES": "1"})
     def test_429_caps_retry_after_at_60_seconds(self, mock_post, mock_sleep, mock_config):
         """A pathologically large Retry-After value is capped at 60s."""
-        from kb_shared import post_llm_json
+        from quant_llm_wiki.shared import post_llm_json
 
         http_429 = requests_lib.exceptions.HTTPError("429")
         resp = _make_mock_response(429, raise_for_status=http_429)
@@ -393,15 +393,15 @@ class TestMinIntervalRateLimiter(unittest.TestCase):
     """Test that LLM_MIN_INTERVAL_SECONDS spaces calls apart."""
 
     def setUp(self):
-        import kb_shared
+        import quant_llm_wiki.shared as kb_shared
         kb_shared._last_llm_call_ts = 0.0
 
-    @patch("kb_shared.get_llm_config", side_effect=_mock_get_llm_config)
-    @patch("kb_shared.time.sleep")
-    @patch("kb_shared.requests.post")
+    @patch("quant_llm_wiki.shared.get_llm_config", side_effect=_mock_get_llm_config)
+    @patch("quant_llm_wiki.shared.time.sleep")
+    @patch("quant_llm_wiki.shared.requests.post")
     @patch.dict(os.environ, {"LLM_MIN_INTERVAL_SECONDS": "0.4"}, clear=False)
     def test_second_call_waits_for_min_interval(self, mock_post, mock_sleep, mock_config):
-        from kb_shared import post_llm_json
+        from quant_llm_wiki.shared import post_llm_json
 
         mock_post.return_value = _make_mock_response(200, {"ok": True})
 
@@ -415,12 +415,12 @@ class TestMinIntervalRateLimiter(unittest.TestCase):
         self.assertGreater(sleeps[0], 0.3)
         self.assertLessEqual(sleeps[0], 0.4)
 
-    @patch("kb_shared.get_llm_config", side_effect=_mock_get_llm_config)
-    @patch("kb_shared.time.sleep")
-    @patch("kb_shared.requests.post")
+    @patch("quant_llm_wiki.shared.get_llm_config", side_effect=_mock_get_llm_config)
+    @patch("quant_llm_wiki.shared.time.sleep")
+    @patch("quant_llm_wiki.shared.requests.post")
     @patch.dict(os.environ, {"LLM_MIN_INTERVAL_SECONDS": "0"}, clear=False)
     def test_zero_interval_disables_rate_limiter(self, mock_post, mock_sleep, mock_config):
-        from kb_shared import post_llm_json
+        from quant_llm_wiki.shared import post_llm_json
 
         mock_post.return_value = _make_mock_response(200, {"ok": True})
 
@@ -440,13 +440,13 @@ class TestMalformedResponses(unittest.TestCase):
     """Test handling of unexpected API response formats."""
 
     def setUp(self):
-        import kb_shared
+        import quant_llm_wiki.shared as kb_shared
         kb_shared._last_llm_call_ts = 0.0
 
-    @patch("kb_shared.get_llm_config", side_effect=_mock_get_llm_config)
-    @patch("kb_shared.requests.post")
+    @patch("quant_llm_wiki.shared.get_llm_config", side_effect=_mock_get_llm_config)
+    @patch("quant_llm_wiki.shared.requests.post")
     def test_invalid_json_response(self, mock_post, mock_config):
-        from kb_shared import post_llm_json
+        from quant_llm_wiki.shared import post_llm_json
 
         resp = MagicMock()
         resp.raise_for_status.return_value = None
@@ -456,30 +456,30 @@ class TestMalformedResponses(unittest.TestCase):
         with self.assertRaises(json.JSONDecodeError):
             post_llm_json("/chat/completions", {"model": "test", "messages": []})
 
-    @patch("kb_shared.get_llm_config", side_effect=_mock_get_llm_config)
-    @patch("kb_shared.requests.post")
+    @patch("quant_llm_wiki.shared.get_llm_config", side_effect=_mock_get_llm_config)
+    @patch("quant_llm_wiki.shared.requests.post")
     def test_missing_choices_key(self, mock_post, mock_config):
-        from kb_shared import call_llm_chat
+        from quant_llm_wiki.shared import call_llm_chat
 
         mock_post.return_value = _make_mock_response(200, {"data": "unexpected"})
 
         with self.assertRaises(KeyError):
             call_llm_chat([{"role": "user", "content": "test"}])
 
-    @patch("kb_shared.get_llm_config", side_effect=_mock_get_llm_config)
-    @patch("kb_shared.requests.post")
+    @patch("quant_llm_wiki.shared.get_llm_config", side_effect=_mock_get_llm_config)
+    @patch("quant_llm_wiki.shared.requests.post")
     def test_missing_embedding_data(self, mock_post, mock_config):
-        from kb_shared import embed_text
+        from quant_llm_wiki.shared import embed_text
 
         mock_post.return_value = _make_mock_response(200, {"choices": []})
 
         with self.assertRaises((KeyError, IndexError)):
             embed_text("test text")
 
-    @patch("kb_shared.get_llm_config", side_effect=_mock_get_llm_config)
-    @patch("kb_shared.requests.post")
+    @patch("quant_llm_wiki.shared.get_llm_config", side_effect=_mock_get_llm_config)
+    @patch("quant_llm_wiki.shared.requests.post")
     def test_truncated_embedding_vector(self, mock_post, mock_config):
-        from kb_shared import embed_text
+        from quant_llm_wiki.shared import embed_text
 
         short_embedding = [0.1, 0.2, 0.3]
         mock_post.return_value = _make_mock_response(
@@ -490,10 +490,10 @@ class TestMalformedResponses(unittest.TestCase):
         # embed_text does no dimension validation — returns as-is
         self.assertEqual(result, short_embedding)
 
-    @patch("kb_shared.get_llm_config", side_effect=_mock_get_llm_config)
-    @patch("kb_shared.requests.post")
+    @patch("quant_llm_wiki.shared.get_llm_config", side_effect=_mock_get_llm_config)
+    @patch("quant_llm_wiki.shared.requests.post")
     def test_empty_chat_response_content(self, mock_post, mock_config):
-        from kb_shared import call_llm_chat
+        from quant_llm_wiki.shared import call_llm_chat
 
         mock_post.return_value = _make_mock_response(
             200, {"choices": [{"message": {"content": ""}}]}
@@ -513,7 +513,7 @@ class TestConfigurationRobustness(unittest.TestCase):
     """Test get_llm_config and related config functions under edge conditions."""
 
     def setUp(self):
-        import kb_shared
+        import quant_llm_wiki.shared as kb_shared
         kb_shared._last_llm_call_ts = 0.0
 
     @patch.dict(
@@ -522,7 +522,7 @@ class TestConfigurationRobustness(unittest.TestCase):
         clear=False,
     )
     def test_missing_api_key_raises(self):
-        from kb_shared import get_llm_config
+        from quant_llm_wiki.shared import get_llm_config
 
         with self.assertRaises(RuntimeError) as ctx:
             get_llm_config()
@@ -530,7 +530,7 @@ class TestConfigurationRobustness(unittest.TestCase):
 
     @patch.dict(os.environ, {"LLM_API_KEY": "env-key-999"}, clear=False)
     def test_api_key_from_env(self):
-        from kb_shared import get_llm_config
+        from quant_llm_wiki.shared import get_llm_config
 
         api_key, _, _ = get_llm_config()
         self.assertEqual(api_key, "env-key-999")
@@ -541,17 +541,17 @@ class TestConfigurationRobustness(unittest.TestCase):
         clear=False,
     )
     def test_legacy_zhipu_env_fallback(self):
-        from kb_shared import get_llm_config
+        from quant_llm_wiki.shared import get_llm_config
 
         api_key, _, _ = get_llm_config()
         self.assertEqual(api_key, "zhipu-legacy-key")
 
-    @patch("kb_shared.get_llm_config", side_effect=_mock_get_llm_config)
-    @patch("kb_shared.time.sleep")
-    @patch("kb_shared.requests.post")
+    @patch("quant_llm_wiki.shared.get_llm_config", side_effect=_mock_get_llm_config)
+    @patch("quant_llm_wiki.shared.time.sleep")
+    @patch("quant_llm_wiki.shared.requests.post")
     @patch.dict(os.environ, {"LLM_CONNECT_TIMEOUT": "5", "LLM_READ_TIMEOUT": "30"}, clear=False)
     def test_custom_timeout_from_env(self, mock_post, mock_sleep, mock_config):
-        from kb_shared import post_llm_json
+        from quant_llm_wiki.shared import post_llm_json
 
         mock_post.return_value = _make_mock_response(200, {"result": "ok"})
 
@@ -571,8 +571,8 @@ class TestToolAPIFailures(RobustTestBase):
     """Test that tools gracefully handle API failures and return error strings."""
 
     @patch("enrich_articles_with_llm.get_llm_config", return_value=("fake-key", "https://fake.url/v4", "glm-4.7"))
-    @patch("kb_shared.get_llm_config", return_value=("fake-key", "https://fake.url/v4", "glm-4.7"))
-    @patch("kb_shared.post_llm_json")
+    @patch("quant_llm_wiki.shared.get_llm_config", return_value=("fake-key", "https://fake.url/v4", "glm-4.7"))
+    @patch("quant_llm_wiki.shared.post_llm_json")
     def test_enrich_articles_api_failure(self, mock_post, mock_config, mock_enrich_config):
         from agent.tools import enrich_articles
 
@@ -589,8 +589,8 @@ class TestToolAPIFailures(RobustTestBase):
             f"Expected failure indication in: {result}"
         )
 
-    @patch("kb_shared.call_llm_chat")
-    @patch("kb_shared.get_llm_config", return_value=("fake-key", "https://fake.url/v4", "glm-4.7"))
+    @patch("quant_llm_wiki.shared.call_llm_chat")
+    @patch("quant_llm_wiki.shared.get_llm_config", return_value=("fake-key", "https://fake.url/v4", "glm-4.7"))
     def test_query_kb_api_failure(self, mock_config, mock_chat):
         from agent.tools import query_knowledge_base
 
@@ -610,8 +610,8 @@ class TestToolAPIFailures(RobustTestBase):
             f"Expected error in: {result}"
         )
 
-    @patch("kb_shared.embed_text")
-    @patch("kb_shared.get_llm_config", return_value=("fake-key", "https://fake.url/v4", "glm-4.7"))
+    @patch("quant_llm_wiki.shared.embed_text")
+    @patch("quant_llm_wiki.shared.get_llm_config", return_value=("fake-key", "https://fake.url/v4", "glm-4.7"))
     def test_embed_knowledge_api_failure(self, mock_config, mock_embed):
         from agent.tools import embed_knowledge
 

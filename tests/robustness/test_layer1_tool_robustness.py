@@ -284,8 +284,8 @@ class TestEmbedKnowledgeRobust(RobustTestBase):
         result = embed_knowledge.invoke({})
         self.assertIn("No articles", result)
 
-    @patch("kb_shared.embed_text")
-    @patch("kb_shared.get_llm_config", return_value=("fake-key", "https://fake.url/v4", "glm-4.7"))
+    @patch("quant_llm_wiki.shared.embed_text")
+    @patch("quant_llm_wiki.shared.get_llm_config", return_value=("fake-key", "https://fake.url/v4", "glm-4.7"))
     def test_single_article_embed(self, mock_config, mock_embed):
         from agent.tools import embed_knowledge
 
@@ -300,8 +300,8 @@ class TestEmbedKnowledgeRobust(RobustTestBase):
         self.assertIn("1 indexed", result)
         self.assertIn("0 failed", result)
 
-    @patch("kb_shared.embed_text")
-    @patch("kb_shared.get_llm_config", return_value=("fake-key", "https://fake.url/v4", "glm-4.7"))
+    @patch("quant_llm_wiki.shared.embed_text")
+    @patch("quant_llm_wiki.shared.get_llm_config", return_value=("fake-key", "https://fake.url/v4", "glm-4.7"))
     def test_force_reindex(self, mock_config, mock_embed):
         from agent.tools import embed_knowledge
 
@@ -322,8 +322,8 @@ class TestEmbedKnowledgeRobust(RobustTestBase):
         result3 = embed_knowledge.invoke({"force": True})
         self.assertIn("1 indexed", result3)
 
-    @patch("kb_shared.embed_text")
-    @patch("kb_shared.get_llm_config", return_value=("fake-key", "https://fake.url/v4", "glm-4.7"))
+    @patch("quant_llm_wiki.shared.embed_text")
+    @patch("quant_llm_wiki.shared.get_llm_config", return_value=("fake-key", "https://fake.url/v4", "glm-4.7"))
     def test_embedding_failure_mid_batch(self, mock_config, mock_embed):
         from agent.tools import embed_knowledge
 

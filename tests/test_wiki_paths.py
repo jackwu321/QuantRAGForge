@@ -1,7 +1,7 @@
 import unittest
 from pathlib import Path
 
-import kb_shared
+import quant_llm_wiki.shared as kb_shared
 
 
 class WikiPathsTests(unittest.TestCase):

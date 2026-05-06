@@ -11,7 +11,7 @@ try:
 except ImportError:
     chromadb = None
 
-from kb_shared import (
+from quant_llm_wiki.shared import (
     ROOT,
     KnowledgeBlock,
     call_llm_chat,
