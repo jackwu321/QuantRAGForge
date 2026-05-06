@@ -139,7 +139,42 @@ The LangGraph ReAct agent provides 12 tools:
 
 ```
 Quant_LLM_Wiki/
-├── kb.py                           # Unified CLI: ingest | query | lint | compile | embed
+├── pyproject.toml                  # Package metadata + `qlw` console_script entry point
+├── requirements.txt                # Python dependencies (kept for non-pip-install users)
+├── llm_config.example.env          # Example LLM provider config
+├── README.md
+├── LICENSE
+├── kb.py                           # Wiki-first KB CLI: ingest | query | lint | compile | embed
+├── ingest_source.py                # Unified ingest dispatcher (WeChat / web / PDF / HTML)
+├── _wechat.py                      # WeChat-specific extraction
+├── _web_extract.py                 # Generic web extraction (trafilatura)
+├── _pdf_extract.py                 # PDF extraction (pypdf)
+├── _code_math.py                   # Code/math preservation utilities
+├── wiki_schemas.py                 # ConceptArticle / SourceSummary dataclasses
+├── wiki_seed.py                    # Seed taxonomy + bootstrap
+├── wiki_state.py                   # Machine state manifest + scoring (freshness decay etc.)
+├── wiki_compile.py                 # compile_wiki orchestrator (schema-injected, soft-error)
+├── wiki_compile_llm.py             # assign_concepts + recompile_concept LLM wrappers
+├── wiki_index.py                   # INDEX.md generator
+├── wiki_lint.py                    # Schema enforcement + health checks + auto_fix
+├── wiki_maintain.py                # append_query_log + run_maintenance (Steps 6 + 7)
+├── quant_llm_wiki/                 # Restructured Python package (qlib-style)
+│   ├── __init__.py
+│   ├── cli.py                      # `qlw` dispatcher
+│   ├── shared.py                   # Shared utilities, LLM HTTP client, paths, frontmatter
+│   ├── ingest/
+│   │   └── wechat.py               # WeChat-specific ingest
+│   ├── enrich.py                   # LLM enrichment pipeline
+│   ├── embed.py                    # ChromaDB substrate over raw/ + wiki/
+│   ├── sync.py                     # Article status-based file sync
+│   ├── query/
+│   │   ├── brainstorm.py           # query (ask | brainstorm) — wiki-first retrieval
+│   │   └── rethink.py              # Post-generation novelty + quality validation
+│   └── agent/                      # LangGraph agent layer
+│       ├── cli.py                  # Interactive ReAct agent CLI
+│       ├── graph.py
+│       ├── prompts.py
+│       └── tools.py
 ├── raw/                            # Incoming source articles, flat (one dir per article)
 ├── wiki/                           # LLM-built Markdown memory
 │   ├── INDEX.md                    # auto-maintained TOC
@@ -154,51 +189,34 @@ Quant_LLM_Wiki/
 │   ├── source-schema.md
 │   ├── wiki-structure.md
 │   └── operations.md
-├── agent/                          # LangGraph agent layer (12 tools)
-│   ├── graph.py
-│   ├── prompts.py
-│   └── tools.py
-├── _wechat.py                      # WeChat-specific extraction
-├── _web_extract.py                 # Generic web extraction (trafilatura)
-├── _pdf_extract.py                 # PDF extraction (pypdf)
-├── _code_math.py                   # Code/math preservation utilities
-├── ingest_source.py                # Unified ingest dispatcher
-├── ingest_wechat_article.py        # WeChat-specific ingest
-├── enrich_articles_with_llm.py     # LLM enrichment pipeline
-├── kb_shared.py                    # Shared utilities, LLM HTTP client, paths, frontmatter
-├── brainstorm_from_kb.py           # query (ask | brainstorm) — wiki-first retrieval
-├── rethink_layer.py                # Post-generation novelty + quality validation
-├── wiki_schemas.py                 # ConceptArticle / SourceSummary dataclasses
-├── wiki_seed.py                    # Seed taxonomy + bootstrap
-├── wiki_state.py                   # Machine state manifest + scoring (freshness decay etc.)
-├── wiki_compile.py                 # compile_wiki orchestrator (schema-injected, soft-error)
-├── wiki_compile_llm.py             # assign_concepts + recompile_concept LLM wrappers
-├── wiki_index.py                   # INDEX.md generator
-├── wiki_lint.py                    # Schema enforcement + health checks + auto_fix
-├── wiki_maintain.py                # append_query_log + run_maintenance (Steps 6 + 7)
-├── embed_knowledge_base.py         # ChromaDB substrate over raw/ + wiki/
-├── agent_cli.py                    # Interactive ReAct agent CLI
 ├── templates/                      # Article markdown templates (research-note / strategy-note)
-├── tests/                          # unittest suite (262 tests)
+├── tests/                          # unittest suite
 │   ├── robustness/                 # Edge-case tests (Layer 1–4)
 │   ├── test_kb_cli.py              # kb.py CLI dispatch
 │   ├── test_query_wiki_first_ask.py
 │   ├── test_wiki_lint_schema.py    # Schema enforcement + auto_fix
 │   ├── test_wiki_maintain.py       # Query feedback + maintenance
 │   └── test_*.py                   # Per-module coverage
-├── docs/                           # Design specs and usage guides
-├── agent_cli.py                    # Interactive agent CLI
-├── brainstorm_from_kb.py           # RAG Q&A and brainstorm engine
-├── embed_knowledge_base.py         # ChromaDB vector indexing
-├── enrich_articles_with_llm.py     # LLM enrichment pipeline
-├── ingest_wechat_article.py        # Article ingestion (WeChat/HTML)
-├── kb_shared.py                    # Shared utilities and config
-├── rethink_layer.py                # Post-generation idea validation
-├── sync_articles_by_status.py      # Article status-based file sync
-├── llm_config.example.env          # Example LLM provider config
-├── requirements.txt                # Python dependencies
-└── README.md
+└── docs/                           # Design specs and usage guides
 ```
+
+> **Repo / package / command names.** Repo: `Quant_LLM_Wiki`. Package: `quant_llm_wiki`. Console command: `qlw` (installed via `pip install -e .`). The wiki-first KB workflow (`raw/`, `wiki/`, `schema/`) remains driven by `kb.py`; the standalone scripts (enrichment, embedding, brainstorm, agent, sync, single-source ingest) are now subcommands of `qlw`.
+
+### Command Renaming (vs. previous versions)
+
+The standalone scripts at the repo root have moved into `quant_llm_wiki/` and are dispatched through a single `qlw` CLI:
+
+| Old | New |
+|-----|-----|
+| `qlw ingest --url X` | `qlw ingest --url X` |
+| `qlw enrich --limit 10` | `qlw enrich --limit 10` |
+| `qlw embed` | `qlw embed` |
+| `qlw sync` | `qlw sync` |
+| `qlw ask --query Q` | `qlw ask --query Q` |
+| `qlw brainstorm --query Q` | `qlw brainstorm --query Q` |
+| `qlw agent` | `qlw agent` |
+
+Install with `pip install -e .` to put `qlw` on PATH; otherwise use `python -m quant_llm_wiki.cli <subcmd>`. The `kb.py` wiki-first CLI is unchanged.
 
 ## Quick Start
 
@@ -254,9 +272,9 @@ python3 kb.py ingest --url-list urls.txt
 `enrich_articles_with_llm.py` remains a separate step (run before `kb compile` if your raw articles need LLM-derived metadata first):
 
 ```bash
-python3 enrich_articles_with_llm.py                    # all raw articles (concurrent)
-python3 enrich_articles_with_llm.py --limit 10         # first 10 only
-python3 enrich_articles_with_llm.py --concurrency 5    # 5 parallel LLM requests
+qlw enrich                    # all raw articles (concurrent)
+qlw enrich --limit 10         # first 10 only
+qlw enrich --concurrency 5    # 5 parallel LLM requests
 ```
 
 ### 4. Query (wiki-first)
@@ -297,12 +315,12 @@ The interactive agent manages the full pipeline through natural language:
 
 ```bash
 # Interactive mode
-python3 agent_cli.py
+qlw agent
 
 # Single command
-python3 agent_cli.py --query "ingest this article: https://mp.weixin.qq.com/s/..."
-python3 agent_cli.py --query "list all articles"
-python3 agent_cli.py --query "brainstorm: combine factor timing with risk parity"
+qlw agent --query "ingest this article: https://mp.weixin.qq.com/s/..."
+qlw agent --query "list all articles"
+qlw agent --query "brainstorm: combine factor timing with risk parity"
 ```
 
 ### Example Agent Workflow

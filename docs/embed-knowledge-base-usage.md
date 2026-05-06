@@ -13,10 +13,10 @@
 ## 常用命令
 
 ```bash
-python embed_knowledge_base.py
-python embed_knowledge_base.py --dry-run
-python embed_knowledge_base.py --force
-python embed_knowledge_base.py --source-dir reviewed,high-value
+qlw embed
+qlw embed --dry-run
+qlw embed --force
+qlw embed --source-dir reviewed,high-value
 ```
 
 ## 增量逻辑

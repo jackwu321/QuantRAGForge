@@ -63,13 +63,13 @@ pip install requests
 ## 单篇增强
 
 ```bash
-python enrich_articles_with_llm.py --article-dir "D:\work\research\knowledge base\articles\raw\2025-05-06_xxx"
+qlw enrich --article-dir "D:\work\research\knowledge base\articles\raw\2025-05-06_xxx"
 ```
 
 ## 批量增强
 
 ```bash
-python enrich_articles_with_llm.py --articles-root "D:\work\research\knowledge base\articles\raw"
+qlw enrich --articles-root "D:\work\research\knowledge base\articles\raw"
 ```
 
 批量模式结束后会把失败项写入 `sources/processed/llm_failures.txt`。
@@ -83,19 +83,19 @@ python enrich_articles_with_llm.py --articles-root "D:\work\research\knowledge b
 限制批量数量：
 
 ```bash
-python enrich_articles_with_llm.py --articles-root "D:\work\research\knowledge base\articles\raw" --limit 20
+qlw enrich --articles-root "D:\work\research\knowledge base\articles\raw" --limit 20
 ```
 
 ## 只预览不写回
 
 ```bash
-python enrich_articles_with_llm.py --article-dir "D:\work\research\knowledge base\articles\raw\2025-05-06_xxx" --dry-run
+qlw enrich --article-dir "D:\work\research\knowledge base\articles\raw\2025-05-06_xxx" --dry-run
 ```
 
 ## 强制重跑
 
 ```bash
-python enrich_articles_with_llm.py --article-dir "D:\work\research\knowledge base\articles\raw\2025-05-06_xxx" --force
+qlw enrich --article-dir "D:\work\research\knowledge base\articles\raw\2025-05-06_xxx" --force
 ```
 
 ## 写回内容

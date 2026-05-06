@@ -39,37 +39,37 @@ pip install requests beautifulsoup4
 导入单个 URL：
 
 ```bash
-python ingest_wechat_article.py --url "https://mp.weixin.qq.com/s/xxxxx"
+qlw ingest --url "https://mp.weixin.qq.com/s/xxxxx"
 ```
 
 批量导入 URL 列表：
 
 ```bash
-python ingest_wechat_article.py --url-list "D:\\work\\research\\knowledge base\\url list.txt"
+qlw ingest --url-list "D:\\work\\research\\knowledge base\\url list.txt"
 ```
 
 如果工作区根目录存在默认文件 `url list.txt`，也可以直接运行：
 
 ```bash
-python ingest_wechat_article.py
+qlw ingest
 ```
 
 从本地 HTML 入库：
 
 ```bash
-python ingest_wechat_article.py --html-file "D:\\path\\to\\article.html"
+qlw ingest --html-file "D:\\path\\to\\article.html"
 ```
 
 只做解析预览，不写文件：
 
 ```bash
-python ingest_wechat_article.py --url-list "D:\\work\\research\\knowledge base\\url list.txt" --dry-run
+qlw ingest --url-list "D:\\work\\research\\knowledge base\\url list.txt" --dry-run
 ```
 
 手动覆盖分类：
 
 ```bash
-python ingest_wechat_article.py --url-list "D:\\work\\research\\knowledge base\\url list.txt" --content-type allocation
+qlw ingest --url-list "D:\\work\\research\\knowledge base\\url list.txt" --content-type allocation
 ```
 
 ## URL 列表格式
