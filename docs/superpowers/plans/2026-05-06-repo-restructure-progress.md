@@ -23,7 +23,7 @@ If a future session needs to resume: read this file + `git log --oneline | head 
 | Task 2 — move shared + sync | ✅ done | `7e22c87` | 2026-05-06 | Verified by Opus on resume: 265+72 tests OK; smoke output matches baseline; no unaliased stale imports. Commit also touched additional wiki_*.py / kb.py / ingest_source.py files that import kb_shared (post-plan additions) — necessary scope expansion, all import-only. |
 | Task 3 — move ingest_wechat | ✅ done | `fb67a6c` | 2026-05-06 | R099 rename detected. `ROOT = parent.parent.parent` adjusted for new depth (path anchor, not business logic). Scope-creep: `ingest_source.py` (lazy imports) + `tests/robustness/test_layer1_tool_robustness.py` (mock.patch targets) — both import-only. 265+72 OK. |
 | Task 4 — move enrich + embed | ✅ done | `6abba98` | 2026-05-06 | 4× R100 renames. Path-anchor fix in `enrich.py` (`parent` → `parent.parent`); embed had none. Scope-creep: `kb.py`, `tests/robustness/conftest.py`, `tests/robustness/test_layer4_llm_api_robustness.py` — all import/alias/patch only. 265+72 OK. |
-| Task 5 — move brainstorm + rethink (query/) | pending | – | – | |
+| Task 5 — move brainstorm + rethink (query/) | ✅ done | `9956980` | 2026-05-06 | 4× renames (R099/R100/R099/R090). No path-anchor fix needed (both derive paths via shared). Scope-creep: `kb.py`, `tests/test_brainstorm_with_wiki.py`, `tests/test_query_wiki_first_ask.py`, `tests/test_kb_cli.py`, `tests/robustness/conftest.py` — all import/alias/patch only. 265+72 OK. |
 | Task 6 — move agent/ + wire qlw CLI | pending | – | – | |
 | Task 7 — README + docs cleanup | pending | – | – | |
 | Post-flight | – | – | – | |
