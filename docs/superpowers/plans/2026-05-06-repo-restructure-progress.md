@@ -20,7 +20,7 @@ If a future session needs to resume: read this file + `git log --oneline | head 
 |------|--------|------------|-------------|-------|
 | Pre-flight | – | – | – | Baseline test counts captured (see below) |
 | Task 1 — gitignore + pyproject skeleton + remove =1.0.0 | ✅ done | `df683d0` | 2026-05-06 | `=1.0.0` was untracked → removed via `rm` instead of `git rm` (no git impact); tests 262 + 72 OK |
-| Task 2 — move shared + sync | pending | – | – | |
+| Task 2 — move shared + sync | ✅ done | `7e22c87` | 2026-05-06 | Verified by Opus on resume: 265+72 tests OK; smoke output matches baseline; no unaliased stale imports. Commit also touched additional wiki_*.py / kb.py / ingest_source.py files that import kb_shared (post-plan additions) — necessary scope expansion, all import-only. |
 | Task 3 — move ingest_wechat | pending | – | – | |
 | Task 4 — move enrich + embed | pending | – | – | |
 | Task 5 — move brainstorm + rethink (query/) | pending | – | – | |
