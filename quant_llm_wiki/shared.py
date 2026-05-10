@@ -433,6 +433,35 @@ def _backoff_seconds(attempt: int, status: int, response: Any = None) -> float:
     return min(cap, backoff + jitter)
 
 
+_LONE_SURROGATE_RE = re.compile(r"[\ud800-\udfff]")
+
+
+def _sanitize_lone_surrogates(text: str) -> str:
+    """Replace lone UTF-16 surrogate code points (U+D800–U+DFFF) with U+FFFD.
+
+    Some LLM providers occasionally emit raw UTF-16 surrogate halves in JSON
+    string values. Python accepts them in `str` but `str.encode("utf-8")` then
+    raises UnicodeEncodeError, crashing any downstream code that tries to
+    print, log, or write the response.
+    """
+    return _LONE_SURROGATE_RE.sub("�", text)
+
+
+def _sanitize_response_strings(value: Any) -> Any:
+    """Recursively sanitize all string nodes (and dict keys) in a JSON value."""
+    if isinstance(value, str):
+        return _sanitize_lone_surrogates(value)
+    if isinstance(value, dict):
+        return {
+            (_sanitize_lone_surrogates(k) if isinstance(k, str) else k):
+                _sanitize_response_strings(v)
+            for k, v in value.items()
+        }
+    if isinstance(value, list):
+        return [_sanitize_response_strings(v) for v in value]
+    return value
+
+
 def post_llm_json(path: str, payload: dict[str, Any]) -> dict[str, Any]:
     """POST to the LLM provider's OpenAI-compatible API with retries.
 
@@ -459,7 +488,7 @@ def post_llm_json(path: str, payload: dict[str, Any]) -> dict[str, Any]:
                 timeout=(connect_timeout, read_timeout),
             )
             response.raise_for_status()
-            return response.json()
+            return _sanitize_response_strings(response.json())
         except requests.exceptions.HTTPError as exc:
             response = exc.response
             status = response.status_code if response is not None else 0
