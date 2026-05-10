@@ -269,68 +269,71 @@ export LLM_MODEL="glm-4.7"  # or gpt-4, deepseek-chat, etc.
 
 See [llm_config.example.env](llm_config.example.env) for provider-specific examples (DeepSeek, Moonshot, Qwen, OpenAI, Ollama).
 
-### 3. Ingest, Compile, Embed (one command)
+### 3. Ingest
 
 ```bash
-# Single URL — ingest + auto-compile + auto-embed
-python3 kb.py ingest --url "https://mp.weixin.qq.com/s/..."
-
-# Skip the auto compile/embed
-python3 kb.py ingest --url "..." --no-compile
-
-# Local PDF
-python3 kb.py ingest --pdf-file paper.pdf
+# Single URL (WeChat / web)
+qlw ingest --url "https://mp.weixin.qq.com/s/..."
 
 # Saved WeChat HTML
-python3 kb.py ingest --html-file saved.html
+qlw ingest --html-file saved.html
 
 # Batch from a list (one URL per line)
-python3 kb.py ingest --url-list urls.txt
+qlw ingest --url-list urls.txt
 ```
 
 Each URL has a hard 120 s ceiling; on hit, ingest prints `TIMEOUT <url>: exceeded 120s` and (in batch mode) continues with the next URL. Override via `INGEST_URL_TIMEOUT=<seconds>`. Note: a timed-out URL may leave a partial `articles/raw/<date>_*/` directory behind (same as ordinary `FAILED` cases).
 
-`enrich_articles_with_llm.py` remains a separate step (run before `kb compile` if your raw articles need LLM-derived metadata first):
+> **PDF ingest and one-shot ingest+compile+embed** are currently only in the `kb.py` wiki-first CLI, which requires a clone of the repo — see [Wiki maintenance commands](#wiki-maintenance-commands-clone-required) below.
+
+### 4. Enrich + Embed
 
 ```bash
 qlw enrich                    # all raw articles (concurrent)
 qlw enrich --limit 10         # first 10 only
 qlw enrich --concurrency 5    # 5 parallel LLM requests
+
+qlw embed                     # build/update ChromaDB vector index
 ```
 
 Each article enrichment has a hard 360 s ceiling; on hit, the article is recorded as `failed: timeout: exceeded Ns` and the batch continues. Override via `LLM_ARTICLE_TIMEOUT=<seconds>`. Start / done / TIMEOUT / `[llm-retry]` events are printed to **stderr** (separate from the per-completion `[i/N] ... ok|failed` lines on stdout) so you can see what's happening even when the LLM API is slow or backing off.
 
-### 4. Query (wiki-first)
+### 5. Query (wiki-first)
 
 ```bash
 # Factual Q&A — wiki concepts first, RAG fallback only
-python3 kb.py query --mode ask --query "What momentum factors are discussed?"
+qlw ask --query "What momentum factors are discussed?"
 
 # Brainstorm new ideas (with Rethink Layer + query-feedback)
-python3 kb.py query --mode brainstorm --query "Combine momentum and volatility timing for ETF rotation"
+qlw brainstorm --query "Combine momentum and volatility timing for ETF rotation"
 
 # Show retrieved context only (dry run)
-python3 kb.py query --mode brainstorm --query "..." --dry-run
+qlw brainstorm --query "..." --dry-run
+```
 
-# Run a debug query without filing it back into wiki/queries/
+### Wiki maintenance commands (clone required)
+
+The schema-enforcement and wiki-compilation commands live in `kb.py` at the repo root and are not yet exposed through the `qlw` package CLI. To use them, install in editable mode from a clone (`pip install -e .` from a `git clone`):
+
+```bash
+# Ingest with auto-compile + auto-embed in one shot
+python3 kb.py ingest --url "https://mp.weixin.qq.com/s/..."
+python3 kb.py ingest --pdf-file paper.pdf
+
+# Schema + health audit
+python3 kb.py lint
+python3 kb.py lint --fix                # LLM auto-repair of schema-noncompliant concepts
+python3 kb.py lint --maintain           # gap analysis: unmapped sources, under-supported, stale
+python3 kb.py lint --maintain --apply   # apply query-derived state updates (idempotent)
+
+# Manual wiki compile
+python3 kb.py compile
+
+# Query without filing the log back into wiki/queries/
 python3 kb.py query --mode ask --query "..." --no-file-back
 ```
 
-### 5. Lint + Maintain
-
-```bash
-# Schema + health audit
-python3 kb.py lint
-
-# LLM auto-repair of schema-noncompliant concepts
-python3 kb.py lint --fix
-
-# Gap analysis: unmapped sources, under-supported concepts, stale concepts
-python3 kb.py lint --maintain
-
-# Apply query-derived state updates (idempotent)
-python3 kb.py lint --maintain --apply
-```
+> Unifying these into `qlw` (so PyPI users get the full surface) is planned for **0.3.0** — see [issues](https://github.com/jackwu321/Quant_LLM_Wiki/issues) for the tracking ticket.
 
 ## Agent Usage
 
