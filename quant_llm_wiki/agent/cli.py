@@ -13,12 +13,26 @@ from __future__ import annotations
 import argparse
 import sys
 from pathlib import Path
+from typing import Any
 
 from langchain_core.messages import HumanMessage
+
+from quant_llm_wiki.shared import _sanitize_lone_surrogates
 
 ROOT = Path(__file__).resolve().parent.parent.parent
 if str(ROOT) not in sys.path:
     sys.path.insert(0, str(ROOT))
+
+
+def _safe_text(value: Any) -> str:
+    """Coerce to str and strip lone surrogates so print/encode never crashes.
+
+    Why: defense in depth at the output boundary — the agent's `post_model_hook`
+    and `post_llm_json` already clean upstream, but nothing stops a stray
+    surrogate from arriving here via a tool message, exception repr, etc.
+    """
+    text = value if isinstance(value, str) else str(value)
+    return _sanitize_lone_surrogates(text)
 
 
 def parse_args() -> argparse.Namespace:
@@ -72,13 +86,12 @@ def interactive_loop(agent) -> None:
                 stream_mode="values",
             ):
                 messages = state.get("messages", messages)
-            response = _extract_last_ai_content(messages)
-            print(f"\nAgent: {response}")
+            print(f"\nAgent: {_safe_text(_extract_last_ai_content(messages))}")
         except KeyboardInterrupt:
             print("\nInterrupted.")
             break
         except Exception as exc:
-            print(f"\nError ({type(exc).__name__}): {exc}")
+            print(_safe_text(f"\nError ({type(exc).__name__}): {exc}"))
 
 
 def register(parser: argparse.ArgumentParser) -> None:
@@ -95,10 +108,12 @@ def _run(args) -> int:
 
     if args.query:
         try:
-            response = run_query(agent, args.query)
-            print(response)
+            print(_safe_text(run_query(agent, args.query)))
         except Exception as exc:
-            print(f"Error ({type(exc).__name__}): {exc}", file=sys.stderr)
+            print(
+                _safe_text(f"Error ({type(exc).__name__}): {exc}"),
+                file=sys.stderr,
+            )
             return 1
         return 0
 
