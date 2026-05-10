@@ -279,6 +279,8 @@ qlw enrich --limit 10         # first 10 only
 qlw enrich --concurrency 5    # 5 parallel LLM requests
 ```
 
+Each article enrichment has a hard 360 s ceiling; on hit, the article is recorded as `failed: timeout: exceeded Ns` and the batch continues. Override via `LLM_ARTICLE_TIMEOUT=<seconds>`. Start / done / TIMEOUT / `[llm-retry]` events are printed to **stderr** (separate from the per-completion `[i/N] ... ok|failed` lines on stdout) so you can see what's happening even when the LLM API is slow or backing off.
+
 ### 4. Query (wiki-first)
 
 ```bash

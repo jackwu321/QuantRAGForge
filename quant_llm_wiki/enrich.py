@@ -4,7 +4,13 @@ import argparse
 import json
 import os
 import re
-from concurrent.futures import ThreadPoolExecutor, as_completed
+import sys
+import time
+from concurrent.futures import (
+    ThreadPoolExecutor,
+    as_completed,
+    TimeoutError as FuturesTimeoutError,
+)
 from dataclasses import dataclass
 from datetime import datetime
 from pathlib import Path
@@ -479,6 +485,50 @@ def get_concurrency(args: argparse.Namespace) -> int:
     return DEFAULT_LLM_CONCURRENCY
 
 
+DEFAULT_ARTICLE_TIMEOUT = 360
+
+
+def _article_timeout() -> int:
+    raw = os.environ.get("LLM_ARTICLE_TIMEOUT", str(DEFAULT_ARTICLE_TIMEOUT))
+    try:
+        return int(raw)
+    except ValueError:
+        return DEFAULT_ARTICLE_TIMEOUT
+
+
+def _log_event(msg: str) -> None:
+    print(msg, file=sys.stderr, flush=True)
+
+
+def _process_with_timeout(article_dir: Path, args: argparse.Namespace) -> ProcessResult:
+    timeout = _article_timeout()
+    name = Path(article_dir).name
+    started = time.monotonic()
+    _log_event(f"[enrich] start {name} (timeout={timeout}s)")
+    ex = ThreadPoolExecutor(max_workers=1)
+    try:
+        future = ex.submit(process_article_dir, article_dir, args)
+        try:
+            result = future.result(timeout=timeout)
+            elapsed = time.monotonic() - started
+            tag = "ok" if result.success else f"fail: {result.error}"
+            _log_event(f"[enrich] done  {name} in {elapsed:.1f}s ({tag})")
+            return result
+        except FuturesTimeoutError:
+            elapsed = time.monotonic() - started
+            _log_event(f"[enrich] TIMEOUT {name} after {elapsed:.0f}s — skipping")
+            return ProcessResult(
+                article_dir=str(article_dir),
+                success=False,
+                error=f"timeout: exceeded {timeout}s",
+            )
+        finally:
+            ex.shutdown(wait=False)
+    except BaseException:
+        ex.shutdown(wait=False)
+        raise
+
+
 def run_enrich_batch(
     article_dirs: list[Path],
     args: argparse.Namespace,
@@ -501,7 +551,7 @@ def run_enrich_batch(
 
     if concurrency <= 1:
         for i, ad in enumerate(article_dirs):
-            result = process_article_dir(ad, args)
+            result = _process_with_timeout(ad, args)
             results.append(result)
             if progress_callback:
                 progress_callback(i + 1, total, result)
@@ -516,7 +566,7 @@ def run_enrich_batch(
         for i, ad in enumerate(article_dirs):
             if auth_failed:
                 break
-            future = executor.submit(process_article_dir, ad, args)
+            future = executor.submit(_process_with_timeout, ad, args)
             future_to_idx[future] = i
 
         for future in as_completed(future_to_idx):

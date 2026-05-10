@@ -6,6 +6,7 @@ import os
 import random
 import re
 import sqlite3
+import sys
 import threading
 import time
 from dataclasses import dataclass
@@ -501,12 +502,26 @@ def post_llm_json(path: str, payload: dict[str, Any]) -> dict[str, Any]:
             last_error = exc
             if attempt >= max_retries:
                 break
-            time.sleep(_backoff_seconds(attempt, status, response))
+            wait = _backoff_seconds(attempt, status, response)
+            print(
+                f"[llm-retry] attempt {attempt + 1}/{max_retries + 1} "
+                f"status={status}, sleeping {wait:.1f}s",
+                file=sys.stderr,
+                flush=True,
+            )
+            time.sleep(wait)
         except requests.exceptions.RequestException as exc:
             last_error = exc
             if attempt >= max_retries:
                 break
-            time.sleep(_backoff_seconds(attempt, 0, None))
+            wait = _backoff_seconds(attempt, 0, None)
+            print(
+                f"[llm-retry] attempt {attempt + 1}/{max_retries + 1} "
+                f"network error ({type(exc).__name__}), sleeping {wait:.1f}s",
+                file=sys.stderr,
+                flush=True,
+            )
+            time.sleep(wait)
     if last_error is None:
         raise RuntimeError("LLM API request failed without an explicit exception")
     url = f"{base_url}{path}"
