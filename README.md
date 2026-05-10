@@ -269,6 +269,8 @@ python3 kb.py ingest --html-file saved.html
 python3 kb.py ingest --url-list urls.txt
 ```
 
+Each URL has a hard 120 s ceiling; on hit, ingest prints `TIMEOUT <url>: exceeded 120s` and (in batch mode) continues with the next URL. Override via `INGEST_URL_TIMEOUT=<seconds>`. Note: a timed-out URL may leave a partial `articles/raw/<date>_*/` directory behind (same as ordinary `FAILED` cases).
+
 `enrich_articles_with_llm.py` remains a separate step (run before `kb compile` if your raw articles need LLM-derived metadata first):
 
 ```bash

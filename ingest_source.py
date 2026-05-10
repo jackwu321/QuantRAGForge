@@ -2,7 +2,9 @@ from __future__ import annotations
 
 import argparse
 import json
+import os
 import re
+from concurrent.futures import ThreadPoolExecutor, TimeoutError as FuturesTimeoutError
 from datetime import datetime
 from pathlib import Path
 from urllib.parse import urlparse
@@ -179,6 +181,30 @@ def dispatch_url(url: str, content_type: str | None = None, force: bool = False)
     return _dispatch_web(url, content_type=content_type, force=force)
 
 
+DEFAULT_INGEST_URL_TIMEOUT = 120
+
+
+def _ingest_url_timeout() -> int:
+    try:
+        return int(os.environ.get("INGEST_URL_TIMEOUT", DEFAULT_INGEST_URL_TIMEOUT))
+    except ValueError:
+        return DEFAULT_INGEST_URL_TIMEOUT
+
+
+def _run_with_timeout(fn, *args, **kwargs):
+    timeout = _ingest_url_timeout()
+    ex = ThreadPoolExecutor(max_workers=1)
+    try:
+        future = ex.submit(fn, *args, **kwargs)
+        try:
+            return future.result(timeout=timeout)
+        finally:
+            ex.shutdown(wait=False)
+    except BaseException:
+        ex.shutdown(wait=False)
+        raise
+
+
 def dispatch_pdf_file(path: str, content_type: str | None = None) -> str:
     p = Path(path).expanduser().resolve()
     pdf = _pdf_extract.extract_from_file(p)
@@ -197,7 +223,13 @@ def main() -> int:
     args = parser.parse_args()
 
     if args.url:
-        out = dispatch_url(args.url, content_type=args.content_type, force=args.force)
+        try:
+            out = _run_with_timeout(
+                dispatch_url, args.url, content_type=args.content_type, force=args.force
+            )
+        except FuturesTimeoutError:
+            print(f"TIMEOUT {args.url}: exceeded {_ingest_url_timeout()}s")
+            return 2
         print(f"Ingested: {out}")
         return 0
     if args.pdf_file:
@@ -205,7 +237,13 @@ def main() -> int:
         print(f"Ingested PDF: {out}")
         return 0
     if args.pdf_url:
-        out = _dispatch_pdf_url(args.pdf_url, content_type=args.content_type, force=args.force)
+        try:
+            out = _run_with_timeout(
+                _dispatch_pdf_url, args.pdf_url, content_type=args.content_type, force=args.force
+            )
+        except FuturesTimeoutError:
+            print(f"TIMEOUT {args.pdf_url}: exceeded {_ingest_url_timeout()}s")
+            return 2
         print(f"Ingested PDF: {out}")
         return 0
     if args.html_file:
@@ -220,8 +258,12 @@ def main() -> int:
     if args.url_list:
         for url in [line.strip() for line in Path(args.url_list).read_text(encoding="utf-8").splitlines() if line.strip()]:
             try:
-                out = dispatch_url(url, content_type=args.content_type, force=args.force)
+                out = _run_with_timeout(
+                    dispatch_url, url, content_type=args.content_type, force=args.force
+                )
                 print(f"Ingested: {out}")
+            except FuturesTimeoutError:
+                print(f"TIMEOUT {url}: exceeded {_ingest_url_timeout()}s")
             except Exception as exc:
                 print(f"FAILED {url}: {exc}")
         return 0
