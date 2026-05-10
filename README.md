@@ -220,7 +220,24 @@ Install with `pip install -e .` to put `qlw` on PATH; otherwise use `python -m q
 
 ## Quick Start
 
-### 1. Clone and Setup
+### 1. Install
+
+The recommended way to install is via [`pipx`](https://pipx.pypa.io/), which gives you the `qlw` command globally without polluting your system Python and without requiring you to activate a venv:
+
+```bash
+# From PyPI (once published)
+pipx install quant-llm-wiki
+
+# Or directly from GitHub (always tracks main)
+pipx install git+https://github.com/jackwu321/Quant_LLM_Wiki.git
+```
+
+After install, `qlw` is on your PATH from any shell. Upgrade later with `pipx upgrade quant-llm-wiki`.
+
+<details>
+<summary>Alternative: clone for development</summary>
+
+If you want to hack on the code, clone and install in editable mode:
 
 ```bash
 git clone https://github.com/jackwu321/Quant_LLM_Wiki.git
@@ -228,8 +245,10 @@ cd Quant_LLM_Wiki
 
 python3 -m venv .venv
 source .venv/bin/activate
-pip install -r requirements.txt
+pip install -e .
 ```
+
+</details>
 
 ### 2. Configure LLM Provider
 
@@ -430,6 +449,43 @@ python3 -m unittest discover -s tests/robustness -p 'test_*.py' -v
 - **Complementary retrieval** — Wiki concepts surface first, then complementary article chunks fill remaining slots (excluding sources already cited by concepts).
 - **Graceful degradation** — Every component handles missing dependencies without crashing; `audit_wiki` errors push the wiki-first path to article-only fallback.
 - **Self-healing vector store** — Automatic SQLite integrity check before each ChromaDB operation; corrupted stores are cleaned up and rebuilt transparently.
+
+## Releasing (maintainers)
+
+This repo publishes to PyPI automatically when a `v*.*.*` tag is pushed. The workflow is defined in [`.github/workflows/publish.yml`](.github/workflows/publish.yml) and uses [PyPI Trusted Publishing](https://docs.pypi.org/trusted-publishers/) (OIDC) — no API token is stored in GitHub secrets.
+
+### One-time PyPI setup
+
+Before the first release, configure a "pending publisher" on PyPI:
+
+1. Log in to https://pypi.org/manage/account/publishing/
+2. Add a pending publisher with:
+   - **PyPI Project Name:** `quant-llm-wiki`
+   - **Owner:** `jackwu321`
+   - **Repository name:** `Quant_LLM_Wiki`
+   - **Workflow filename:** `publish.yml`
+   - **Environment name:** `pypi`
+3. In GitHub repo settings → Environments, create an environment named `pypi` (no secrets needed; OIDC handles auth).
+
+### Cutting a release
+
+```bash
+# 1. Bump version in pyproject.toml (e.g. 0.2.0 -> 0.2.1)
+# 2. Commit
+git commit -am "release: v0.2.1"
+# 3. Tag and push
+git tag v0.2.1
+git push origin main --tags
+```
+
+The workflow will:
+1. Verify the tag matches `project.version` in `pyproject.toml`
+2. Build sdist + wheel
+3. Upload to PyPI via Trusted Publishing
+
+Users then upgrade with `pipx upgrade quant-llm-wiki`.
+
+> **Versioning.** Follow [SemVer](https://semver.org/): bump patch for fixes, minor for new features, major for breaking changes. The tag `v0.2.1` must match `version = "0.2.1"` in `pyproject.toml` exactly, or the workflow aborts before publishing.
 
 ## Contributing
 
