@@ -50,7 +50,7 @@ wiki/     — LLM-built Markdown memory (the primary query surface)
             ├── concepts/<slug>.md
             ├── sources/<basename>.md
             ├── queries/<date>_<slug>_<mode>.md   — query → wiki feedback log
-            └── maintenance_report.md             — last `kb lint --maintain` output
+            └── maintenance_report.md             — last `qlw lint --maintain` output
 schema/   — rules the LLM and tools follow:
             concept-schema.md, source-schema.md, wiki-structure.md, operations.md
 vector_store/  — ChromaDB substrate, used as fallback only
@@ -66,20 +66,20 @@ Articles live **flat** under `raw/`. The frontmatter `status` field (`raw`, `rev
 WeChat URL / Web URL / PDF / HTML             ├──> wiki/INDEX.md
         |                                     ├──> wiki/state.json
         v                                     │    (hashes, scores, freshness, retrieval hints)
-  [kb ingest] ──> raw/<dir>/article.md + source.json
+  [qlw ingest] ──> raw/<dir>/article.md + source.json
         |                                     ▲
         v                                     │
-  [kb compile]  ── schema/-injected LLM ──────┘
+  [qlw compile]  ── schema/-injected LLM ─────┘
   (auto after ingest)
         |
         v
-  [kb embed]  ── ChromaDB substrate over raw/ + wiki/
+  [qlw embed]  ── ChromaDB substrate over raw/ + wiki/
   (auto after compile)
         |
         v
-  [kb query]  ── wiki-first retrieval (INDEX → matched concepts → source summaries)
+  [qlw ask / qlw brainstorm]  ── wiki-first retrieval (INDEX → matched concepts → source summaries)
         |        RAG runs ONLY when wiki has no relevant concept or audit reports degradation
-        |        (mode: ask | brainstorm; brainstorm runs Rethink Layer post-generation)
+        |        (brainstorm runs Rethink Layer post-generation)
         |
         v
   ┌─ outputs/brainstorms/<date>_<slug>_<mode>.md
@@ -87,12 +87,12 @@ WeChat URL / Web URL / PDF / HTML             ├──> wiki/INDEX.md
                                               cited concepts get importance bump
                                               + retrieval_hints append in state.json
 
-  [kb lint]              ── schema-compliance audit (frontmatter, sections, source anchors)
-  [kb lint --fix]        ── LLM auto-repair of schema-noncompliant concepts
-  [kb lint --maintain]   ── gap analysis: unmapped source clusters, under-supported concepts,
+  [qlw lint]              ── schema-compliance audit (frontmatter, sections, source anchors)
+  [qlw lint --fix]        ── LLM auto-repair of schema-noncompliant concepts
+  [qlw lint --maintain]   ── gap analysis: unmapped source clusters, under-supported concepts,
                             stale concepts → suggested ingestion queries / new brainstorm prompts
                             (writes wiki/maintenance_report.md)
-  [kb lint --maintain --apply]  ── apply query-derived state updates idempotently
+  [qlw lint --maintain --apply]  ── apply query-derived state updates idempotently
 ```
 
 ### Wiki-first retrieval (load-bearing invariant)
@@ -101,11 +101,11 @@ WeChat URL / Web URL / PDF / HTML             ├──> wiki/INDEX.md
 
 ### Query → wiki feedback
 
-Every `kb query` (unless `--no-file-back`) files a structured note into `wiki/queries/<date>_<slug>_<mode>.md` and bumps `state.json:concepts.<slug>.importance` + `retrieval_hints` for cited concepts. `kb lint --maintain` later distills these query logs into proposed concept-page improvements. This realizes Karpathy's *"my own explorations and queries always 'add up' in the knowledge base."*
+Every `qlw ask`/`qlw brainstorm` (unless `--no-file-back`) files a structured note into `wiki/queries/<date>_<slug>_<mode>.md` and bumps `state.json:concepts.<slug>.importance` + `retrieval_hints` for cited concepts. `qlw lint --maintain` later distills these query logs into proposed concept-page improvements. This realizes Karpathy's *"my own explorations and queries always 'add up' in the knowledge base."*
 
 ### Schema is enforced, not advisory
 
-`schema/concept-schema.md` and `schema/source-schema.md` define required frontmatter fields, valid enum values, and required section headers. `wiki_lint` checks these on every run (severity: warning), and `kb lint --fix` runs an LLM auto-repair pass via `recompile_concept` for schema-noncompliant concepts. The schema text is also injected into compile-time prompts so the LLM is told the source-anchor invariant.
+`schema/concept-schema.md` and `schema/source-schema.md` define required frontmatter fields, valid enum values, and required section headers. `wiki_lint` checks these on every run (severity: warning), and `qlw lint --fix` runs an LLM auto-repair pass via `recompile_concept` for schema-noncompliant concepts. The schema text is also injected into compile-time prompts so the LLM is told the source-anchor invariant.
 
 ### Rethink Layer
 
@@ -144,7 +144,6 @@ Quant_LLM_Wiki/
 ├── llm_config.example.env          # Example LLM provider config
 ├── README.md
 ├── LICENSE
-├── kb.py                           # Wiki-first KB CLI: ingest | query | lint | compile | embed
 ├── ingest_source.py                # Unified ingest dispatcher (WeChat / web / PDF / HTML)
 ├── _wechat.py                      # WeChat-specific extraction
 ├── _web_extract.py                 # Generic web extraction (trafilatura)
@@ -180,10 +179,10 @@ Quant_LLM_Wiki/
 │   ├── INDEX.md                    # auto-maintained TOC
 │   ├── state.json                  # content hashes, concept scores, retrieval hints
 │   ├── lint_report.json            # last health audit
-│   ├── maintenance_report.md       # last `kb lint --maintain` output
+│   ├── maintenance_report.md       # last `qlw lint --maintain` output
 │   ├── concepts/                   # one .md per concept
 │   ├── sources/                    # one .md per raw article (mechanically derived)
-│   └── queries/                    # one .md per filed `kb query` (Step 7 feedback log)
+│   └── queries/                    # one .md per filed `qlw ask`/`qlw brainstorm` (Step 7 feedback log)
 ├── schema/                         # Rules followed by LLM and tools
 │   ├── concept-schema.md
 │   ├── source-schema.md
@@ -192,7 +191,7 @@ Quant_LLM_Wiki/
 ├── templates/                      # Article markdown templates (research-note / strategy-note)
 ├── tests/                          # unittest suite
 │   ├── robustness/                 # Edge-case tests (Layer 1–4)
-│   ├── test_kb_cli.py              # kb.py CLI dispatch
+│   ├── test_qlw_cli.py             # qlw CLI dispatch
 │   ├── test_query_wiki_first_ask.py
 │   ├── test_wiki_lint_schema.py    # Schema enforcement + auto_fix
 │   ├── test_wiki_maintain.py       # Query feedback + maintenance
@@ -200,7 +199,7 @@ Quant_LLM_Wiki/
 └── docs/                           # Design specs and usage guides
 ```
 
-> **Repo / package / command names.** Repo: `Quant_LLM_Wiki`. Package: `quant_llm_wiki`. Console command: `qlw` (installed via `pip install -e .`). The wiki-first KB workflow (`raw/`, `wiki/`, `schema/`) remains driven by `kb.py`; the standalone scripts (enrichment, embedding, brainstorm, agent, sync, single-source ingest) are now subcommands of `qlw`.
+> **Repo / package / command names.** Repo: `Quant_LLM_Wiki`. Package: `quant_llm_wiki`. Console command: `qlw` (installed via `pipx install quant-llm-wiki` or `pip install -e .`). All 9 subcommands — `ingest`, `enrich`, `embed`, `sync`, `ask`, `brainstorm`, `agent`, `lint`, `compile` — are unified under `qlw`. pipx-installed users have full functionality without cloning the repo.
 
 ### Command Renaming (vs. previous versions)
 
@@ -216,7 +215,7 @@ The standalone scripts at the repo root have moved into `quant_llm_wiki/` and ar
 | `qlw brainstorm --query Q` | `qlw brainstorm --query Q` |
 | `qlw agent` | `qlw agent` |
 
-Install with `pip install -e .` to put `qlw` on PATH; otherwise use `python -m quant_llm_wiki.cli <subcmd>`. The `kb.py` wiki-first CLI is unchanged.
+Install with `pip install -e .` to put `qlw` on PATH; otherwise use `python -m quant_llm_wiki.cli <subcmd>`.
 
 ## Quick Start
 
@@ -284,8 +283,6 @@ qlw ingest --url-list urls.txt
 
 Each URL has a hard 120 s ceiling; on hit, ingest prints `TIMEOUT <url>: exceeded 120s` and (in batch mode) continues with the next URL. Override via `INGEST_URL_TIMEOUT=<seconds>`. Note: a timed-out URL may leave a partial `articles/raw/<date>_*/` directory behind (same as ordinary `FAILED` cases).
 
-> **PDF ingest and one-shot ingest+compile+embed** are currently only in the `kb.py` wiki-first CLI, which requires a clone of the repo — see [Wiki maintenance commands](#wiki-maintenance-commands-clone-required) below.
-
 ### 4. Enrich + Embed
 
 ```bash
@@ -311,29 +308,34 @@ qlw brainstorm --query "Combine momentum and volatility timing for ETF rotation"
 qlw brainstorm --query "..." --dry-run
 ```
 
-### Wiki maintenance commands (clone required)
+### Wiki maintenance commands
 
-The schema-enforcement and wiki-compilation commands live in `kb.py` at the repo root and are not yet exposed through the `qlw` package CLI. To use them, install in editable mode from a clone (`pip install -e .` from a `git clone`):
+> **v0.3.0 migration note.** v0.3.0 unified `kb.py` into `qlw`. If you previously ran `python3 kb.py <cmd>`, run `qlw <cmd>` instead. The `kb query` mode has been split into `qlw ask` and `qlw brainstorm`.
+
+All wiki maintenance commands are available via `qlw` — no clone required. `pipx install quant-llm-wiki` gives you the full surface:
 
 ```bash
-# Ingest with auto-compile + auto-embed in one shot
-python3 kb.py ingest --url "https://mp.weixin.qq.com/s/..."
-python3 kb.py ingest --pdf-file paper.pdf
+# Ingest from URL (auto-compile + auto-embed in one shot)
+qlw ingest --url "https://mp.weixin.qq.com/s/..."
+
+# Ingest from a local PDF file
+qlw ingest --pdf-file paper.pdf
+
+# Ingest from a PDF at a URL
+qlw ingest --pdf-url "https://example.com/paper.pdf"
 
 # Schema + health audit
-python3 kb.py lint
-python3 kb.py lint --fix                # LLM auto-repair of schema-noncompliant concepts
-python3 kb.py lint --maintain           # gap analysis: unmapped sources, under-supported, stale
-python3 kb.py lint --maintain --apply   # apply query-derived state updates (idempotent)
+qlw lint
+qlw lint --fix                # LLM auto-repair of schema-noncompliant concepts
+qlw lint --maintain           # gap analysis: unmapped sources, under-supported, stale
+qlw lint --maintain --apply   # apply query-derived state updates (idempotent)
 
 # Manual wiki compile
-python3 kb.py compile
+qlw compile
 
-# Query without filing the log back into wiki/queries/
-python3 kb.py query --mode ask --query "..." --no-file-back
+# Query (ask mode) without filing the log back into wiki/queries/
+qlw ask --query "..." --no-file-back
 ```
-
-> Unifying these into `qlw` (so PyPI users get the full surface) is planned for **0.3.0** — see [issues](https://github.com/jackwu321/Quant_LLM_Wiki/issues) for the tracking ticket.
 
 ## Agent Usage
 
@@ -441,14 +443,14 @@ python3 -m unittest discover -s tests/robustness -p 'test_*.py' -v
 
 ## Design Principles
 
-- **Wiki-first, RAG-as-substrate** — Both `kb query --mode ask` and `--mode brainstorm` retrieve stable wiki concepts before vectors. ChromaDB runs only as fallback when the wiki is empty/sparse or `audit_wiki` reports degradation.
-- **Three durable verbs** — `kb ingest`, `kb query`, `kb lint` per Karpathy's prescription. `compile` and `embed` are internal operations auto-run by `ingest`.
-- **Schema is enforced** — `schema/concept-schema.md` and `schema/source-schema.md` define required frontmatter fields, valid enums, and required section headers. `wiki_lint` checks these on every run; `kb lint --fix` runs an LLM auto-repair pass.
+- **Wiki-first, RAG-as-substrate** — Both `qlw ask` and `qlw brainstorm` retrieve stable wiki concepts before vectors. ChromaDB runs only as fallback when the wiki is empty/sparse or `audit_wiki` reports degradation.
+- **Three durable verbs** — `qlw ingest`, `qlw ask`/`qlw brainstorm`, `qlw lint` per Karpathy's prescription. `compile` and `embed` are internal operations auto-run by `ingest`.
+- **Schema is enforced** — `schema/concept-schema.md` and `schema/source-schema.md` define required frontmatter fields, valid enums, and required section headers. `wiki_lint` checks these on every run; `qlw lint --fix` runs an LLM auto-repair pass.
 - **Inspiration over execution** — The knowledge base serves idea combination, not backtested trading signals.
 - **Hybrid memory: Markdown + structured state** — Markdown is the inspectable interface; `wiki/state.json` and ChromaDB metadata are the operational substrate (scoring, freshness decay, conflict tracking).
 - **Per-claim provenance** — Every bullet in a concept article ends with `[<source_basename>]`; un-anchored bullets fail lint and lower confidence.
-- **Content-hash idempotency** — `kb compile` reruns produce zero LLM calls when source hashes are unchanged (no `mtime`, no date guessing).
-- **Queries compound** — Every `kb query` files into `wiki/queries/` and bumps state.json scoring for cited concepts. `kb lint --maintain` distills the query log into proposed concept-page improvements.
+- **Content-hash idempotency** — `qlw compile` reruns produce zero LLM calls when source hashes are unchanged (no `mtime`, no date guessing).
+- **Queries compound** — Every `qlw ask`/`qlw brainstorm` files into `wiki/queries/` and bumps state.json scoring for cited concepts. `qlw lint --maintain` distills the query log into proposed concept-page improvements.
 - **Complementary retrieval** — Wiki concepts surface first, then complementary article chunks fill remaining slots (excluding sources already cited by concepts).
 - **Graceful degradation** — Every component handles missing dependencies without crashing; `audit_wiki` errors push the wiki-first path to article-only fallback.
 - **Self-healing vector store** — Automatic SQLite integrity check before each ChromaDB operation; corrupted stores are cleaned up and rebuilt transparently.
