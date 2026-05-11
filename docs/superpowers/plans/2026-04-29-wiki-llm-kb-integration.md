@@ -12,7 +12,7 @@
 
 **Tech Stack:** Python 3.10+, langchain-core (`@tool`), LangGraph ReAct agent, ChromaDB, OpenAI-compatible LLM (existing kb_shared helpers). New deps: `trafilatura`, `readability-lxml`, `pypdf`, `pdfplumber`. Tests use `unittest` (per existing convention — `python3 -m unittest tests.test_<name> -v`).
 
-**Spec:** [docs/superpowers/specs/2026-04-29-wiki-llm-kb-integration-design.md](../specs/2026-04-29-wiki-llm-kb-integration-design.md)
+**Spec:** [docs/superpowers/specs/2026-04-27-wiki-llm-kb-integration-design.md](../specs/2026-04-27-wiki-llm-kb-integration-design.md)
 
 ---
 
