@@ -1,3 +1,4 @@
+import os
 import tempfile
 import unittest
 from pathlib import Path
@@ -13,14 +14,14 @@ class ConceptRetrievalLexicalFallbackTests(unittest.TestCase):
         with tempfile.TemporaryDirectory() as tmp:
             wiki_dir = Path(tmp) / "wiki"
             bootstrap_wiki(wiki_dir)
-            # No Chroma store, so falls back to lexical
-            with patch.object(brainstorm_from_kb, "WIKI_DIR", wiki_dir), \
-                 patch.object(brainstorm_from_kb, "WIKI_STATE_PATH", wiki_dir / "state.json"), \
-                 patch.object(brainstorm_from_kb, "VECTOR_STORE_DIR", Path(tmp) / "no-store"):
-                concepts = brainstorm_from_kb._retrieve_concept_articles(
-                    "How to combine momentum and regime detection?",
-                    top_k=2,
-                )
+            # No Chroma store, so falls back to lexical.
+            # Pass wiki_dir and vector_store_dir explicitly to avoid module-level fallback.
+            concepts = brainstorm_from_kb._retrieve_concept_articles(
+                "How to combine momentum and regime detection?",
+                top_k=2,
+                wiki_dir=wiki_dir,
+                vector_store_dir=Path(tmp) / "no-store",
+            )
             self.assertGreater(len(concepts), 0)
             slugs = [c["slug"] for c in concepts]
             self.assertTrue(
@@ -30,8 +31,11 @@ class ConceptRetrievalLexicalFallbackTests(unittest.TestCase):
 
     def test_retrieve_concepts_returns_empty_when_wiki_missing(self) -> None:
         with tempfile.TemporaryDirectory() as tmp:
-            with patch.object(brainstorm_from_kb, "WIKI_DIR", Path(tmp) / "no-wiki"):
-                concepts = brainstorm_from_kb._retrieve_concept_articles("query", top_k=3)
+            # Pass a wiki_dir that doesn't have concepts/ — expect empty list.
+            concepts = brainstorm_from_kb._retrieve_concept_articles(
+                "query", top_k=3,
+                wiki_dir=Path(tmp) / "no-wiki",
+            )
             self.assertEqual(concepts, [])
 
     def test_concepts_to_blocks_marks_wiki_concept(self) -> None:
@@ -39,10 +43,11 @@ class ConceptRetrievalLexicalFallbackTests(unittest.TestCase):
         with tempfile.TemporaryDirectory() as tmp:
             wiki_dir = Path(tmp) / "wiki"
             bootstrap_wiki(wiki_dir)
-            with patch.object(brainstorm_from_kb, "WIKI_DIR", wiki_dir), \
-                 patch.object(brainstorm_from_kb, "WIKI_STATE_PATH", wiki_dir / "state.json"), \
-                 patch.object(brainstorm_from_kb, "VECTOR_STORE_DIR", Path(tmp) / "no-store"):
-                blocks = brainstorm_from_kb._concepts_to_blocks("momentum risk", top_k=2)
+            blocks = brainstorm_from_kb._concepts_to_blocks(
+                "momentum risk", top_k=2,
+                wiki_dir=wiki_dir,
+                vector_store_dir=Path(tmp) / "no-store",
+            )
             self.assertGreater(len(blocks), 0)
             self.assertEqual(blocks[0].block_type, "wiki_concept")
 
@@ -97,10 +102,11 @@ class StateScoreRerankTests(unittest.TestCase):
             )
             wiki_state.save_wiki_state(state, wiki_dir / "state.json")
 
-            with patch.object(brainstorm_from_kb, "WIKI_DIR", wiki_dir), \
-                 patch.object(brainstorm_from_kb, "WIKI_STATE_PATH", wiki_dir / "state.json"), \
-                 patch.object(brainstorm_from_kb, "VECTOR_STORE_DIR", Path(tmp) / "no-store"):
-                concepts = brainstorm_from_kb._retrieve_concept_articles("momentum", top_k=2)
+            concepts = brainstorm_from_kb._retrieve_concept_articles(
+                "momentum", top_k=2,
+                wiki_dir=wiki_dir,
+                vector_store_dir=Path(tmp) / "no-store",
+            )
             slugs = [c["slug"] for c in concepts]
             # momentum-strategies should outrank risk-parity (despite both having "momentum" hint)
             if "momentum-strategies" in slugs and "risk-parity" in slugs:
@@ -111,8 +117,11 @@ class BrainstormFlowTests(unittest.TestCase):
     def test_brainstorm_falls_back_to_pure_vector_when_wiki_empty(self) -> None:
         """When no wiki/concepts/ dir, _concepts_to_blocks returns []."""
         with tempfile.TemporaryDirectory() as tmp:
-            with patch.object(brainstorm_from_kb, "WIKI_DIR", Path(tmp) / "no-wiki"):
-                blocks = brainstorm_from_kb._concepts_to_blocks("q", top_k=3)
+            # Pass wiki_dir pointing to a non-existent directory.
+            blocks = brainstorm_from_kb._concepts_to_blocks(
+                "q", top_k=3,
+                wiki_dir=Path(tmp) / "no-wiki",
+            )
             self.assertEqual(blocks, [])
 
 

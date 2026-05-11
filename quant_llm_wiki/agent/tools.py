@@ -15,7 +15,6 @@ if str(ROOT) not in sys.path:
     sys.path.insert(0, str(ROOT))
 
 from quant_llm_wiki.shared import (
-    ROOT as KB_ROOT,
     DEFAULT_SOURCE_DIRS,
     discover_article_dirs,
     load_notes,
@@ -25,6 +24,7 @@ from quant_llm_wiki.shared import (
     find_rejected_source,
     add_rejected_source,
 )
+from quant_llm_wiki.paths import resolve_kb_root
 
 
 # ---------------------------------------------------------------------------
@@ -177,9 +177,10 @@ def enrich_articles(
         ProcessResult,
     )
 
+    kb_root = resolve_kb_root(None)
     args = argparse.Namespace(
         article_dir=article_dir,
-        articles_root=str(KB_ROOT / "articles" / "raw"),
+        articles_root=str(kb_root / "articles" / "raw"),
         status_filter=status_filter,
         force=force,
         dry_run=False,
@@ -221,10 +222,11 @@ def enrich_articles(
 def list_articles(source_dir: Optional[str] = None) -> str:
     """List articles in the knowledge base, grouped by stage (raw, reviewed,
     high-value). Shows title, content_type, brainstorm_value, and status."""
+    kb_root = resolve_kb_root(None)
     source_dirs = parse_csv_arg(source_dir) if source_dir else ["raw", "reviewed", "high-value"]
     lines: list[str] = []
     for sd in source_dirs:
-        discovered = discover_article_dirs(KB_ROOT, [sd])
+        discovered = discover_article_dirs(kb_root, [sd])
         lines.append(f"\n## {sd} ({len(discovered)} articles)")
         for _sd, article_dir in discovered:
             md_path = article_dir / "article.md"
@@ -253,7 +255,8 @@ def review_articles(source_dir: str = "raw", enriched_only: bool = True) -> str:
     By default only shows enriched articles (enriched_only=True).
     Set enriched_only=False to include all articles regardless of enrichment.
     Returns the list for user to make decisions about set_article_status."""
-    discovered = discover_article_dirs(KB_ROOT, [source_dir])
+    kb_root = resolve_kb_root(None)
+    discovered = discover_article_dirs(kb_root, [source_dir])
     if not discovered:
         return f"No articles found in {source_dir}/."
 
@@ -382,12 +385,10 @@ def embed_knowledge(force: bool = False) -> str:
         delete_article_blocks,
         write_failure_list,
         iter_wiki_blocks,
-        VECTOR_STORE_DIR,
-        FAILURE_LIST_PATH,
+        FAILURE_LIST_PATH_SUFFIX,
         INDEX_MANIFEST_FILENAME,
         INDEX_SCHEMA_VERSION,
     )
-    from quant_llm_wiki.shared import WIKI_DIR
     from quant_llm_wiki.shared import (
         article_content_hash,
         build_blocks,
@@ -396,16 +397,19 @@ def embed_knowledge(force: bool = False) -> str:
         DEFAULT_EMBEDDING_MODEL,
     )
 
-    kb_root = KB_ROOT
+    kb_root = resolve_kb_root(None)
+    vector_store_dir = kb_root / "vector_store"
+    wiki_dir = kb_root / "wiki"
+    failure_list_path = kb_root / FAILURE_LIST_PATH_SUFFIX
     source_dirs = list(DEFAULT_SOURCE_DIRS)
     notes = load_notes(kb_root, source_dirs)
     if not notes:
         return "No articles found to index."
 
-    manifest_path = VECTOR_STORE_DIR / INDEX_MANIFEST_FILENAME
+    manifest_path = vector_store_dir / INDEX_MANIFEST_FILENAME
     manifest = load_manifest(manifest_path)
     try:
-        collection = open_collection(VECTOR_STORE_DIR)
+        collection = open_collection(vector_store_dir)
     except CorruptedVectorStoreError as exc:
         return str(exc)
     except Exception as exc:
@@ -441,8 +445,8 @@ def embed_knowledge(force: bool = False) -> str:
 
     # Index wiki/ entries (concept articles + source summaries) if present
     wiki_indexed = 0
-    if WIKI_DIR.exists():
-        for block in iter_wiki_blocks(WIKI_DIR):
+    if wiki_dir.exists():
+        for block in iter_wiki_blocks(wiki_dir):
             try:
                 wiki_id = make_block_id(kb_root, block, 0)
                 collection.upsert(
@@ -456,7 +460,7 @@ def embed_knowledge(force: bool = False) -> str:
                 failures.append({"article_dir": str(block.note.article_dir), "error": str(exc)})
 
     save_manifest(manifest_path, manifest)
-    write_failure_list(failures, FAILURE_LIST_PATH)
+    write_failure_list(failures, failure_list_path)
     wiki_note = f", {wiki_indexed} wiki entries" if wiki_indexed else ""
     return f"Embedding complete: {success} indexed, {skipped} skipped, {len(failures)} failed{wiki_note}."
 
@@ -487,15 +491,16 @@ def query_knowledge_base(
         build_messages,
         write_output,
         default_output_path,
-        VECTOR_STORE_DIR,
     )
     from quant_llm_wiki.shared import call_zhipu_chat
 
     if mode not in ("ask", "brainstorm"):
         return f"Invalid mode '{mode}'. Must be 'ask' or 'brainstorm'."
 
+    kb_root = resolve_kb_root(None)
+    vector_store_dir = kb_root / "vector_store"
     source_dirs = list(DEFAULT_SOURCE_DIRS)
-    notes = load_notes(KB_ROOT, source_dirs)
+    notes = load_notes(kb_root, source_dirs)
     filtered = filter_notes(
         notes,
         parse_csv_arg(content_type),
@@ -509,7 +514,7 @@ def query_knowledge_base(
 
     try:
         retrieved, resolved_mode, warning = retrieve_blocks(
-            filtered, query, top_k, mode, retrieval, VECTOR_STORE_DIR,
+            filtered, query, top_k, mode, retrieval, vector_store_dir,
         )
     except Exception as exc:
         return f"Retrieval error: {exc}"
@@ -526,7 +531,7 @@ def query_knowledge_base(
 
     if mode == "brainstorm":
         from quant_llm_wiki.query.rethink import rethink
-        result = rethink(result, retrieved, query, VECTOR_STORE_DIR)
+        result = rethink(result, retrieved, query, vector_store_dir)
 
     try:
         output_path = default_output_path(mode, query)
@@ -556,8 +561,9 @@ def compile_wiki(mode: str = "incremental", dry_run: bool = False) -> str:
     from quant_llm_wiki.wiki import compile as wiki_compile
     if mode not in ("incremental", "rebuild"):
         return f"Invalid mode '{mode}'. Must be 'incremental' or 'rebuild'."
+    kb_root = resolve_kb_root(None)
     try:
-        report = wiki_compile.compile_wiki(kb_root=KB_ROOT, mode=mode, dry_run=dry_run)
+        report = wiki_compile.compile_wiki(kb_root=kb_root, mode=mode, dry_run=dry_run)
     except Exception as exc:
         return f"Error during compile_wiki: {exc}"
     summary = report.summary()
@@ -585,8 +591,9 @@ def audit_wiki() -> str:
     push brainstorm to article-only fallback.
     """
     from quant_llm_wiki.wiki import lint as wiki_lint
+    kb_root = resolve_kb_root(None)
     try:
-        report = wiki_lint.lint_wiki(KB_ROOT)
+        report = wiki_lint.lint_wiki(kb_root)
     except Exception as exc:
         return f"Wiki audit failed: {exc}"
     return report.summary()
@@ -607,7 +614,8 @@ def list_concepts(status: str = "all") -> str:
     from quant_llm_wiki.wiki.schemas import parse_concept
     if status not in ("all", "stable", "proposed", "deprecated"):
         return f"Invalid status filter '{status}'."
-    cdir = KB_ROOT / "wiki" / "concepts"
+    kb_root = resolve_kb_root(None)
+    cdir = kb_root / "wiki" / "concepts"
     if not cdir.exists():
         return "Wiki not initialized — run compile_wiki first."
 
@@ -645,7 +653,8 @@ def set_concept_status(slug: str, status: str, reason: str = "") -> str:
     if status not in ("stable", "deprecated", "deleted"):
         return f"Invalid status '{status}'. Must be 'stable', 'deprecated', or 'deleted'."
 
-    path = KB_ROOT / "wiki" / "concepts" / f"{slug}.md"
+    kb_root = resolve_kb_root(None)
+    path = kb_root / "wiki" / "concepts" / f"{slug}.md"
     if not path.exists():
         return f"Concept not found: {slug}"
 
@@ -676,7 +685,8 @@ def read_wiki(target: str) -> str:
     - <concept-slug> — return wiki/concepts/<slug>.md
     - <source-id> — return wiki/sources/<source-id>.md (the article basename)
     """
-    wiki_dir = KB_ROOT / "wiki"
+    kb_root = resolve_kb_root(None)
+    wiki_dir = kb_root / "wiki"
     if not wiki_dir.exists():
         return "Wiki not initialized — run compile_wiki first."
     if target == "index":

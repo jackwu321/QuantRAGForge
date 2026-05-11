@@ -12,7 +12,6 @@ except ImportError:  # pragma: no cover - runtime dependency
     chromadb = None
 
 from quant_llm_wiki.shared import (
-    ROOT,
     DEFAULT_SOURCE_DIRS,
     KnowledgeBlock,
     KnowledgeNote,
@@ -28,19 +27,13 @@ from quant_llm_wiki.shared import (
     require_requests,
     embed_text,
 )
+from quant_llm_wiki.paths import resolve_kb_root
 from quant_llm_wiki.query.rethink import rethink
 from quant_llm_wiki.wiki.schemas import parse_concept
 from quant_llm_wiki.wiki.state import (
     concept_memory_score,
     load_wiki_state,
 )
-
-
-DEFAULT_OUTPUT_DIR = ROOT / "outputs" / "brainstorms"
-VECTOR_STORE_DIR = ROOT / "vector_store"
-WIKI_DIR = ROOT / "wiki"
-WIKI_STATE_PATH = WIKI_DIR / "state.json"
-SCHEMA_DIR = ROOT / "schema"
 DEFAULT_TOP_K = 8
 DEFAULT_RETRIEVAL_MODE = "hybrid"
 DEFAULT_RETRIEVAL_FETCH_MULTIPLIER = 3
@@ -111,7 +104,7 @@ def parse_args() -> argparse.Namespace:
 def _add_common_args(parser: argparse.ArgumentParser) -> None:
     """Attach the shared --query/--top-k/... flags. Called by both register_*."""
     parser.add_argument("--query", required=True, help="Question or brainstorm goal.")
-    parser.add_argument("--kb-root", default=str(ROOT), help="Knowledge base root directory.")
+    parser.add_argument("--kb-root", default=None, help="Knowledge base root directory (default: $QLW_KB_ROOT or cwd).")
     parser.add_argument("--wiki-dir", help="Wiki directory, default <kb-root>/wiki.")
     parser.add_argument("--schema-dir", help="Schema directory, default <kb-root>/schema.")
     parser.add_argument("--vector-store-dir", help="Vector store directory, default <kb-root>/vector_store.")
@@ -151,7 +144,7 @@ def register_brainstorm(parser: argparse.ArgumentParser) -> None:
 def _run_ask(args) -> int:
     """The ask command body. Receives parsed args from the dispatcher."""
     args.command = "ask"
-    kb_root = Path(args.kb_root).expanduser().resolve()
+    kb_root = resolve_kb_root(args.kb_root)
     wiki_dir = Path(args.wiki_dir).expanduser().resolve() if args.wiki_dir else kb_root / "wiki"
     schema_dir = Path(args.schema_dir).expanduser().resolve() if args.schema_dir else kb_root / "schema"
     vector_store_dir = Path(args.vector_store_dir).expanduser().resolve() if args.vector_store_dir else kb_root / "vector_store"
@@ -202,7 +195,7 @@ def _run_ask(args) -> int:
 def _run_brainstorm(args) -> int:
     """The brainstorm command body. Receives parsed args from the dispatcher."""
     args.command = "brainstorm"
-    kb_root = Path(args.kb_root).expanduser().resolve()
+    kb_root = resolve_kb_root(args.kb_root)
     wiki_dir = Path(args.wiki_dir).expanduser().resolve() if args.wiki_dir else kb_root / "wiki"
     schema_dir = Path(args.schema_dir).expanduser().resolve() if args.schema_dir else kb_root / "schema"
     vector_store_dir = Path(args.vector_store_dir).expanduser().resolve() if args.vector_store_dir else kb_root / "vector_store"
@@ -605,10 +598,10 @@ def _retrieve_concept_articles(
     Fallback: lexical token overlap on title/aliases/retrieval_hints when
     Chroma is unavailable, the index is empty, or the query has no hits.
     """
-    resolved_wiki_dir = wiki_dir or WIKI_DIR
+    resolved_wiki_dir = wiki_dir or (resolve_kb_root(None) / "wiki")
     if not (resolved_wiki_dir / "concepts").exists():
         return []
-    store = vector_store_dir or VECTOR_STORE_DIR
+    store = vector_store_dir or (resolve_kb_root(None) / "vector_store")
     via_chroma = _retrieve_concepts_via_chroma(query, top_k, store, resolved_wiki_dir)
     if via_chroma:
         return via_chroma
@@ -621,7 +614,7 @@ def _concepts_to_blocks(
     vector_store_dir: Path | None = None,
     wiki_dir: Path | None = None,
 ) -> list[KnowledgeBlock]:
-    resolved_wiki_dir = wiki_dir or WIKI_DIR
+    resolved_wiki_dir = wiki_dir or (resolve_kb_root(None) / "wiki")
     concepts = _retrieve_concept_articles(
         query,
         top_k=top_k,
@@ -674,7 +667,7 @@ def retrieve_blocks(
 ) -> tuple[list[KnowledgeBlock], str, str | None]:
     candidate_k = max(top_k * 2, top_k)
     keyword_blocks = _keyword_candidates(notes, query, candidate_k, command)
-    resolved_kb_root = kb_root or ROOT
+    resolved_kb_root = resolve_kb_root(kb_root)
     resolved_wiki_dir = wiki_dir or (resolved_kb_root / "wiki")
     _resolved_schema_dir = schema_dir or (resolved_kb_root / "schema")
     store_dir = vector_store_dir or (resolved_kb_root / "vector_store")
@@ -788,7 +781,7 @@ def slugify(value: str) -> str:
 def default_output_path(command: str, query: str, output_dir: Path | None = None) -> Path:
     date_part = datetime.now().strftime("%Y-%m-%d")
     suffix = "ask" if command == "ask" else "brainstorm"
-    base_dir = output_dir or DEFAULT_OUTPUT_DIR
+    base_dir = output_dir or (resolve_kb_root(None) / "outputs" / "brainstorms")
     return base_dir / f"{date_part}_{slugify(query)}_{suffix}.md"
 
 
