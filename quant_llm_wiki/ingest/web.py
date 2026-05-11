@@ -18,7 +18,7 @@ try:
 except ImportError:  # pragma: no cover
     requests = None
 
-from _code_math import detect_content_flags, extract_code_blocks, preserve_math_to_markdown
+from quant_llm_wiki.ingest.code_math import detect_content_flags, extract_code_blocks, preserve_math_to_markdown
 
 
 _PAYWALL_KEYWORDS = ("subscribe to read", "please subscribe", "paywall", "subscribe to continue")

@@ -8,7 +8,7 @@ from contextlib import redirect_stdout
 from pathlib import Path
 from unittest.mock import patch
 
-import ingest_source
+import quant_llm_wiki.ingest.source as ingest_source
 
 
 def _slow_dispatch(*_args, **_kwargs):
@@ -47,7 +47,7 @@ class IngestUrlTimeoutTests(unittest.TestCase):
                 "https://example.com/a\nhttps://example.com/b\n", encoding="utf-8"
             )
             buf = io.StringIO()
-            with patch("ingest_source.dispatch_url", side_effect=_slow_dispatch):
+            with patch("quant_llm_wiki.ingest.source.dispatch_url", side_effect=_slow_dispatch):
                 with patch.object(sys, "argv", ["ingest_source", "--url-list", str(list_path)]):
                     with redirect_stdout(buf):
                         rc = ingest_source.main()
@@ -62,7 +62,7 @@ class IngestUrlTimeoutTests(unittest.TestCase):
             list_path = Path(tmp) / "urls.txt"
             list_path.write_text("https://example.com/x\n", encoding="utf-8")
             buf = io.StringIO()
-            with patch("ingest_source.dispatch_url", side_effect=_fast_dispatch):
+            with patch("quant_llm_wiki.ingest.source.dispatch_url", side_effect=_fast_dispatch):
                 with patch.object(sys, "argv", ["ingest_source", "--url-list", str(list_path)]):
                     with redirect_stdout(buf):
                         rc = ingest_source.main()
@@ -73,7 +73,7 @@ class IngestUrlTimeoutTests(unittest.TestCase):
 
     def test_single_url_timeout_returns_nonzero(self) -> None:
         buf = io.StringIO()
-        with patch("ingest_source.dispatch_url", side_effect=_slow_dispatch):
+        with patch("quant_llm_wiki.ingest.source.dispatch_url", side_effect=_slow_dispatch):
             with patch.object(sys, "argv", ["ingest_source", "--url", "https://example.com/z"]):
                 with redirect_stdout(buf):
                     rc = ingest_source.main()
@@ -83,7 +83,7 @@ class IngestUrlTimeoutTests(unittest.TestCase):
 
     def test_pdf_url_timeout_returns_nonzero(self) -> None:
         buf = io.StringIO()
-        with patch("ingest_source._dispatch_pdf_url", side_effect=_slow_dispatch):
+        with patch("quant_llm_wiki.ingest.source._dispatch_pdf_url", side_effect=_slow_dispatch):
             with patch.object(sys, "argv", ["ingest_source", "--pdf-url", "https://example.com/p.pdf"]):
                 with redirect_stdout(buf):
                     rc = ingest_source.main()

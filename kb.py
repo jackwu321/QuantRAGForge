@@ -25,7 +25,7 @@ ROOT = Path(__file__).resolve().parent
 
 
 def cmd_ingest(args: argparse.Namespace) -> int:
-    import ingest_source
+    import quant_llm_wiki.ingest.source as ingest_source
 
     if args.url:
         out = ingest_source.dispatch_url(

@@ -1,7 +1,7 @@
 import unittest
 from pathlib import Path
 
-import _code_math
+import quant_llm_wiki.ingest.code_math as _code_math
 
 
 FIXTURE = Path(__file__).parent / "fixtures" / "sample-with-math.html"

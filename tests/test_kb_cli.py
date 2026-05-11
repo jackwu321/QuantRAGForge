@@ -33,7 +33,7 @@ class KbCliParserTests(unittest.TestCase):
 
 class KbCliDispatchTests(unittest.TestCase):
     def test_ingest_dispatch_routes_to_dispatch_url(self) -> None:
-        with patch("ingest_source.dispatch_url", return_value="raw/x") as m:
+        with patch("quant_llm_wiki.ingest.source.dispatch_url", return_value="raw/x") as m:
             rc = kb.cmd_ingest(kb.build_parser().parse_args(
                 ["ingest", "--url", "https://x", "--no-compile"]
             ))
