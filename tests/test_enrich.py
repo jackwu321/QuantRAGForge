@@ -139,19 +139,16 @@ signal_framework:
         self.assertEqual(mod.classify_llm_error("401 Client Error"), "api_error")
 
     def test_write_llm_failures(self) -> None:
-        original_path = mod.LLM_FAILURES_PATH
         with tempfile.TemporaryDirectory() as tmpdir:
-            mod.LLM_FAILURES_PATH = Path(tmpdir) / "llm_failures.txt"
+            kb_root = Path(tmpdir)
             results = [
                 mod.ProcessResult(article_dir="a", success=False, error="Read timed out"),
                 mod.ProcessResult(article_dir="b", success=False, error="Expecting value: line 1 column 1 (char 0) json decode error"),
                 mod.ProcessResult(article_dir="c", success=True),
             ]
-            try:
-                output = mod.write_llm_failures(results)
-                content = output.read_text(encoding="utf-8")
-            finally:
-                mod.LLM_FAILURES_PATH = original_path
+            output = mod.write_llm_failures(results, kb_root)
+            self.assertTrue(output.is_relative_to(kb_root))
+            content = output.read_text(encoding="utf-8")
             self.assertIn("a	timeout	Read timed out", content)
             self.assertIn("b	json_parse_error	Expecting value: line 1 column 1 (char 0) json decode error", content)
 

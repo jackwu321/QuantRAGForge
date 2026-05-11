@@ -72,7 +72,7 @@ def parse_args() -> argparse.Namespace:
 
     common = argparse.ArgumentParser(add_help=False)
     common.add_argument("--query", required=True, help="Question or brainstorm goal.")
-    common.add_argument("--kb-root", default=str(ROOT), help="Knowledge base root directory.")
+    common.add_argument("--kb-root", default=None, help="Knowledge base root directory (defaults to $QLW_KB_ROOT or cwd).")
     common.add_argument("--wiki-dir", help="Wiki directory, default <kb-root>/wiki.")
     common.add_argument("--schema-dir", help="Schema directory, default <kb-root>/schema.")
     common.add_argument("--vector-store-dir", help="Vector store directory, default <kb-root>/vector_store.")
