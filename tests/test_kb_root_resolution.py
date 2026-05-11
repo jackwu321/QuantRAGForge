@@ -156,5 +156,64 @@ class TestResolveKbRoot(unittest.TestCase):
         self.assertFalse(pkg_outputs.exists(), f"LEAKED: {pkg_outputs}")
 
 
+    def test_enrich_default_finds_articles_in_raw(self):
+        """qlw enrich with no --articles-root must discover articles under <kb-root>/raw."""
+        import quant_llm_wiki
+        from unittest.mock import patch, MagicMock
+
+        with tempfile.TemporaryDirectory() as td:
+            tmpdir = Path(td)
+            # Build skeleton: tmpdir/raw/article_x/article.md + source.json
+            article_dir = tmpdir / "raw" / "article_x"
+            article_dir.mkdir(parents=True)
+            (article_dir / "article.md").write_text(
+                "---\nstatus: raw\ntitle: Test Article\nsummary: A test.\n---\nBody text.\n",
+                encoding="utf-8",
+            )
+            (article_dir / "source.json").write_text(
+                json.dumps({"llm_enriched": False}), encoding="utf-8"
+            )
+
+            old_cwd = os.getcwd()
+            old_env = os.environ.get("QLW_KB_ROOT")
+            captured_args = []
+
+            def fake_discover(args):
+                captured_args.append(args)
+                return []  # return empty so _run exits cleanly without LLM calls
+
+            try:
+                os.chdir(td)
+                os.environ["QLW_KB_ROOT"] = str(tmpdir)
+                with patch("quant_llm_wiki.enrich.discover_article_dirs", side_effect=fake_discover):
+                    from quant_llm_wiki import cli
+                    import io, sys
+                    buf = io.StringIO()
+                    with patch("sys.stdout", buf):
+                        cli.main(["enrich", "--dry-run"])
+            finally:
+                os.chdir(old_cwd)
+                if old_env is None:
+                    os.environ.pop("QLW_KB_ROOT", None)
+                else:
+                    os.environ["QLW_KB_ROOT"] = old_env
+
+            # Verify discover_article_dirs was called once
+            self.assertEqual(len(captured_args), 1, "discover_article_dirs should be called once")
+            resolved_articles_root = Path(captured_args[0].articles_root).resolve()
+            expected_raw = (tmpdir / "raw").resolve()
+            self.assertEqual(
+                resolved_articles_root,
+                expected_raw,
+                f"Expected articles_root={expected_raw}, got {resolved_articles_root}",
+            )
+
+            # Verify no leaks into package dir
+            pkg_dir = Path(quant_llm_wiki.__file__).resolve().parent
+            for sub in ("articles", "sources", "raw"):
+                leaked = pkg_dir / sub
+                self.assertFalse(leaked.exists(), f"LEAKED: {leaked}")
+
+
 if __name__ == "__main__":
     unittest.main()

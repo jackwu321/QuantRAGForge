@@ -116,7 +116,7 @@ def parse_args() -> argparse.Namespace:
     parser = argparse.ArgumentParser(description="Enhance ingested articles with LLM-generated structured metadata.")
     parser.add_argument("--article-dir", help="Path to a single article directory.")
     parser.add_argument("--kb-root", default=None, help="Knowledge base root directory (defaults to $QLW_KB_ROOT or cwd).")
-    parser.add_argument("--articles-root", default=None, help="Root directory of raw articles (default: <kb-root>/articles/raw).")
+    parser.add_argument("--articles-root", default=None, help="Root directory of raw articles (default: <kb-root>/raw).")
     parser.add_argument("--status-filter", default=DEFAULT_STATUS_FILTER, help="Only process articles with this status.")
     parser.add_argument("--limit", type=int, help="Maximum number of articles to process.")
     parser.add_argument("--dry-run", action="store_true", help="Do not write files; print enhanced JSON only.")
@@ -598,7 +598,7 @@ def register(parser: argparse.ArgumentParser) -> None:
     """Attach this module's CLI flags to `parser`. Called by quant_llm_wiki.cli."""
     parser.add_argument("--article-dir", help="Path to a single article directory.")
     parser.add_argument("--kb-root", default=None, help="Knowledge base root directory (defaults to $QLW_KB_ROOT or cwd).")
-    parser.add_argument("--articles-root", default=None, help="Root directory of raw articles (default: <kb-root>/articles/raw).")
+    parser.add_argument("--articles-root", default=None, help="Root directory of raw articles (default: <kb-root>/raw).")
     parser.add_argument("--status-filter", default=DEFAULT_STATUS_FILTER, help="Only process articles with this status.")
     parser.add_argument("--limit", type=int, help="Maximum number of articles to process.")
     parser.add_argument("--dry-run", action="store_true", help="Do not write files; print enhanced JSON only.")
@@ -611,7 +611,7 @@ def _run(args) -> int:
     """The module's command body. Receives parsed args from the dispatcher."""
     kb_root = resolve_kb_root(getattr(args, "kb_root", None))
     if not args.articles_root:
-        args.articles_root = str(kb_root / "articles" / "raw")
+        args.articles_root = str(kb_root / "raw")
     article_dirs = discover_article_dirs(args)
     concurrency = get_concurrency(args)
 
