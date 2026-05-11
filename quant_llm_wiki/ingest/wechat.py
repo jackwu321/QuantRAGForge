@@ -357,16 +357,23 @@ def print_summary(article: ArticleData) -> None:
     print(json.dumps(payload, ensure_ascii=False, indent=2))
 
 
-def ingest_single_url(url: str, args: argparse.Namespace, kb_root: Path | None = None) -> BatchResult:
+def ingest_single_url(
+    url: str,
+    *,
+    kb_root: Path,
+    title: str | None = None,
+    content_type: str | None = None,
+    dry_run: bool = False,
+    force: bool = False,
+) -> BatchResult:
     try:
         html = fetch_html(url)
-        article = extract_article_data(html, url, args.title)
-        if args.content_type:
-            article.content_type = args.content_type
-        if args.dry_run:
+        article = extract_article_data(html, url, title)
+        if content_type:
+            article.content_type = content_type
+        if dry_run:
             print_summary(article)
             return BatchResult(url=url, success=True)
-        force = getattr(args, "force", False)
         out_dir = write_article(article, force=force, kb_root=kb_root)
         return BatchResult(url=url, success=True, output_dir=str(out_dir))
     except DuplicateArticleError as exc:
@@ -396,7 +403,15 @@ def write_ingest_failures(results: list[BatchResult], kb_root: Path | None = Non
     return ingest_failures_path
 
 
-def ingest_url_list(path: str, args: argparse.Namespace, kb_root: Path | None = None) -> int:
+def ingest_url_list(
+    path: str,
+    *,
+    kb_root: Path,
+    title: str | None = None,
+    content_type: str | None = None,
+    dry_run: bool = False,
+    force: bool = False,
+) -> int:
     urls = load_url_list(path)
     if not urls:
         print("no valid urls found in list")
@@ -405,7 +420,14 @@ def ingest_url_list(path: str, args: argparse.Namespace, kb_root: Path | None = 
     results: list[BatchResult] = []
     for index, url in enumerate(urls, start=1):
         print(f"[{index}/{len(urls)}] ingesting {url}")
-        result = ingest_single_url(url, args, kb_root=kb_root)
+        result = ingest_single_url(
+            url,
+            kb_root=kb_root,
+            title=title,
+            content_type=content_type,
+            dry_run=dry_run,
+            force=force,
+        )
         results.append(result)
         if result.skipped:
             print(f"  skipped (already exists): {result.output_dir}")
@@ -469,7 +491,14 @@ def _run(args) -> int:
     """The module's command body. Receives parsed args from the dispatcher."""
     kb_root = resolve_kb_root(getattr(args, "kb_root", None))
     if args.url_list:
-        return ingest_url_list(args.url_list, args, kb_root=kb_root)
+        return ingest_url_list(
+            args.url_list,
+            kb_root=kb_root,
+            title=args.title,
+            content_type=args.content_type,
+            dry_run=args.dry_run,
+            force=args.force,
+        )
 
     html, detected_url = read_html(args)
     source_url = args.url or detected_url

@@ -40,8 +40,14 @@ def _today() -> str:
 def _dispatch_wechat(url: str, content_type: str | None = None, force: bool = False, kb_root: Path | None = None) -> str:
     """Delegate to existing WeChat ingest pipeline."""
     from quant_llm_wiki.ingest.wechat import ingest_single_url, DuplicateArticleError
-    args = argparse.Namespace(title=None, content_type=content_type, dry_run=False, force=force)
-    result = ingest_single_url(url, args, kb_root=kb_root)
+    result = ingest_single_url(
+        url,
+        kb_root=resolve_kb_root(kb_root),
+        title=None,
+        content_type=content_type,
+        dry_run=False,
+        force=force,
+    )
     if result.skipped:
         raise DuplicateArticleError(result.output_dir)
     if result.success:

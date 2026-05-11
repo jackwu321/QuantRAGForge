@@ -194,12 +194,22 @@ def register(parser: argparse.ArgumentParser) -> None:
     parser.set_defaults(func=_run)
 
 
-def _run(args) -> int:
-    """The module's command body. Receives parsed args from the dispatcher."""
-    kb_root = resolve_kb_root(getattr(args, "kb_root", None))
-    _vsd = getattr(args, "vector_store_dir", None)
-    vector_store_dir = Path(_vsd).expanduser().resolve() if _vsd else kb_root / "vector_store"
-    source_dirs = parse_csv_arg(args.source_dir) or list(DEFAULT_SOURCE_DIRS)
+def run_embed(
+    kb_root: Path,
+    *,
+    source_dir: str = "reviewed,high-value",
+    force: bool = False,
+    dry_run: bool = False,
+    embedding_model: str | None = None,
+    vector_store_dir: Path | None = None,
+) -> int:
+    """Public typed entry point for embedding. All args.X references live here."""
+    if embedding_model is None:
+        embedding_model = DEFAULT_EMBEDDING_MODEL
+    if vector_store_dir is None:
+        vector_store_dir = kb_root / "vector_store"
+
+    source_dirs = parse_csv_arg(source_dir) or list(DEFAULT_SOURCE_DIRS)
     notes = load_notes(kb_root, source_dirs)
     if not notes:
         print("no article dirs found")
@@ -207,7 +217,7 @@ def _run(args) -> int:
 
     manifest_path = vector_store_dir / INDEX_MANIFEST_FILENAME
     manifest = load_manifest(manifest_path)
-    collection = None if args.dry_run else open_collection(vector_store_dir)
+    collection = None if dry_run else open_collection(vector_store_dir)
     failures: list[dict[str, str]] = []
     success = 0
     skipped = 0
@@ -216,12 +226,12 @@ def _run(args) -> int:
         article_key = manifest_key(kb_root, note)
         article_hash = article_content_hash(note.article_dir, INDEX_SCHEMA_VERSION)
         manifest_entry = manifest["articles"].get(article_key, {})
-        if not args.force and manifest_entry.get("hash") == article_hash:
+        if not force and manifest_entry.get("hash") == article_hash:
             skipped += 1
             continue
 
         blocks = build_blocks(note)
-        if args.dry_run:
+        if dry_run:
             print(f"[dry-run] {article_key}: {len(blocks)} block(s)")
             success += 1
             continue
@@ -233,7 +243,7 @@ def _run(args) -> int:
                 ids = [make_block_id(kb_root, block, idx) for idx, block in enumerate(blocks)]
                 documents = [block.text for block in blocks]
                 metadatas = [block_metadata(block) for block in blocks]
-                embeddings = [embed_text(text, model=args.embedding_model) for text in documents]
+                embeddings = [embed_text(text, model=embedding_model) for text in documents]
                 collection.upsert(ids=ids, documents=documents, metadatas=metadatas, embeddings=embeddings)
             manifest["articles"][article_key] = {
                 "hash": article_hash,
@@ -246,7 +256,7 @@ def _run(args) -> int:
 
     # Index wiki/ entries (best-effort; missing wiki dir is fine)
     wiki_dir = kb_root / "wiki"
-    if wiki_dir.exists() and not args.dry_run and collection is not None:
+    if wiki_dir.exists() and not dry_run and collection is not None:
         for block in iter_wiki_blocks(wiki_dir):
             try:
                 wiki_id = make_block_id(kb_root, block, 0)
@@ -260,7 +270,7 @@ def _run(args) -> int:
                 failures.append({"article_dir": str(block.note.article_dir), "error": str(exc)})
 
     failure_list_path = kb_root / FAILURE_LIST_PATH_SUFFIX
-    if not args.dry_run:
+    if not dry_run:
         save_manifest(manifest_path, manifest)
     write_failure_list(failures, failure_list_path)
 
@@ -273,6 +283,18 @@ def _run(args) -> int:
     }
     print(json.dumps(summary, ensure_ascii=False, indent=2))
     return 0 if not failures else 1
+
+
+def _run(args) -> int:
+    """The module's command body. Receives parsed args from the dispatcher."""
+    return run_embed(
+        resolve_kb_root(getattr(args, "kb_root", None)),
+        source_dir=args.source_dir,
+        force=args.force,
+        dry_run=args.dry_run,
+        embedding_model=args.embedding_model,
+        vector_store_dir=Path(args.vector_store_dir).expanduser().resolve() if args.vector_store_dir else None,
+    )
 
 
 def main() -> int:

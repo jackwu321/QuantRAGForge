@@ -46,17 +46,21 @@ def register(parser: argparse.ArgumentParser) -> None:
     parser.set_defaults(func=_run)
 
 
-def _run(args) -> int:
-    """The module's command body. Receives parsed args from the dispatcher."""
-    kb_root = resolve_kb_root(getattr(args, "kb_root", None))
-    _sd = getattr(args, "source_dir", None)
-    source_dir = Path(_sd).expanduser().resolve() if _sd else kb_root / "raw"
-    results = sync_by_status(source_dir, dry_run=args.dry_run, kb_root=kb_root)
+def run_sync(
+    kb_root: Path,
+    *,
+    source_dir: Path | None = None,
+    dry_run: bool = False,
+) -> int:
+    """Public typed entry point for syncing articles by status."""
+    if source_dir is None:
+        source_dir = kb_root / "raw"
+    results = sync_by_status(source_dir, dry_run=dry_run, kb_root=kb_root)
     moved = [r for r in results if r.moved]
     skipped = [r for r in results if not r.moved]
     summary = {
         "source_dir": str(source_dir),
-        "dry_run": bool(args.dry_run),
+        "dry_run": bool(dry_run),
         "total": len(results),
         "moved": len(moved),
         "skipped": len(skipped),
@@ -71,6 +75,15 @@ def _run(args) -> int:
     }
     print(json.dumps(summary, ensure_ascii=False, indent=2))
     return 0
+
+
+def _run(args) -> int:
+    """The module's command body. Receives parsed args from the dispatcher."""
+    return run_sync(
+        resolve_kb_root(getattr(args, "kb_root", None)),
+        source_dir=Path(args.source_dir).expanduser().resolve() if args.source_dir else None,
+        dry_run=args.dry_run,
+    )
 
 
 def parse_status(article_md: Path) -> str:
