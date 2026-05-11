@@ -534,10 +534,17 @@ def query_knowledge_base(
         result = rethink(result, retrieved, query, vector_store_dir)
 
     try:
-        output_path = default_output_path(mode, query)
-        write_output(output_path, query, mode, retrieved, result)
+        output_path = default_output_path(mode, query, output_dir=kb_root / "outputs" / "brainstorms")
+        saved = write_output(output_path, query, mode, retrieved, result)
     except Exception:
-        pass  # non-critical: output file write failure
+        saved = None  # non-critical: output file write failure
+
+    if saved is not None:
+        try:
+            from quant_llm_wiki.wiki.maintain import append_query_log
+            append_query_log(kb_root, query, mode, output_path=saved)
+        except Exception:
+            pass  # non-critical: query log write failure
 
     warning_text = f"\n(Warning: {warning})" if warning else ""
     return f"{result}{warning_text}"

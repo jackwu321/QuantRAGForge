@@ -194,6 +194,50 @@ class TestToolsReturnStrings(unittest.TestCase):
             self.assertIn("No candidate", result)
 
 
+class QueryKnowledgeBaseQueryLogTests(unittest.TestCase):
+    """Agent's query_knowledge_base tool must write wiki/queries/ logs."""
+
+    def test_query_knowledge_base_writes_query_log(self) -> None:
+        from quant_llm_wiki.agent.tools import query_knowledge_base
+        from quant_llm_wiki.query.brainstorm import KnowledgeNote, KnowledgeBlock
+
+        note = KnowledgeNote(
+            article_dir=Path("fake_article"),
+            source_dir="reviewed",
+            frontmatter={
+                "status": "reviewed",
+                "title": "Momentum",
+                "summary": "momentum factor",
+                "idea_blocks": ["momentum combines with mean reversion"],
+                "combination_hooks": [],
+                "transfer_targets": [],
+                "failure_modes": [],
+            },
+            body="## Main Content\n\nMomentum factor.\n",
+        )
+        block = KnowledgeBlock(note=note, block_type="idea", text="momentum idea", score=1.0)
+
+        with tempfile.TemporaryDirectory() as tmp:
+            root = Path(tmp)
+            (root / "wiki").mkdir()
+            with patch.dict(os.environ, {"QLW_KB_ROOT": str(root)}), \
+                 patch("quant_llm_wiki.agent.tools.load_notes", return_value=[note]), \
+                 patch("quant_llm_wiki.agent.tools.filter_notes", return_value=[note]), \
+                 patch("quant_llm_wiki.query.brainstorm.retrieve_blocks",
+                       return_value=([block], "ask", None)), \
+                 patch("quant_llm_wiki.shared.call_zhipu_chat", return_value="fake answer"):
+                result = query_knowledge_base.invoke({"query": "momentum", "mode": "ask"})
+
+            self.assertIsInstance(result, str)
+            queries_dir = root / "wiki" / "queries"
+            log_files = list(queries_dir.glob("*_momentum_ask.md")) if queries_dir.exists() else []
+            self.assertEqual(len(log_files), 1,
+                             f"Expected 1 query log, found: {list(queries_dir.glob('*.md')) if queries_dir.exists() else []}")
+            outputs_dir = root / "outputs" / "brainstorms"
+            out_files = list(outputs_dir.glob("*_momentum_ask.md")) if outputs_dir.exists() else []
+            self.assertEqual(len(out_files), 1, "Output should land under kb_root/outputs/brainstorms")
+
+
 class CompileWikiToolTests(unittest.TestCase):
     def test_compile_wiki_invokes_orchestrator(self) -> None:
         from unittest.mock import patch
