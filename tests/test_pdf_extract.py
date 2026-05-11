@@ -1,7 +1,7 @@
 import unittest
 from pathlib import Path
 
-import _pdf_extract
+import quant_llm_wiki.ingest.pdf as _pdf_extract
 
 
 FIXTURE_DIR = Path(__file__).parent / "fixtures"

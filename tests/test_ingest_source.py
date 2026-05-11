@@ -1,12 +1,12 @@
 import unittest
 from unittest.mock import MagicMock, patch
 
-import ingest_source
+import quant_llm_wiki.ingest.source as ingest_source
 
 
 class DispatcherTests(unittest.TestCase):
-    @patch("ingest_source._is_wechat_url")
-    @patch("ingest_source._dispatch_wechat")
+    @patch("quant_llm_wiki.ingest.source._is_wechat_url")
+    @patch("quant_llm_wiki.ingest.source._dispatch_wechat")
     def test_url_routing_wechat(self, mock_we, mock_is_we) -> None:
         mock_is_we.return_value = True
         mock_we.return_value = "/tmp/out"
@@ -14,17 +14,17 @@ class DispatcherTests(unittest.TestCase):
         mock_we.assert_called_once()
         self.assertEqual(result, "/tmp/out")
 
-    @patch("ingest_source._is_wechat_url", return_value=False)
-    @patch("ingest_source._is_pdf_url", return_value=True)
-    @patch("ingest_source._dispatch_pdf_url")
+    @patch("quant_llm_wiki.ingest.source._is_wechat_url", return_value=False)
+    @patch("quant_llm_wiki.ingest.source._is_pdf_url", return_value=True)
+    @patch("quant_llm_wiki.ingest.source._dispatch_pdf_url")
     def test_url_routing_pdf(self, mock_pdf, *_) -> None:
         mock_pdf.return_value = "/tmp/pdf"
         ingest_source.dispatch_url("https://example.com/paper.pdf")
         mock_pdf.assert_called_once()
 
-    @patch("ingest_source._is_wechat_url", return_value=False)
-    @patch("ingest_source._is_pdf_url", return_value=False)
-    @patch("ingest_source._dispatch_web")
+    @patch("quant_llm_wiki.ingest.source._is_wechat_url", return_value=False)
+    @patch("quant_llm_wiki.ingest.source._is_pdf_url", return_value=False)
+    @patch("quant_llm_wiki.ingest.source._dispatch_web")
     def test_url_routing_generic_web(self, mock_web, *_) -> None:
         mock_web.return_value = "/tmp/web"
         ingest_source.dispatch_url("https://example.com/blog/post")
@@ -43,7 +43,7 @@ class WriteWebArticleTests(unittest.TestCase):
     def test_write_web_article_creates_directory(self) -> None:
         import tempfile
         from pathlib import Path
-        from _web_extract import ExtractedArticle
+        from quant_llm_wiki.ingest.web import ExtractedArticle
 
         with tempfile.TemporaryDirectory() as tmp:
             article = ExtractedArticle(

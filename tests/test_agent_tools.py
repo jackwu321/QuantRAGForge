@@ -338,7 +338,7 @@ class ReadWikiToolTests(unittest.TestCase):
 
 
 class IngestArticleDispatchTests(unittest.TestCase):
-    @patch("ingest_source.dispatch_url")
+    @patch("quant_llm_wiki.ingest.source.dispatch_url")
     def test_url_routes_through_dispatch_url_for_pdf(self, mock_dispatch) -> None:
         from quant_llm_wiki.agent.tools import ingest_article
         mock_dispatch.return_value = "/tmp/out"
@@ -347,7 +347,7 @@ class IngestArticleDispatchTests(unittest.TestCase):
         self.assertIn("OK:", result)
         self.assertIn("/tmp/out", result)
 
-    @patch("ingest_source.dispatch_pdf_file")
+    @patch("quant_llm_wiki.ingest.source.dispatch_pdf_file")
     def test_pdf_file_param_routes_to_pdf_dispatcher(self, mock_pdf) -> None:
         from quant_llm_wiki.agent.tools import ingest_article
         mock_pdf.return_value = "/tmp/out"

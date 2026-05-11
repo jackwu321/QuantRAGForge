@@ -10,8 +10,8 @@ from pathlib import Path
 from urllib.parse import urlparse
 
 from quant_llm_wiki.shared import ROOT
-import _web_extract
-import _pdf_extract
+import quant_llm_wiki.ingest.web as _web_extract
+import quant_llm_wiki.ingest.pdf as _pdf_extract
 
 
 ARTICLES_RAW_DIR = ROOT / "articles" / "raw"

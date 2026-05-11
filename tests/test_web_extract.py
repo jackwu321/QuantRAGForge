@@ -1,7 +1,7 @@
 import unittest
 from unittest.mock import patch
 
-import _web_extract
+import quant_llm_wiki.ingest.web as _web_extract
 
 
 SAMPLE_HTML = """<!DOCTYPE html>
@@ -37,7 +37,7 @@ class WebExtractTests(unittest.TestCase):
         self.assertEqual(result.extraction_quality, "text_only")
         self.assertEqual(result.text, "")
 
-    @patch("_web_extract._fetch_url_text")
+    @patch("quant_llm_wiki.ingest.web._fetch_url_text")
     def test_extract_from_url_calls_fetch(self, mock_fetch) -> None:
         mock_fetch.return_value = SAMPLE_HTML
         result = _web_extract.extract_from_url("https://example.com/x")

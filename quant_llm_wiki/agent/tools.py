@@ -54,7 +54,7 @@ def ingest_article(
     - pdf_url: A direct URL to a PDF document
 
     Set force=True to re-ingest articles that already exist."""
-    import ingest_source
+    import quant_llm_wiki.ingest.source as ingest_source
     from quant_llm_wiki.ingest.wechat import (
         extract_article_data,
         write_article,
