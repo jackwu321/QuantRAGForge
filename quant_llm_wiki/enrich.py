@@ -134,14 +134,19 @@ def get_llm_metadata_config() -> tuple[str, str]:
     return base_url, model
 
 
-def discover_article_dirs(args: argparse.Namespace) -> list[Path]:
-    if args.article_dir:
-        return [Path(args.article_dir).expanduser().resolve()]
-    root = Path(args.articles_root).expanduser().resolve()
+def discover_article_dirs(
+    *,
+    article_dir: str | None,
+    articles_root: Path,
+    limit: int | None,
+) -> list[Path]:
+    if article_dir:
+        return [Path(article_dir).expanduser().resolve()]
+    root = Path(articles_root).expanduser().resolve()
     dirs = [p for p in root.iterdir() if p.is_dir()]
     dirs.sort(key=lambda p: p.name)
-    if args.limit:
-        dirs = dirs[: args.limit]
+    if limit:
+        dirs = dirs[:limit]
     return dirs
 
 
@@ -446,20 +451,26 @@ def write_article_dir(article_dir: Path, markdown: str, source_json: dict[str, A
     (article_dir / "source.json").write_text(json.dumps(source_json, ensure_ascii=False, indent=2), encoding="utf-8")
 
 
-def process_article_dir(article_dir: Path, args: argparse.Namespace) -> ProcessResult:
+def process_article_dir(
+    article_dir: Path,
+    *,
+    status_filter: str,
+    force: bool,
+    dry_run: bool,
+) -> ProcessResult:
     markdown = load_article_markdown(article_dir)
     frontmatter, body = parse_frontmatter(markdown)
     source_json = load_source_json(article_dir)
-    if not article_matches_status(frontmatter, args.status_filter):
+    if not article_matches_status(frontmatter, status_filter):
         return ProcessResult(article_dir=str(article_dir), success=True)
-    if should_skip(source_json, args.force):
+    if should_skip(source_json, force):
         return ProcessResult(article_dir=str(article_dir), success=True)
 
     prompt_payload = build_prompt_payload(frontmatter, body, source_json)
     try:
         enhancement_result = call_llm_enrich(prompt_payload)
         enhancement = validate_enhancement_data(enhancement_result.data, frontmatter.get("content_type", ""))
-        if args.dry_run:
+        if dry_run:
             print(json.dumps({"article_dir": str(article_dir), "enhancement": enhancement}, ensure_ascii=False, indent=2))
             return ProcessResult(article_dir=str(article_dir), success=True)
         updated_markdown = apply_markdown_updates(markdown, enhancement, frontmatter.get("content_type", ""))
@@ -470,15 +481,15 @@ def process_article_dir(article_dir: Path, args: argparse.Namespace) -> ProcessR
         raise  # propagate auth errors for fail-fast handling
     except Exception as exc:
         updated_source = mark_source_json_error(source_json, str(exc))
-        if not args.dry_run:
+        if not dry_run:
             (article_dir / "source.json").write_text(json.dumps(updated_source, ensure_ascii=False, indent=2), encoding="utf-8")
         return ProcessResult(article_dir=str(article_dir), success=False, error=str(exc))
 
 
-def get_concurrency(args: argparse.Namespace) -> int:
-    """Return the concurrency level from args, env, or default."""
-    if getattr(args, "concurrency", None):
-        return args.concurrency
+def get_concurrency(concurrency: int | None) -> int:
+    """Return the concurrency level from the provided value, env, or default."""
+    if concurrency:
+        return concurrency
     env_val = _env_with_fallback("LLM_CONCURRENCY", "ZHIPU_CONCURRENCY", "")
     if env_val:
         return max(1, int(env_val))
@@ -500,14 +511,26 @@ def _log_event(msg: str) -> None:
     print(msg, file=sys.stderr, flush=True)
 
 
-def _process_with_timeout(article_dir: Path, args: argparse.Namespace) -> ProcessResult:
+def _process_with_timeout(
+    article_dir: Path,
+    *,
+    status_filter: str,
+    force: bool,
+    dry_run: bool,
+) -> ProcessResult:
     timeout = _article_timeout()
     name = Path(article_dir).name
     started = time.monotonic()
     _log_event(f"[enrich] start {name} (timeout={timeout}s)")
     ex = ThreadPoolExecutor(max_workers=1)
     try:
-        future = ex.submit(process_article_dir, article_dir, args)
+        future = ex.submit(
+            process_article_dir,
+            article_dir,
+            status_filter=status_filter,
+            force=force,
+            dry_run=dry_run,
+        )
         try:
             result = future.result(timeout=timeout)
             elapsed = time.monotonic() - started
@@ -531,7 +554,10 @@ def _process_with_timeout(article_dir: Path, args: argparse.Namespace) -> Proces
 
 def run_enrich_batch(
     article_dirs: list[Path],
-    args: argparse.Namespace,
+    *,
+    status_filter: str,
+    force: bool,
+    dry_run: bool,
     concurrency: int = 1,
     progress_callback=None,
 ) -> list[ProcessResult]:
@@ -539,7 +565,9 @@ def run_enrich_batch(
 
     Args:
         article_dirs: directories to process.
-        args: CLI/tool arguments namespace.
+        status_filter: only process articles with this status.
+        force: re-run even if already enriched.
+        dry_run: do not write files; print enhanced JSON only.
         concurrency: max parallel LLM requests.
         progress_callback: optional callable(index, total, result) for progress.
 
@@ -551,7 +579,12 @@ def run_enrich_batch(
 
     if concurrency <= 1:
         for i, ad in enumerate(article_dirs):
-            result = _process_with_timeout(ad, args)
+            result = _process_with_timeout(
+                ad,
+                status_filter=status_filter,
+                force=force,
+                dry_run=dry_run,
+            )
             results.append(result)
             if progress_callback:
                 progress_callback(i + 1, total, result)
@@ -566,7 +599,13 @@ def run_enrich_batch(
         for i, ad in enumerate(article_dirs):
             if auth_failed:
                 break
-            future = executor.submit(_process_with_timeout, ad, args)
+            future = executor.submit(
+                _process_with_timeout,
+                ad,
+                status_filter=status_filter,
+                force=force,
+                dry_run=dry_run,
+            )
             future_to_idx[future] = i
 
         for future in as_completed(future_to_idx):
@@ -607,13 +646,19 @@ def register(parser: argparse.ArgumentParser) -> None:
     parser.set_defaults(func=_run)
 
 
-def _run(args) -> int:
+def _run(args: argparse.Namespace) -> int:
     """The module's command body. Receives parsed args from the dispatcher."""
     kb_root = resolve_kb_root(getattr(args, "kb_root", None))
-    if not args.articles_root:
-        args.articles_root = str(kb_root / "raw")
-    article_dirs = discover_article_dirs(args)
-    concurrency = get_concurrency(args)
+    articles_root = (
+        Path(args.articles_root).expanduser().resolve()
+        if args.articles_root else kb_root / "raw"
+    )
+    article_dirs = discover_article_dirs(
+        article_dir=args.article_dir,
+        articles_root=articles_root,
+        limit=args.limit,
+    )
+    concurrency = get_concurrency(args.concurrency)
 
     if concurrency > 1 and len(article_dirs) > 1:
         print(f"Processing {len(article_dirs)} articles with concurrency={concurrency}")
@@ -622,7 +667,14 @@ def _run(args) -> int:
         status = "ok" if result.success else f"failed: {result.error}"
         print(f"[{i}/{total}] {result.article_dir}: {status}")
 
-    results = run_enrich_batch(article_dirs, args, concurrency, progress_callback=_progress)
+    results = run_enrich_batch(
+        article_dirs,
+        status_filter=args.status_filter,
+        force=args.force,
+        dry_run=args.dry_run,
+        concurrency=concurrency,
+        progress_callback=_progress,
+    )
 
     failures = [r for r in results if not r.success]
     failure_list_path = write_llm_failures(results, kb_root)

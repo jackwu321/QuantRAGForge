@@ -176,10 +176,10 @@ class TestResolveKbRoot(unittest.TestCase):
 
             old_cwd = os.getcwd()
             old_env = os.environ.get("QLW_KB_ROOT")
-            captured_args = []
+            captured_kwargs = []
 
-            def fake_discover(args):
-                captured_args.append(args)
+            def fake_discover(*, article_dir, articles_root, limit):
+                captured_kwargs.append({"article_dir": article_dir, "articles_root": articles_root, "limit": limit})
                 return []  # return empty so _run exits cleanly without LLM calls
 
             try:
@@ -199,8 +199,8 @@ class TestResolveKbRoot(unittest.TestCase):
                     os.environ["QLW_KB_ROOT"] = old_env
 
             # Verify discover_article_dirs was called once
-            self.assertEqual(len(captured_args), 1, "discover_article_dirs should be called once")
-            resolved_articles_root = Path(captured_args[0].articles_root).resolve()
+            self.assertEqual(len(captured_kwargs), 1, "discover_article_dirs should be called once")
+            resolved_articles_root = Path(captured_kwargs[0]["articles_root"]).resolve()
             expected_raw = (tmpdir / "raw").resolve()
             self.assertEqual(
                 resolved_articles_root,

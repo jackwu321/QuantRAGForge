@@ -1,4 +1,3 @@
-import argparse
 import io
 import os
 import sys
@@ -11,16 +10,16 @@ from quant_llm_wiki import enrich
 from quant_llm_wiki.enrich import ProcessResult
 
 
-def _slow_process(article_dir, args):
+def _slow_process(article_dir, *, status_filter, force, dry_run):
     time.sleep(3)
     return ProcessResult(article_dir=str(article_dir), success=True)
 
 
-def _fast_process(article_dir, args):
+def _fast_process(article_dir, *, status_filter, force, dry_run):
     return ProcessResult(article_dir=str(article_dir), success=True)
 
 
-def _fail_process(article_dir, args):
+def _fail_process(article_dir, *, status_filter, force, dry_run):
     return ProcessResult(article_dir=str(article_dir), success=False, error="boom")
 
 
@@ -51,9 +50,7 @@ class ProcessWithTimeoutTests(unittest.TestCase):
     def setUp(self) -> None:
         self._prev = os.environ.get("LLM_ARTICLE_TIMEOUT")
         os.environ["LLM_ARTICLE_TIMEOUT"] = "1"
-        self._args = argparse.Namespace(
-            articles_root="/tmp", status_filter="raw", force=False, dry_run=False
-        )
+        self._kwargs = dict(status_filter="raw", force=False, dry_run=False)
 
     def tearDown(self) -> None:
         if self._prev is None:
@@ -65,7 +62,7 @@ class ProcessWithTimeoutTests(unittest.TestCase):
         buf = io.StringIO()
         with patch("quant_llm_wiki.enrich.process_article_dir", side_effect=_fast_process):
             with patch.object(sys, "stderr", buf):
-                result = enrich._process_with_timeout(Path("/tmp/sampleA"), self._args)
+                result = enrich._process_with_timeout(Path("/tmp/sampleA"), **self._kwargs)
         self.assertTrue(result.success)
         self.assertIn("[enrich] start sampleA", buf.getvalue())
         self.assertIn("[enrich] done", buf.getvalue())
@@ -74,7 +71,7 @@ class ProcessWithTimeoutTests(unittest.TestCase):
         buf = io.StringIO()
         with patch("quant_llm_wiki.enrich.process_article_dir", side_effect=_slow_process):
             with patch.object(sys, "stderr", buf):
-                result = enrich._process_with_timeout(Path("/tmp/sampleB"), self._args)
+                result = enrich._process_with_timeout(Path("/tmp/sampleB"), **self._kwargs)
         self.assertFalse(result.success)
         self.assertTrue(result.error.startswith("timeout:"))
         self.assertIn("TIMEOUT sampleB", buf.getvalue())
@@ -84,9 +81,7 @@ class RunEnrichBatchTimeoutTests(unittest.TestCase):
     def setUp(self) -> None:
         self._prev = os.environ.get("LLM_ARTICLE_TIMEOUT")
         os.environ["LLM_ARTICLE_TIMEOUT"] = "1"
-        self._args = argparse.Namespace(
-            articles_root="/tmp", status_filter="raw", force=False, dry_run=False
-        )
+        self._kwargs = dict(status_filter="raw", force=False, dry_run=False)
 
     def tearDown(self) -> None:
         if self._prev is None:
@@ -94,7 +89,7 @@ class RunEnrichBatchTimeoutTests(unittest.TestCase):
         else:
             os.environ["LLM_ARTICLE_TIMEOUT"] = self._prev
 
-    def _mixed_processor(self, article_dir, args):
+    def _mixed_processor(self, article_dir, *, status_filter, force, dry_run):
         if "slow" in str(article_dir):
             time.sleep(3)
             return ProcessResult(article_dir=str(article_dir), success=True)
@@ -106,7 +101,7 @@ class RunEnrichBatchTimeoutTests(unittest.TestCase):
             with patch.object(sys, "stderr", io.StringIO()):
                 results = enrich.run_enrich_batch(
                     [Path("/tmp/slow_one"), Path("/tmp/fast_two")],
-                    self._args,
+                    **self._kwargs,
                     concurrency=1,
                     progress_callback=lambda i, t, r: progress.append((i, t, r)),
                 )
@@ -124,7 +119,7 @@ class RunEnrichBatchTimeoutTests(unittest.TestCase):
             with patch.object(sys, "stderr", io.StringIO()):
                 results = enrich.run_enrich_batch(
                     [Path("/tmp/slow_a"), Path("/tmp/fast_b"), Path("/tmp/fast_c")],
-                    self._args,
+                    **self._kwargs,
                     concurrency=3,
                     progress_callback=lambda i, t, r: progress.append((i, t, r)),
                 )

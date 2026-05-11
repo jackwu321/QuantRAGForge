@@ -1,6 +1,5 @@
 from __future__ import annotations
 
-import argparse
 import json
 import re
 import sys
@@ -179,24 +178,20 @@ def enrich_articles(
     )
 
     kb_root = resolve_kb_root(None)
-    args = argparse.Namespace(
-        article_dir=article_dir,
-        articles_root=str(kb_root / "raw"),
-        status_filter=status_filter,
-        force=force,
-        dry_run=False,
-        limit=limit,
-        concurrency=None,
-    )
+    articles_root = kb_root / "raw"
     try:
-        article_dirs = enrich_discover(args)
+        article_dirs = enrich_discover(
+            article_dir=article_dir,
+            articles_root=articles_root,
+            limit=limit,
+        )
     except Exception as exc:
         return f"Error discovering articles: {exc}"
 
     if not article_dirs:
         return "No articles found matching the criteria."
 
-    concurrency = get_concurrency(args)
+    concurrency = get_concurrency(None)
     total = len(article_dirs)
     print(f"  Enriching {total} articles (concurrency={concurrency}) ...", flush=True)
 
@@ -204,7 +199,14 @@ def enrich_articles(
         status = "ok" if result.success else f"failed: {result.error}"
         print(f"  [{i}/{t}] {Path(result.article_dir).name}: {status}", flush=True)
 
-    results = run_enrich_batch(article_dirs, args, concurrency, progress_callback=_progress)
+    results = run_enrich_batch(
+        article_dirs,
+        status_filter=status_filter,
+        force=force,
+        dry_run=False,
+        concurrency=concurrency,
+        progress_callback=_progress,
+    )
 
     success = sum(1 for r in results if r.success)
     failed = [r for r in results if not r.success]
