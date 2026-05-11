@@ -180,7 +180,7 @@ def enrich_articles(
     kb_root = resolve_kb_root(None)
     args = argparse.Namespace(
         article_dir=article_dir,
-        articles_root=str(kb_root / "articles" / "raw"),
+        articles_root=str(kb_root / "raw"),
         status_filter=status_filter,
         force=force,
         dry_run=False,

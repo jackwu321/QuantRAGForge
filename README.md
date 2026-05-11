@@ -285,7 +285,7 @@ qlw ingest --html-file saved.html
 qlw ingest --url-list urls.txt
 ```
 
-Each URL has a hard 120 s ceiling; on hit, ingest prints `TIMEOUT <url>: exceeded 120s` and (in batch mode) continues with the next URL. Override via `INGEST_URL_TIMEOUT=<seconds>`. Note: a timed-out URL may leave a partial `articles/raw/<date>_*/` directory behind (same as ordinary `FAILED` cases).
+Each URL has a hard 120 s ceiling; on hit, ingest prints `TIMEOUT <url>: exceeded 120s` and (in batch mode) continues with the next URL. Override via `INGEST_URL_TIMEOUT=<seconds>`. Note: a timed-out URL may leave a partial `raw/<date>_*/` directory behind (same as ordinary `FAILED` cases).
 
 ### 4. Enrich + Embed
 
@@ -315,6 +315,8 @@ qlw brainstorm --query "..." --dry-run
 ### Wiki maintenance commands
 
 > **v0.3.0 migration note.** v0.3.0 unified `kb.py` into `qlw`. If you previously ran `python3 kb.py <cmd>`, run `qlw <cmd>` instead. The `kb query` mode has been split into `qlw ask` and `qlw brainstorm`.
+>
+> If your repo still uses the legacy `articles/raw/` layout, pass `qlw enrich --articles-root articles/raw` (or move articles into `raw/`) — v0.3.0 unified all subcommands on `<kb-root>/raw/`.
 
 All wiki maintenance commands are available via `qlw` — no clone required. `pipx install quant-llm-wiki` gives you the full surface:
 
@@ -339,7 +341,7 @@ qlw compile
 
 # Query (ask mode) — outputs saved to outputs/brainstorms/
 qlw ask --query "..."
-# Note: query feedback filing (--no-file-back / --file-back) is planned after v0.3.0; see the "Query → wiki feedback" section above.
+# Note: automatic query log filing into `wiki/queries/` (the loop from the "Query → wiki feedback" section above) is planned after v0.3.0. `qlw ask` and `qlw brainstorm` currently save normal command outputs only.
 ```
 
 ## Agent Usage
