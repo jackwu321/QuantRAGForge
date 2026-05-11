@@ -4,7 +4,7 @@ build-backend = "setuptools.build_meta"
 
 [project]
 name = "quant_llm_wiki"
-version = "0.2.0"
+version = "0.3.0"
 description = "AI-powered quant research knowledge base & brainstorm agent"
 readme = "README.md"
 requires-python = ">=3.10"
@@ -45,6 +45,8 @@ dependencies = [
     "langchain-community>=0.3.0",
     "langchain-openai>=0.3.0",
     "python-dotenv>=1.0.0",
+    "pypdf>=4.0.0",
+    "pdfplumber>=0.11.0",
 ]
 
 [project.urls]
