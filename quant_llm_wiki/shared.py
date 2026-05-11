@@ -20,31 +20,9 @@ except ImportError:  # pragma: no cover - runtime dependency
 
 from dotenv import load_dotenv
 
-ROOT = Path(__file__).resolve().parent
-
-# Auto-load .env from project root (does not override existing env vars)
-load_dotenv(ROOT / ".env")
+# Auto-load .env from package directory (does not override existing env vars)
+load_dotenv(Path(__file__).resolve().parent / ".env")
 DEFAULT_SOURCE_DIRS = ("reviewed", "high-value")
-
-# ---------------------------------------------------------------------------
-# WARNING: The path constants below resolve relative to the *package directory*
-# at import time.  After `pipx install`, that is inside the pipx venv
-# (~/.local/pipx/venvs/quant_llm_wiki/lib/.../quant_llm_wiki/) — NOT the
-# user's project directory.  Any function that *writes* a file MUST NOT use
-# these constants.  Instead call `paths.resolve_kb_root(cli_arg)` at handler
-# time and derive write paths from the returned kb_root.
-#
-# These constants are kept here only for read-only callers (agent/tools.py,
-# legacy standalone scripts) that resolve their own kb_root separately.
-#
-# See quant_llm_wiki/paths.py for the correct resolution helper.
-# ---------------------------------------------------------------------------
-WIKI_DIR = ROOT / "wiki"
-WIKI_CONCEPTS_DIR = WIKI_DIR / "concepts"
-WIKI_SOURCES_DIR = WIKI_DIR / "sources"
-WIKI_INDEX_PATH = WIKI_DIR / "INDEX.md"
-WIKI_STATE_PATH = WIKI_DIR / "state.json"
-WIKI_LINT_PATH = WIKI_DIR / "lint_report.json"
 
 # ---------------------------------------------------------------------------
 # LLM provider configuration (OpenAI-compatible API)
@@ -82,25 +60,24 @@ class LLMAuthError(RuntimeError):
 # ---------------------------------------------------------------------------
 # Rejected sources registry — tracks URLs/titles marked as low-value
 # ---------------------------------------------------------------------------
-REJECTED_SOURCES_PATH = ROOT / "rejected_sources.json"
 
 
-def load_rejected_sources() -> list[dict[str, str]]:
+def load_rejected_sources(rejected_sources_path: Path) -> list[dict[str, str]]:
     """Load the rejected sources list. Each entry has 'source_url', 'title', 'reason', 'rejected_at'."""
-    if not REJECTED_SOURCES_PATH.exists():
+    if not rejected_sources_path.exists():
         return []
-    return json.loads(REJECTED_SOURCES_PATH.read_text(encoding="utf-8"))
+    return json.loads(rejected_sources_path.read_text(encoding="utf-8"))
 
 
-def save_rejected_sources(entries: list[dict[str, str]]) -> None:
-    REJECTED_SOURCES_PATH.write_text(
+def save_rejected_sources(rejected_sources_path: Path, entries: list[dict[str, str]]) -> None:
+    rejected_sources_path.write_text(
         json.dumps(entries, ensure_ascii=False, indent=2), encoding="utf-8"
     )
 
 
-def find_rejected_source(source_url: str = "", title: str = "") -> dict[str, str] | None:
+def find_rejected_source(rejected_sources_path: Path, source_url: str = "", title: str = "") -> dict[str, str] | None:
     """Check if a URL or title was previously rejected. Returns the entry or None."""
-    entries = load_rejected_sources()
+    entries = load_rejected_sources(rejected_sources_path)
     for entry in entries:
         if source_url and entry.get("source_url") and entry["source_url"] == source_url:
             return entry
@@ -109,19 +86,19 @@ def find_rejected_source(source_url: str = "", title: str = "") -> dict[str, str
     return None
 
 
-def add_rejected_source(source_url: str, title: str, reason: str = "") -> None:
+def add_rejected_source(rejected_sources_path: Path, source_url: str, title: str, reason: str = "") -> None:
     """Add a source to the rejected list (skips if already present)."""
     from datetime import datetime
-    if find_rejected_source(source_url, title):
+    if find_rejected_source(rejected_sources_path, source_url, title):
         return
-    entries = load_rejected_sources()
+    entries = load_rejected_sources(rejected_sources_path)
     entries.append({
         "source_url": source_url,
         "title": title,
         "reason": reason,
         "rejected_at": datetime.now().isoformat(timespec="seconds"),
     })
-    save_rejected_sources(entries)
+    save_rejected_sources(rejected_sources_path, entries)
 
 
 # ---------------------------------------------------------------------------

@@ -115,12 +115,13 @@ def ingest_article(
     else:
         return "Please provide one of: url, urls, url_list_file, html_file, pdf_file, pdf_url."
 
+    kb_root = resolve_kb_root(None)
     results: list[str] = []
     success_count = 0
     skipped_count = 0
     rejected_warnings: list[str] = []
     for i, u in enumerate(url_list, start=1):
-        rejected = find_rejected_source(source_url=u)
+        rejected = find_rejected_source(kb_root / "rejected_sources.json", source_url=u)
         if rejected and not force:
             reason = rejected.get("reason", "low value")
             title = rejected.get("title", "unknown")
@@ -312,6 +313,7 @@ def set_article_status(article_paths: list[str], status: str, reason: str = "") 
     if status not in ("reviewed", "high_value", "rejected"):
         return f"Invalid status '{status}'. Must be 'reviewed', 'high_value', or 'rejected'."
 
+    kb_root = resolve_kb_root(None)
     updated: list[str] = []
     errors: list[str] = []
     for path_str in article_paths:
@@ -350,6 +352,7 @@ def set_article_status(article_paths: list[str], status: str, reason: str = "") 
                     source_data = json.loads(source_path.read_text(encoding="utf-8"))
                     source_url = source_data.get("source_url", "")
                 add_rejected_source(
+                    kb_root / "rejected_sources.json",
                     source_url=source_url,
                     title=fm.get("title", article_dir.name),
                     reason=reason or fm.get("brainstorm_value", ""),

@@ -48,26 +48,18 @@ class RobustTestBase(unittest.TestCase):
         ):
             (self.tmp_root / d).mkdir(parents=True, exist_ok=True)
 
-        # Import modules whose constants need patching
+        # QLW_KB_ROOT is the single source of truth; production code calls
+        # resolve_kb_root() at handler time, so only env patching is needed.
         import os
-        import quant_llm_wiki.shared as kb_shared
 
-        # Store originals
         self._originals = {
-            "kb_shared.ROOT": kb_shared.ROOT,
             "QLW_KB_ROOT": os.environ.get("QLW_KB_ROOT"),
         }
 
-        # QLW_KB_ROOT is the single source of truth; production code now calls
-        # resolve_kb_root() at handler time, so no module-level constant patching needed.
         os.environ["QLW_KB_ROOT"] = str(self.tmp_root)
-        kb_shared.ROOT = self.tmp_root
 
     def tearDown(self):
         import os
-        import quant_llm_wiki.shared as kb_shared
-
-        kb_shared.ROOT = self._originals["kb_shared.ROOT"]
 
         # Restore QLW_KB_ROOT env
         orig_env = self._originals["QLW_KB_ROOT"]
