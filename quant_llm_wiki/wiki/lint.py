@@ -27,6 +27,8 @@ from dataclasses import asdict, dataclass, field
 from pathlib import Path
 from typing import Literal
 
+import argparse
+
 from quant_llm_wiki.shared import ROOT, WIKI_DIR, WIKI_LINT_PATH, WIKI_STATE_PATH
 from quant_llm_wiki.wiki.schemas import (
     ConceptArticle,
@@ -509,3 +511,58 @@ def auto_fix(kb_root: Path, report: WikiLintReport) -> int:
 
     save_wiki_state(state, kb_root / "wiki" / "state.json")
     return fixed
+
+
+# ---------------------------------------------------------------------------
+# CLI integration — called by quant_llm_wiki.cli
+# ---------------------------------------------------------------------------
+
+
+def _run(args) -> int:
+    """Handler for `qlw lint`."""
+    import sys
+    kb_root = Path(args.kb_root).expanduser().resolve()
+    report = lint_wiki(kb_root)
+    print(report.summary())
+    for issue in report.issues:
+        print(f"  [{issue.severity}] {issue.kind}: {issue.message} ({issue.path})")
+
+    if args.fix:
+        try:
+            fixed = auto_fix(kb_root, report)
+        except Exception as exc:
+            print(f"error: --fix failed — {exc}", file=sys.stderr)
+            return 1
+        print(f"\nauto-fixed {fixed} issue(s).")
+
+    if args.maintain:
+        try:
+            from quant_llm_wiki.wiki.maintain import run_maintenance
+        except ImportError:
+            print("error: --maintain requires wiki.maintain to be implemented.", file=sys.stderr)
+            return 1
+        result = run_maintenance(kb_root, apply=args.apply)
+        print(f"\nmaintenance: {result.summary()}")
+
+    return 0 if report.ok_for_brainstorm() else 1
+
+
+def register(parser: argparse.ArgumentParser) -> None:
+    """Attach this module's CLI flags to `parser`. Called by quant_llm_wiki.cli."""
+    parser.add_argument("--kb-root", default=str(ROOT), help="Knowledge base root.")
+    parser.add_argument(
+        "--fix",
+        action="store_true",
+        help="Run an LLM auto-repair pass on schema-noncompliant offenders.",
+    )
+    parser.add_argument(
+        "--maintain",
+        action="store_true",
+        help="Extend lint with maintenance: query-feedback, suggestions, gap analysis.",
+    )
+    parser.add_argument(
+        "--apply",
+        action="store_true",
+        help="With --maintain: apply the proposed updates instead of previewing.",
+    )
+    parser.set_defaults(func=_run)
