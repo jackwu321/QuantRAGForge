@@ -25,6 +25,20 @@ ROOT = Path(__file__).resolve().parent
 # Auto-load .env from project root (does not override existing env vars)
 load_dotenv(ROOT / ".env")
 DEFAULT_SOURCE_DIRS = ("reviewed", "high-value")
+
+# ---------------------------------------------------------------------------
+# WARNING: The path constants below resolve relative to the *package directory*
+# at import time.  After `pipx install`, that is inside the pipx venv
+# (~/.local/pipx/venvs/quant_llm_wiki/lib/.../quant_llm_wiki/) — NOT the
+# user's project directory.  Any function that *writes* a file MUST NOT use
+# these constants.  Instead call `paths.resolve_kb_root(cli_arg)` at handler
+# time and derive write paths from the returned kb_root.
+#
+# These constants are kept here only for read-only callers (agent/tools.py,
+# legacy standalone scripts) that resolve their own kb_root separately.
+#
+# See quant_llm_wiki/paths.py for the correct resolution helper.
+# ---------------------------------------------------------------------------
 WIKI_DIR = ROOT / "wiki"
 WIKI_CONCEPTS_DIR = WIKI_DIR / "concepts"
 WIKI_SOURCES_DIR = WIKI_DIR / "sources"

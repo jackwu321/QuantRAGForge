@@ -49,6 +49,7 @@ class RobustTestBase(unittest.TestCase):
             (self.tmp_root / d).mkdir(parents=True, exist_ok=True)
 
         # Import modules whose constants need patching
+        import os
         import quant_llm_wiki.shared as kb_shared
         import quant_llm_wiki.agent.tools as tools_mod
         import quant_llm_wiki.embed as embed_mod
@@ -60,17 +61,18 @@ class RobustTestBase(unittest.TestCase):
             "kb_shared.WIKI_DIR": kb_shared.WIKI_DIR,
             "kb_shared.WIKI_STATE_PATH": kb_shared.WIKI_STATE_PATH,
             "tools.KB_ROOT": tools_mod.KB_ROOT,
-            "embed.VECTOR_STORE_DIR": embed_mod.VECTOR_STORE_DIR,
-            "embed.FAILURE_LIST_PATH": embed_mod.FAILURE_LIST_PATH,
             "brainstorm.VECTOR_STORE_DIR": brainstorm_mod.VECTOR_STORE_DIR,
             "brainstorm.WIKI_DIR": brainstorm_mod.WIKI_DIR,
+            "QLW_KB_ROOT": os.environ.get("QLW_KB_ROOT"),
         }
 
-        # Patch to temp dirs
+        # Patch to temp dirs — embed.py now resolves via QLW_KB_ROOT / resolve_kb_root
+        os.environ["QLW_KB_ROOT"] = str(self.tmp_root)
         kb_shared.ROOT = self.tmp_root
         kb_shared.WIKI_DIR = self.tmp_root / "wiki"
         kb_shared.WIKI_STATE_PATH = self.tmp_root / "wiki" / "state.json"
         tools_mod.KB_ROOT = self.tmp_root
+        # Inject shim attributes for any test that still reads them from the module
         embed_mod.VECTOR_STORE_DIR = self.tmp_root / "vector_store"
         embed_mod.FAILURE_LIST_PATH = (
             self.tmp_root / "sources" / "processed" / "embed_failures.txt"
@@ -79,6 +81,7 @@ class RobustTestBase(unittest.TestCase):
         brainstorm_mod.WIKI_DIR = self.tmp_root / "wiki"
 
     def tearDown(self):
+        import os
         import quant_llm_wiki.shared as kb_shared
         import quant_llm_wiki.agent.tools as tools_mod
         import quant_llm_wiki.embed as embed_mod
@@ -88,10 +91,20 @@ class RobustTestBase(unittest.TestCase):
         kb_shared.WIKI_DIR = self._originals["kb_shared.WIKI_DIR"]
         kb_shared.WIKI_STATE_PATH = self._originals["kb_shared.WIKI_STATE_PATH"]
         tools_mod.KB_ROOT = self._originals["tools.KB_ROOT"]
-        embed_mod.VECTOR_STORE_DIR = self._originals["embed.VECTOR_STORE_DIR"]
-        embed_mod.FAILURE_LIST_PATH = self._originals["embed.FAILURE_LIST_PATH"]
+        # Remove the shim attributes that were injected in setUp
+        if hasattr(embed_mod, "VECTOR_STORE_DIR"):
+            del embed_mod.VECTOR_STORE_DIR
+        if hasattr(embed_mod, "FAILURE_LIST_PATH"):
+            del embed_mod.FAILURE_LIST_PATH
         brainstorm_mod.VECTOR_STORE_DIR = self._originals["brainstorm.VECTOR_STORE_DIR"]
         brainstorm_mod.WIKI_DIR = self._originals["brainstorm.WIKI_DIR"]
+
+        # Restore QLW_KB_ROOT env
+        orig_env = self._originals["QLW_KB_ROOT"]
+        if orig_env is None:
+            os.environ.pop("QLW_KB_ROOT", None)
+        else:
+            os.environ["QLW_KB_ROOT"] = orig_env
 
         self._tmp.cleanup()
 

@@ -29,7 +29,7 @@ from typing import Literal
 
 import argparse
 
-from quant_llm_wiki.shared import ROOT, WIKI_DIR, WIKI_LINT_PATH, WIKI_STATE_PATH
+from quant_llm_wiki.paths import resolve_kb_root
 from quant_llm_wiki.wiki.schemas import (
     ConceptArticle,
     bullet_sources,
@@ -338,7 +338,7 @@ def _check_orphan_sources(wiki_dir: Path, concepts: list[ConceptArticle]) -> lis
 
 
 def lint_wiki(
-    kb_root: Path = ROOT,
+    kb_root: Path | None = None,
     *,
     oversized_byte_limit: int = DEFAULT_OVERSIZED_BYTES,
 ) -> WikiLintReport:
@@ -346,6 +346,7 @@ def lint_wiki(
 
     Writes wiki/lint_report.json as a side effect (for the agent's audit_wiki tool).
     """
+    kb_root = resolve_kb_root(kb_root)
     wiki_dir = kb_root / "wiki"
     state_path = kb_root / "wiki" / "state.json"
     lint_path = kb_root / "wiki" / "lint_report.json"
@@ -521,7 +522,7 @@ def auto_fix(kb_root: Path, report: WikiLintReport) -> int:
 def _run(args) -> int:
     """Handler for `qlw lint`."""
     import sys
-    kb_root = Path(args.kb_root).expanduser().resolve()
+    kb_root = resolve_kb_root(getattr(args, "kb_root", None))
     report = lint_wiki(kb_root)
     print(report.summary())
     for issue in report.issues:
@@ -549,7 +550,7 @@ def _run(args) -> int:
 
 def register(parser: argparse.ArgumentParser) -> None:
     """Attach this module's CLI flags to `parser`. Called by quant_llm_wiki.cli."""
-    parser.add_argument("--kb-root", default=str(ROOT), help="Knowledge base root.")
+    parser.add_argument("--kb-root", default=None, help="Knowledge base root (default: $QLW_KB_ROOT or cwd).")
     parser.add_argument(
         "--fix",
         action="store_true",

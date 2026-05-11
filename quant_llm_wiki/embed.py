@@ -12,7 +12,6 @@ except ImportError:  # pragma: no cover - runtime dependency
     chromadb = None
 
 from quant_llm_wiki.shared import (
-    ROOT,
     DEFAULT_EMBEDDING_MODEL,
     DEFAULT_SOURCE_DIRS,
     KnowledgeBlock,
@@ -23,10 +22,12 @@ from quant_llm_wiki.shared import (
     load_notes,
     parse_csv_arg,
 )
+from quant_llm_wiki.paths import resolve_kb_root
 
-
-VECTOR_STORE_DIR = ROOT / "vector_store"
-FAILURE_LIST_PATH = ROOT / "sources" / "processed" / "embed_failures.txt"
+# NOTE: VECTOR_STORE_DIR is NOT defined here as a module-level constant to avoid
+# resolving to the package directory after pipx install.  The actual vector store
+# path is resolved at handler time from kb_root (see _run / register below).
+FAILURE_LIST_PATH_SUFFIX = "sources/processed/embed_failures.txt"
 INDEX_MANIFEST_FILENAME = "index_manifest.json"
 INDEX_SCHEMA_VERSION = "v1"
 COLLECTION_NAME = "knowledge_blocks"
@@ -34,7 +35,7 @@ COLLECTION_NAME = "knowledge_blocks"
 
 def parse_args() -> argparse.Namespace:
     parser = argparse.ArgumentParser(description="Build or update the ChromaDB vector index for the knowledge base.")
-    parser.add_argument("--kb-root", default=str(ROOT), help="Knowledge base root.")
+    parser.add_argument("--kb-root", default=None, help="Knowledge base root (default: $QLW_KB_ROOT or cwd).")
     parser.add_argument(
         "--source-dir",
         default="reviewed,high-value",
@@ -43,7 +44,7 @@ def parse_args() -> argparse.Namespace:
     parser.add_argument("--force", action="store_true", help="Re-index all articles even if already indexed.")
     parser.add_argument("--dry-run", action="store_true", help="Show what would be indexed without writing.")
     parser.add_argument("--embedding-model", default=DEFAULT_EMBEDDING_MODEL, help="Zhipu embedding model name.")
-    parser.add_argument("--vector-store-dir", default=str(VECTOR_STORE_DIR), help="Directory for the persistent ChromaDB store.")
+    parser.add_argument("--vector-store-dir", default=None, help="Directory for the persistent ChromaDB store (default: kb_root/vector_store).")
     return parser.parse_args()
 
 
@@ -180,7 +181,7 @@ def write_failure_list(failures: list[dict[str, str]], path: Path) -> None:
 
 def register(parser: argparse.ArgumentParser) -> None:
     """Attach this module's CLI flags to `parser`. Called by quant_llm_wiki.cli."""
-    parser.add_argument("--kb-root", default=str(ROOT), help="Knowledge base root.")
+    parser.add_argument("--kb-root", default=None, help="Knowledge base root (default: $QLW_KB_ROOT or cwd).")
     parser.add_argument(
         "--source-dir",
         default="reviewed,high-value",
@@ -189,14 +190,15 @@ def register(parser: argparse.ArgumentParser) -> None:
     parser.add_argument("--force", action="store_true", help="Re-index all articles even if already indexed.")
     parser.add_argument("--dry-run", action="store_true", help="Show what would be indexed without writing.")
     parser.add_argument("--embedding-model", default=DEFAULT_EMBEDDING_MODEL, help="Zhipu embedding model name.")
-    parser.add_argument("--vector-store-dir", default=str(VECTOR_STORE_DIR), help="Directory for the persistent ChromaDB store.")
+    parser.add_argument("--vector-store-dir", default=None, help="Directory for the persistent ChromaDB store (default: kb_root/vector_store).")
     parser.set_defaults(func=_run)
 
 
 def _run(args) -> int:
     """The module's command body. Receives parsed args from the dispatcher."""
-    kb_root = Path(args.kb_root).expanduser().resolve()
-    vector_store_dir = Path(args.vector_store_dir).expanduser().resolve()
+    kb_root = resolve_kb_root(getattr(args, "kb_root", None))
+    _vsd = getattr(args, "vector_store_dir", None)
+    vector_store_dir = Path(_vsd).expanduser().resolve() if _vsd else kb_root / "vector_store"
     source_dirs = parse_csv_arg(args.source_dir) or list(DEFAULT_SOURCE_DIRS)
     notes = load_notes(kb_root, source_dirs)
     if not notes:
@@ -257,16 +259,17 @@ def _run(args) -> int:
             except Exception as exc:
                 failures.append({"article_dir": str(block.note.article_dir), "error": str(exc)})
 
+    failure_list_path = kb_root / FAILURE_LIST_PATH_SUFFIX
     if not args.dry_run:
         save_manifest(manifest_path, manifest)
-    write_failure_list(failures, FAILURE_LIST_PATH)
+    write_failure_list(failures, failure_list_path)
 
     summary = {
         "total": len(notes),
         "success": success,
         "skipped": skipped,
         "failed": len(failures),
-        "failure_list_path": str(FAILURE_LIST_PATH),
+        "failure_list_path": str(failure_list_path),
     }
     print(json.dumps(summary, ensure_ascii=False, indent=2))
     return 0 if not failures else 1

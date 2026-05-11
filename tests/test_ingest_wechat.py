@@ -204,9 +204,7 @@ class IngestWechatArticleTests(unittest.TestCase):
         self.assertEqual(mod.classify_ingest_error("download failed"), "ingest_error")
 
     def test_write_ingest_failures(self) -> None:
-        original_path = mod.INGEST_FAILURES_PATH
         with tempfile.TemporaryDirectory() as tmpdir:
-            mod.INGEST_FAILURES_PATH = Path(tmpdir) / "ingest_failures.txt"
             results = [
                 mod.BatchResult(url="https://mp.weixin.qq.com/s/a", success=False, error="download failed"),
                 mod.BatchResult(
@@ -216,11 +214,8 @@ class IngestWechatArticleTests(unittest.TestCase):
                 ),
                 mod.BatchResult(url="https://mp.weixin.qq.com/s/c", success=True),
             ]
-            try:
-                output = mod.write_ingest_failures(results)
-                content = output.read_text(encoding="utf-8")
-            finally:
-                mod.INGEST_FAILURES_PATH = original_path
+            output = mod.write_ingest_failures(results, kb_root=Path(tmpdir))
+            content = output.read_text(encoding="utf-8")
             self.assertIn("https://mp.weixin.qq.com/s/a	ingest_error	download failed", content)
             self.assertIn(
                 "https://mp.weixin.qq.com/s/b	blocked_wechat_page	wechat returned a verification/blocked page instead of the article content",

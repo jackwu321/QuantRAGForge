@@ -5,7 +5,8 @@ from dataclasses import dataclass, field
 from datetime import date
 from pathlib import Path
 
-from quant_llm_wiki.shared import parse_frontmatter, ROOT, DEFAULT_SOURCE_DIRS
+from quant_llm_wiki.shared import parse_frontmatter, DEFAULT_SOURCE_DIRS
+from quant_llm_wiki.paths import resolve_kb_root
 from quant_llm_wiki.wiki.schemas import SourceSummary, serialize_source_summary, ConceptArticle, parse_concept, serialize_concept
 from quant_llm_wiki.wiki.compile_llm import (
     ConceptAssignment, ProposedConcept, RecompileResult,
@@ -208,7 +209,7 @@ def _source_sort_key(path_str: str, affected_paths: set[str]) -> tuple[int, str]
 
 
 def compile_wiki(
-    kb_root: Path = ROOT,
+    kb_root: Path | None = None,
     mode: str = "incremental",
     dry_run: bool = False,
     source_dirs: tuple[str, ...] = DEFAULT_SOURCE_DIRS,
@@ -223,6 +224,7 @@ def compile_wiki(
     if mode not in ("incremental", "rebuild"):
         raise ValueError(f"invalid mode: {mode!r}")
 
+    kb_root = resolve_kb_root(kb_root)
     wiki_dir = kb_root / "wiki"
     schema_dir = kb_root / "schema"
     state_path = wiki_dir / "state.json"
@@ -417,7 +419,7 @@ def compile_wiki(
 def _run(args) -> int:
     """Handler for `qlw compile`."""
     import sys
-    kb_root = Path(getattr(args, "kb_root", str(ROOT))).expanduser().resolve()
+    kb_root = resolve_kb_root(getattr(args, "kb_root", None))
     report = compile_wiki(
         kb_root=kb_root,
         mode=getattr(args, "mode", "incremental"),
@@ -444,5 +446,5 @@ def register(parser: argparse.ArgumentParser) -> None:
     )
     parser.add_argument("--dry-run", action="store_true", help="Show what would be compiled without writing.")
     parser.add_argument("--verbose", action="store_true", help="Print per-article/concept progress.")
-    parser.add_argument("--kb-root", default=str(ROOT), help="Knowledge base root.")
+    parser.add_argument("--kb-root", default=None, help="Knowledge base root (default: $QLW_KB_ROOT or cwd).")
     parser.set_defaults(func=_run)
