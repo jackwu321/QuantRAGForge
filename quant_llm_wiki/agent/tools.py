@@ -61,10 +61,12 @@ def ingest_article(
         DuplicateArticleError,
     )
 
+    kb_root = resolve_kb_root(None)
+
     # Single PDF file
     if pdf_file:
         try:
-            out = ingest_source.dispatch_pdf_file(pdf_file, content_type=content_type)
+            out = ingest_source.dispatch_pdf_file(pdf_file, content_type=content_type, kb_root=kb_root)
             return f"Ingested PDF: {out}"
         except Exception as exc:
             return f"Error ingesting PDF file {pdf_file}: {exc}"
@@ -72,7 +74,7 @@ def ingest_article(
     # Single PDF URL
     if pdf_url:
         try:
-            out = ingest_source._dispatch_pdf_url(pdf_url, content_type=content_type, force=force)
+            out = ingest_source._dispatch_pdf_url(pdf_url, content_type=content_type, force=force, kb_root=kb_root)
             return f"Ingested PDF: {out}"
         except Exception as exc:
             return f"Error ingesting PDF URL {pdf_url}: {exc}"
@@ -86,7 +88,7 @@ def ingest_article(
             article = extract_article_data(html, "", None)
             if content_type:
                 article.content_type = content_type
-            out_dir = write_article(article, force=force)
+            out_dir = write_article(article, force=force, kb_root=kb_root)
             return f"Ingested HTML file successfully: {out_dir}"
         except DuplicateArticleError as exc:
             return f"Skipped (already exists): {exc}. Use force=True to re-ingest."
@@ -114,7 +116,6 @@ def ingest_article(
     else:
         return "Please provide one of: url, urls, url_list_file, html_file, pdf_file, pdf_url."
 
-    kb_root = resolve_kb_root(None)
     results: list[str] = []
     success_count = 0
     skipped_count = 0
@@ -131,7 +132,7 @@ def ingest_article(
             rejected_warnings.append(u)
             continue
         try:
-            out = ingest_source.dispatch_url(u, content_type=content_type, force=force)
+            out = ingest_source.dispatch_url(u, content_type=content_type, force=force, kb_root=kb_root)
             success_count += 1
             results.append(f"[{i}/{len(url_list)}] OK: {out}")
         except DuplicateArticleError as exc:

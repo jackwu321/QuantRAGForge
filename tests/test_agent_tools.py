@@ -352,7 +352,11 @@ class IngestArticleDispatchTests(unittest.TestCase):
         from quant_llm_wiki.agent.tools import ingest_article
         mock_pdf.return_value = "/tmp/out"
         result = ingest_article.invoke({"pdf_file": "/tmp/x.pdf"})
-        mock_pdf.assert_called_once_with("/tmp/x.pdf", content_type=None)
+        mock_pdf.assert_called_once()
+        call_args = mock_pdf.call_args
+        self.assertEqual(call_args.args[0], "/tmp/x.pdf")
+        self.assertIsNone(call_args.kwargs.get("content_type"))
+        self.assertIn("kb_root", call_args.kwargs)
         self.assertIn("Ingested PDF", result)
 
 

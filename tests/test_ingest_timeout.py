@@ -1,3 +1,4 @@
+import argparse
 import io
 import os
 import sys
@@ -20,16 +21,36 @@ def _fast_dispatch(*_args, **_kwargs):
     return "/tmp/fake/out"
 
 
+def _make_args(**kwargs) -> argparse.Namespace:
+    """Build a minimal argparse.Namespace for _run() tests."""
+    defaults = dict(
+        kb_root=None,
+        url=None,
+        url_list=None,
+        html_file=None,
+        pdf_file=None,
+        pdf_url=None,
+        content_type=None,
+        force=False,
+        no_compile=True,
+    )
+    defaults.update(kwargs)
+    return argparse.Namespace(**defaults)
+
+
 class IngestUrlTimeoutTests(unittest.TestCase):
     def setUp(self) -> None:
         self._prev_env = os.environ.get("INGEST_URL_TIMEOUT")
         os.environ["INGEST_URL_TIMEOUT"] = "1"
+        self._tmp = tempfile.TemporaryDirectory()
+        self._kb_root = Path(self._tmp.name)
 
     def tearDown(self) -> None:
         if self._prev_env is None:
             os.environ.pop("INGEST_URL_TIMEOUT", None)
         else:
             os.environ["INGEST_URL_TIMEOUT"] = self._prev_env
+        self._tmp.cleanup()
 
     def test_timeout_helper_raises(self) -> None:
         from concurrent.futures import TimeoutError as FuturesTimeoutError
@@ -48,9 +69,12 @@ class IngestUrlTimeoutTests(unittest.TestCase):
             )
             buf = io.StringIO()
             with patch("quant_llm_wiki.ingest.source.dispatch_url", side_effect=_slow_dispatch):
-                with patch.object(sys, "argv", ["ingest_source", "--url-list", str(list_path)]):
-                    with redirect_stdout(buf):
-                        rc = ingest_source.main()
+                with redirect_stdout(buf):
+                    rc = ingest_source.run_ingest_source(
+                        self._kb_root,
+                        url_list=str(list_path),
+                        no_compile=True,
+                    )
             output = buf.getvalue()
             self.assertEqual(rc, 0)
             self.assertEqual(output.count("TIMEOUT"), 2)
@@ -63,9 +87,12 @@ class IngestUrlTimeoutTests(unittest.TestCase):
             list_path.write_text("https://example.com/x\n", encoding="utf-8")
             buf = io.StringIO()
             with patch("quant_llm_wiki.ingest.source.dispatch_url", side_effect=_fast_dispatch):
-                with patch.object(sys, "argv", ["ingest_source", "--url-list", str(list_path)]):
-                    with redirect_stdout(buf):
-                        rc = ingest_source.main()
+                with redirect_stdout(buf):
+                    rc = ingest_source.run_ingest_source(
+                        self._kb_root,
+                        url_list=str(list_path),
+                        no_compile=True,
+                    )
             output = buf.getvalue()
             self.assertEqual(rc, 0)
             self.assertNotIn("TIMEOUT", output)
@@ -74,9 +101,12 @@ class IngestUrlTimeoutTests(unittest.TestCase):
     def test_single_url_timeout_returns_nonzero(self) -> None:
         buf = io.StringIO()
         with patch("quant_llm_wiki.ingest.source.dispatch_url", side_effect=_slow_dispatch):
-            with patch.object(sys, "argv", ["ingest_source", "--url", "https://example.com/z"]):
-                with redirect_stdout(buf):
-                    rc = ingest_source.main()
+            with redirect_stdout(buf):
+                rc = ingest_source.run_ingest_source(
+                    self._kb_root,
+                    url="https://example.com/z",
+                    no_compile=True,
+                )
         self.assertEqual(rc, 2)
         self.assertIn("TIMEOUT", buf.getvalue())
         self.assertIn("https://example.com/z", buf.getvalue())
@@ -84,9 +114,12 @@ class IngestUrlTimeoutTests(unittest.TestCase):
     def test_pdf_url_timeout_returns_nonzero(self) -> None:
         buf = io.StringIO()
         with patch("quant_llm_wiki.ingest.source._dispatch_pdf_url", side_effect=_slow_dispatch):
-            with patch.object(sys, "argv", ["ingest_source", "--pdf-url", "https://example.com/p.pdf"]):
-                with redirect_stdout(buf):
-                    rc = ingest_source.main()
+            with redirect_stdout(buf):
+                rc = ingest_source.run_ingest_source(
+                    self._kb_root,
+                    pdf_url="https://example.com/p.pdf",
+                    no_compile=True,
+                )
         self.assertEqual(rc, 2)
         self.assertIn("TIMEOUT", buf.getvalue())
 
