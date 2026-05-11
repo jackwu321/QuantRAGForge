@@ -290,8 +290,8 @@ def iter_wiki_blocks(wiki_dir: Path):
     using the score fields.
     """
     from quant_llm_wiki.shared import KnowledgeNote
-    from wiki_schemas import parse_concept, parse_source_summary
-    from wiki_state import load_wiki_state
+    from quant_llm_wiki.wiki.schemas import parse_concept, parse_source_summary
+    from quant_llm_wiki.wiki.state import load_wiki_state
 
     state = load_wiki_state(wiki_dir / "state.json")
 

@@ -2,7 +2,7 @@ import tempfile
 import unittest
 from pathlib import Path
 
-import wiki_compile
+from quant_llm_wiki.wiki import compile as wiki_compile
 
 
 class SourceSummaryGenerationTests(unittest.TestCase):
@@ -49,7 +49,7 @@ class SourceSummaryGenerationTests(unittest.TestCase):
 class AssignConceptsTests(unittest.TestCase):
     def test_assign_concepts_parses_existing_and_proposed(self) -> None:
         from unittest.mock import patch
-        import wiki_compile_llm
+        from quant_llm_wiki.wiki import compile_llm as wiki_compile_llm
 
         fake_response = """{
   "existing_concepts": ["momentum-strategies", "factor-timing"],
@@ -63,7 +63,7 @@ class AssignConceptsTests(unittest.TestCase):
     }
   ]
 }"""
-        with patch("wiki_compile_llm.call_llm_chat", return_value=fake_response):
+        with patch("quant_llm_wiki.wiki.compile_llm.call_llm_chat", return_value=fake_response):
             result = wiki_compile_llm.assign_concepts(
                 article_frontmatter={"title": "X", "content_type": "methodology", "idea_blocks": ["a", "b"]},
                 index_text="- momentum-strategies — Trading rules using past returns.",
@@ -74,9 +74,9 @@ class AssignConceptsTests(unittest.TestCase):
 
     def test_assign_concepts_handles_invalid_json(self) -> None:
         from unittest.mock import patch
-        import wiki_compile_llm
+        from quant_llm_wiki.wiki import compile_llm as wiki_compile_llm
 
-        with patch("wiki_compile_llm.call_llm_chat", return_value="not json"):
+        with patch("quant_llm_wiki.wiki.compile_llm.call_llm_chat", return_value="not json"):
             result = wiki_compile_llm.assign_concepts(
                 article_frontmatter={"title": "X"},
                 index_text="",
@@ -88,7 +88,7 @@ class AssignConceptsTests(unittest.TestCase):
 class RecompileConceptTests(unittest.TestCase):
     def test_recompile_returns_structured_sections(self) -> None:
         from unittest.mock import patch
-        import wiki_compile_llm
+        from quant_llm_wiki.wiki import compile_llm as wiki_compile_llm
 
         fake = """{
   "synthesis": "Momentum is best at 12-month horizons.",
@@ -101,7 +101,7 @@ class RecompileConceptTests(unittest.TestCase):
   "open_questions": ["Optimal lookback?"],
   "related_concepts": ["regime-detection", "risk-parity"]
 }"""
-        with patch("wiki_compile_llm.call_llm_chat", return_value=fake):
+        with patch("quant_llm_wiki.wiki.compile_llm.call_llm_chat", return_value=fake):
             r = wiki_compile_llm.recompile_concept(
                 concept_slug="momentum-strategies",
                 concept_title="Momentum Strategies",
@@ -114,7 +114,7 @@ class RecompileConceptTests(unittest.TestCase):
 
 class CompileOrchestratorTests(unittest.TestCase):
     def _setup_corpus(self, root: Path) -> None:
-        from wiki_seed import bootstrap_wiki
+        from quant_llm_wiki.wiki.seed import bootstrap_wiki
         bootstrap_wiki(root / "wiki")
         article_dir = root / "raw" / "2026-03-22_test_article"
         article_dir.mkdir(parents=True, exist_ok=True)
@@ -133,8 +133,8 @@ class CompileOrchestratorTests(unittest.TestCase):
 
     def test_incremental_compile_writes_source_summary(self) -> None:
         from unittest.mock import patch
-        import wiki_compile
-        import wiki_compile_llm
+        from quant_llm_wiki.wiki import compile as wiki_compile
+        from quant_llm_wiki.wiki import compile_llm as wiki_compile_llm
 
         with tempfile.TemporaryDirectory() as tmp:
             root = Path(tmp)
@@ -150,8 +150,8 @@ class CompileOrchestratorTests(unittest.TestCase):
                 transfer_targets=[], failure_modes=[], open_questions=[],
                 related_concepts=[],
             )
-            with patch("wiki_compile.assign_concepts", return_value=assignment), \
-                 patch("wiki_compile.recompile_concept", return_value=recompile):
+            with patch("quant_llm_wiki.wiki.compile.assign_concepts", return_value=assignment), \
+                 patch("quant_llm_wiki.wiki.compile.recompile_concept", return_value=recompile):
                 report = wiki_compile.compile_wiki(
                     kb_root=root,
                     mode="incremental",
@@ -165,16 +165,16 @@ class CompileOrchestratorTests(unittest.TestCase):
 
     def test_incremental_idempotent_skips_unchanged(self) -> None:
         from unittest.mock import patch
-        import wiki_compile
-        import wiki_compile_llm
+        from quant_llm_wiki.wiki import compile as wiki_compile
+        from quant_llm_wiki.wiki import compile_llm as wiki_compile_llm
 
         with tempfile.TemporaryDirectory() as tmp:
             root = Path(tmp)
             self._setup_corpus(root)
             assignment = wiki_compile_llm.ConceptAssignment(["momentum-strategies"], [])
             recompile = wiki_compile_llm.RecompileResult("S", "D", [], [], [], [], [], [], [])
-            with patch("wiki_compile.assign_concepts", return_value=assignment) as ma, \
-                 patch("wiki_compile.recompile_concept", return_value=recompile) as mr:
+            with patch("quant_llm_wiki.wiki.compile.assign_concepts", return_value=assignment) as ma, \
+                 patch("quant_llm_wiki.wiki.compile.recompile_concept", return_value=recompile) as mr:
                 wiki_compile.compile_wiki(kb_root=root, mode="incremental")
                 first_calls = ma.call_count + mr.call_count
 
@@ -188,15 +188,15 @@ class CompileOrchestratorTests(unittest.TestCase):
         be skipped on a rerun — otherwise we burn LLM calls re-trying the same
         content that already produced no assignment."""
         from unittest.mock import patch
-        import wiki_compile
-        import wiki_compile_llm
+        from quant_llm_wiki.wiki import compile as wiki_compile
+        from quant_llm_wiki.wiki import compile_llm as wiki_compile_llm
 
         with tempfile.TemporaryDirectory() as tmp:
             root = Path(tmp)
             self._setup_corpus(root)
             empty = wiki_compile_llm.ConceptAssignment([], [])  # orphan: no concepts assigned
-            with patch("wiki_compile.assign_concepts", return_value=empty) as ma, \
-                 patch("wiki_compile.recompile_concept") as mr:
+            with patch("quant_llm_wiki.wiki.compile.assign_concepts", return_value=empty) as ma, \
+                 patch("quant_llm_wiki.wiki.compile.recompile_concept") as mr:
                 wiki_compile.compile_wiki(kb_root=root, mode="incremental")
                 first = ma.call_count + mr.call_count
 
@@ -207,16 +207,16 @@ class CompileOrchestratorTests(unittest.TestCase):
     def test_content_hash_change_triggers_recompile(self) -> None:
         """Editing the source article must invalidate the cache and trigger LLM calls again."""
         from unittest.mock import patch
-        import wiki_compile
-        import wiki_compile_llm
+        from quant_llm_wiki.wiki import compile as wiki_compile
+        from quant_llm_wiki.wiki import compile_llm as wiki_compile_llm
 
         with tempfile.TemporaryDirectory() as tmp:
             root = Path(tmp)
             self._setup_corpus(root)
             assignment = wiki_compile_llm.ConceptAssignment(["momentum-strategies"], [])
             recompile = wiki_compile_llm.RecompileResult("S", "D", [], [], [], [], [], [], [])
-            with patch("wiki_compile.assign_concepts", return_value=assignment) as ma, \
-                 patch("wiki_compile.recompile_concept", return_value=recompile) as mr:
+            with patch("quant_llm_wiki.wiki.compile.assign_concepts", return_value=assignment) as ma, \
+                 patch("quant_llm_wiki.wiki.compile.recompile_concept", return_value=recompile) as mr:
                 wiki_compile.compile_wiki(kb_root=root, mode="incremental")
                 base = ma.call_count + mr.call_count
 
@@ -233,17 +233,17 @@ class CompileOrchestratorTests(unittest.TestCase):
 
     def test_state_json_written_after_compile(self) -> None:
         from unittest.mock import patch
-        import wiki_compile
-        import wiki_compile_llm
-        import wiki_state
+        from quant_llm_wiki.wiki import compile as wiki_compile
+        from quant_llm_wiki.wiki import compile_llm as wiki_compile_llm
+        from quant_llm_wiki.wiki import state as wiki_state
 
         with tempfile.TemporaryDirectory() as tmp:
             root = Path(tmp)
             self._setup_corpus(root)
             assignment = wiki_compile_llm.ConceptAssignment(["momentum-strategies"], [])
             recompile = wiki_compile_llm.RecompileResult("S", "D", [], [], [], [], [], [], [])
-            with patch("wiki_compile.assign_concepts", return_value=assignment), \
-                 patch("wiki_compile.recompile_concept", return_value=recompile):
+            with patch("quant_llm_wiki.wiki.compile.assign_concepts", return_value=assignment), \
+                 patch("quant_llm_wiki.wiki.compile.recompile_concept", return_value=recompile):
                 wiki_compile.compile_wiki(kb_root=root, mode="incremental")
             state_path = root / "wiki" / "state.json"
             self.assertTrue(state_path.exists())
@@ -258,9 +258,9 @@ class CompileOrchestratorTests(unittest.TestCase):
 
     def test_proposed_concept_lands_with_status_proposed(self) -> None:
         from unittest.mock import patch
-        import wiki_compile
-        import wiki_compile_llm
-        from wiki_schemas import parse_concept
+        from quant_llm_wiki.wiki import compile as wiki_compile
+        from quant_llm_wiki.wiki import compile_llm as wiki_compile_llm
+        from quant_llm_wiki.wiki.schemas import parse_concept
 
         with tempfile.TemporaryDirectory() as tmp:
             root = Path(tmp)
@@ -271,8 +271,8 @@ class CompileOrchestratorTests(unittest.TestCase):
             )
             assignment = wiki_compile_llm.ConceptAssignment([], [proposed])
             recompile = wiki_compile_llm.RecompileResult("S", "D", [], [], [], [], [], [], [])
-            with patch("wiki_compile.assign_concepts", return_value=assignment), \
-                 patch("wiki_compile.recompile_concept", return_value=recompile):
+            with patch("quant_llm_wiki.wiki.compile.assign_concepts", return_value=assignment), \
+                 patch("quant_llm_wiki.wiki.compile.recompile_concept", return_value=recompile):
                 wiki_compile.compile_wiki(kb_root=root, mode="incremental")
             path = root / "wiki" / "concepts" / "macro-momentum.md"
             self.assertTrue(path.exists())

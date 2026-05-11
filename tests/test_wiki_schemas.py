@@ -1,6 +1,6 @@
 import unittest
 
-import wiki_schemas
+from quant_llm_wiki.wiki import schemas as wiki_schemas
 
 
 class ConceptArticleSchemaTests(unittest.TestCase):

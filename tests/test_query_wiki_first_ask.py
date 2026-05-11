@@ -11,7 +11,7 @@ from unittest.mock import patch
 
 import quant_llm_wiki.query.brainstorm as mod
 from quant_llm_wiki.shared import KnowledgeNote
-from wiki_seed import bootstrap_wiki
+from quant_llm_wiki.wiki.seed import bootstrap_wiki
 
 
 class WikiFirstAskTests(unittest.TestCase):

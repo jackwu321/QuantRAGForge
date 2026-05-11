@@ -75,7 +75,7 @@ class EmbedWikiTests(unittest.TestCase):
     def test_iter_wiki_blocks_yields_concept_and_source(self) -> None:
         import tempfile
         with tempfile.TemporaryDirectory() as tmp:
-            from wiki_seed import bootstrap_wiki
+            from quant_llm_wiki.wiki.seed import bootstrap_wiki
             wiki_dir = Path(tmp) / "wiki"
             bootstrap_wiki(wiki_dir)
             blocks = list(mod.iter_wiki_blocks(wiki_dir))
@@ -87,7 +87,7 @@ class EmbedWikiTests(unittest.TestCase):
     def test_wiki_concept_metadata_includes_status_and_score_fields(self) -> None:
         import tempfile
         with tempfile.TemporaryDirectory() as tmp:
-            from wiki_seed import bootstrap_wiki
+            from quant_llm_wiki.wiki.seed import bootstrap_wiki
             wiki_dir = Path(tmp) / "wiki"
             bootstrap_wiki(wiki_dir)
             blocks = [b for b in mod.iter_wiki_blocks(wiki_dir) if b.block_type == "wiki_concept"]

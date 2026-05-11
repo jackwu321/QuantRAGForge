@@ -2,8 +2,8 @@ import tempfile
 import unittest
 from pathlib import Path
 
-import wiki_index
-import wiki_seed
+from quant_llm_wiki.wiki import index as wiki_index
+from quant_llm_wiki.wiki import seed as wiki_seed
 
 
 class WikiIndexTests(unittest.TestCase):
@@ -17,7 +17,7 @@ class WikiIndexTests(unittest.TestCase):
             self.assertIn("[[concepts/momentum-strategies]]", text)
 
     def test_generate_index_lists_proposed_concepts_separately(self) -> None:
-        from wiki_schemas import ConceptArticle, serialize_concept
+        from quant_llm_wiki.wiki.schemas import ConceptArticle, serialize_concept
         with tempfile.TemporaryDirectory() as tmp:
             wiki_dir = Path(tmp) / "wiki"
             (wiki_dir / "concepts").mkdir(parents=True)

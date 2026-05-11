@@ -29,8 +29,8 @@ from quant_llm_wiki.shared import (
     embed_text,
 )
 from quant_llm_wiki.query.rethink import rethink
-from wiki_schemas import parse_concept
-from wiki_state import (
+from quant_llm_wiki.wiki.schemas import parse_concept
+from quant_llm_wiki.wiki.state import (
     concept_memory_score,
     load_wiki_state,
 )
@@ -650,7 +650,7 @@ def _concepts_to_blocks(
 def _wiki_is_healthy_for_query(kb_root: Path) -> bool:
     """Audit the wiki — return True if brainstorm should use compiled memory."""
     try:
-        from wiki_lint import lint_wiki
+        from quant_llm_wiki.wiki.lint import lint_wiki
         return lint_wiki(kb_root).ok_for_brainstorm()
     except Exception:
         return True  # absence of lint is not a blocker; the lint itself is best-effort

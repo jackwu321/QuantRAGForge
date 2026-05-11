@@ -8,7 +8,7 @@ import quant_llm_wiki.query.brainstorm as brainstorm_from_kb
 
 class ConceptRetrievalLexicalFallbackTests(unittest.TestCase):
     def test_retrieve_concepts_lexical_finds_seed_match(self) -> None:
-        from wiki_seed import bootstrap_wiki
+        from quant_llm_wiki.wiki.seed import bootstrap_wiki
 
         with tempfile.TemporaryDirectory() as tmp:
             wiki_dir = Path(tmp) / "wiki"
@@ -35,7 +35,7 @@ class ConceptRetrievalLexicalFallbackTests(unittest.TestCase):
             self.assertEqual(concepts, [])
 
     def test_concepts_to_blocks_marks_wiki_concept(self) -> None:
-        from wiki_seed import bootstrap_wiki
+        from quant_llm_wiki.wiki.seed import bootstrap_wiki
         with tempfile.TemporaryDirectory() as tmp:
             wiki_dir = Path(tmp) / "wiki"
             bootstrap_wiki(wiki_dir)
@@ -77,8 +77,8 @@ class StateScoreRerankTests(unittest.TestCase):
     def test_high_score_concept_outranks_low_score(self) -> None:
         """When state.json has both high-confidence and low-confidence concepts
         matching a query lexically, the high-confidence one should rank first."""
-        import wiki_state
-        from wiki_seed import bootstrap_wiki
+        from quant_llm_wiki.wiki import state as wiki_state
+        from quant_llm_wiki.wiki.seed import bootstrap_wiki
 
         with tempfile.TemporaryDirectory() as tmp:
             wiki_dir = Path(tmp) / "wiki"

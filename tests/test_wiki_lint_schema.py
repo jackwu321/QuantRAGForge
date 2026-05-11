@@ -3,8 +3,8 @@ import tempfile
 import unittest
 from pathlib import Path
 
-import wiki_lint
-from wiki_seed import bootstrap_wiki
+from quant_llm_wiki.wiki import lint as wiki_lint
+from quant_llm_wiki.wiki.seed import bootstrap_wiki
 
 
 class SchemaSectionEnforcementTests(unittest.TestCase):

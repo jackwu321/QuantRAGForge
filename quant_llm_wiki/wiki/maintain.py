@@ -29,7 +29,7 @@ from datetime import datetime, timezone
 from pathlib import Path
 
 from quant_llm_wiki.shared import parse_frontmatter
-from wiki_state import (
+from quant_llm_wiki.wiki.state import (
     ConceptEntry,
     load_wiki_state,
     save_wiki_state,

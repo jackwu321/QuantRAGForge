@@ -164,7 +164,7 @@ class AuditWikiToolTests(unittest.TestCase):
         import tempfile
         from pathlib import Path
         from quant_llm_wiki.agent.tools import audit_wiki as audit_wiki_tool
-        from wiki_seed import bootstrap_wiki
+        from quant_llm_wiki.wiki.seed import bootstrap_wiki
 
         with tempfile.TemporaryDirectory() as tmp:
             wiki_dir = Path(tmp) / "wiki"
@@ -198,12 +198,12 @@ class CompileWikiToolTests(unittest.TestCase):
     def test_compile_wiki_invokes_orchestrator(self) -> None:
         from unittest.mock import patch
         from quant_llm_wiki.agent.tools import compile_wiki as compile_wiki_tool
-        import wiki_compile
+        from quant_llm_wiki.wiki import compile as wiki_compile
 
         fake_report = wiki_compile.CompileReport(
             sources_written=2, concepts_assigned=2, concepts_recompiled=1,
         )
-        with patch("wiki_compile.compile_wiki", return_value=fake_report):
+        with patch("quant_llm_wiki.wiki.compile.compile_wiki", return_value=fake_report):
             result = compile_wiki_tool.invoke({"mode": "incremental"})
         self.assertIn("2 sources", result)
         self.assertIn("1 concepts recompiled", result)
@@ -215,7 +215,7 @@ class ListConceptsToolTests(unittest.TestCase):
         from pathlib import Path
         from unittest.mock import patch
         from quant_llm_wiki.agent.tools import list_concepts as list_concepts_tool
-        from wiki_seed import bootstrap_wiki
+        from quant_llm_wiki.wiki.seed import bootstrap_wiki
 
         with tempfile.TemporaryDirectory() as tmp:
             wiki_dir = Path(tmp) / "wiki"
@@ -232,7 +232,7 @@ class SetConceptStatusToolTests(unittest.TestCase):
         from pathlib import Path
         from unittest.mock import patch
         from quant_llm_wiki.agent.tools import set_concept_status as set_status_tool
-        from wiki_schemas import ConceptArticle, parse_concept, serialize_concept
+        from quant_llm_wiki.wiki.schemas import ConceptArticle, parse_concept, serialize_concept
 
         with tempfile.TemporaryDirectory() as tmp:
             wiki_dir = Path(tmp) / "wiki"
@@ -261,7 +261,7 @@ class SetConceptStatusToolTests(unittest.TestCase):
         from pathlib import Path
         from unittest.mock import patch
         from quant_llm_wiki.agent.tools import set_concept_status as set_status_tool
-        from wiki_schemas import ConceptArticle, serialize_concept
+        from quant_llm_wiki.wiki.schemas import ConceptArticle, serialize_concept
 
         with tempfile.TemporaryDirectory() as tmp:
             wiki_dir = Path(tmp) / "wiki"
@@ -299,8 +299,8 @@ class ReadWikiToolTests(unittest.TestCase):
         from pathlib import Path
         from unittest.mock import patch
         from quant_llm_wiki.agent.tools import read_wiki as read_wiki_tool
-        from wiki_seed import bootstrap_wiki
-        from wiki_index import write_index
+        from quant_llm_wiki.wiki.seed import bootstrap_wiki
+        from quant_llm_wiki.wiki.index import write_index
 
         with tempfile.TemporaryDirectory() as tmp:
             wiki_dir = Path(tmp) / "wiki"
@@ -315,7 +315,7 @@ class ReadWikiToolTests(unittest.TestCase):
         from pathlib import Path
         from unittest.mock import patch
         from quant_llm_wiki.agent.tools import read_wiki as read_wiki_tool
-        from wiki_seed import bootstrap_wiki
+        from quant_llm_wiki.wiki.seed import bootstrap_wiki
 
         with tempfile.TemporaryDirectory() as tmp:
             wiki_dir = Path(tmp) / "wiki"
