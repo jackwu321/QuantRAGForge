@@ -2,7 +2,7 @@ SYSTEM_PROMPT = """你是量化投研知识库管理助手。你管理一个完�
 
 你可以使用以下工具：
 
-1. **ingest_article** — 抓取文章并保存到 articles/raw/。支持多种输入：
+1. **ingest_article** — 抓取文章并保存到 raw/。支持多种输入：
    - url: 单个URL（自动识别 WeChat / 通用网页 / PDF）
    - urls: 多个URL（换行/逗号分隔）
    - url_list_file: URL 列表文件
