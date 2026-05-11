@@ -169,7 +169,7 @@ class AuditWikiToolTests(unittest.TestCase):
         with tempfile.TemporaryDirectory() as tmp:
             wiki_dir = Path(tmp) / "wiki"
             bootstrap_wiki(wiki_dir)
-            with patch("quant_llm_wiki.agent.tools.KB_ROOT", Path(tmp)):
+            with patch.dict(os.environ, {"QLW_KB_ROOT": tmp}):
                 result = audit_wiki_tool.invoke({})
             self.assertIn("Wiki health", result)
 
@@ -220,7 +220,7 @@ class ListConceptsToolTests(unittest.TestCase):
         with tempfile.TemporaryDirectory() as tmp:
             wiki_dir = Path(tmp) / "wiki"
             bootstrap_wiki(wiki_dir)
-            with patch("quant_llm_wiki.agent.tools.KB_ROOT", Path(tmp)):
+            with patch.dict(os.environ, {"QLW_KB_ROOT": tmp}):
                 result = list_concepts_tool.invoke({"status": "stable"})
             self.assertIn("momentum-strategies", result)
             self.assertIn("(stable)", result)
@@ -248,7 +248,7 @@ class SetConceptStatusToolTests(unittest.TestCase):
             )
             (wiki_dir / "concepts" / "x-test.md").write_text(serialize_concept(proposed), encoding="utf-8")
 
-            with patch("quant_llm_wiki.agent.tools.KB_ROOT", Path(tmp)):
+            with patch.dict(os.environ, {"QLW_KB_ROOT": tmp}):
                 result = set_status_tool.invoke(
                     {"slug": "x-test", "status": "stable", "reason": "approved"}
                 )
@@ -276,7 +276,7 @@ class SetConceptStatusToolTests(unittest.TestCase):
             )
             (wiki_dir / "concepts" / "x-test.md").write_text(serialize_concept(c), encoding="utf-8")
 
-            with patch("quant_llm_wiki.agent.tools.KB_ROOT", Path(tmp)):
+            with patch.dict(os.environ, {"QLW_KB_ROOT": tmp}):
                 set_status_tool.invoke({"slug": "x-test", "status": "deleted", "reason": "rejected"})
             self.assertFalse((wiki_dir / "concepts" / "x-test.md").exists())
 
@@ -288,7 +288,7 @@ class SetConceptStatusToolTests(unittest.TestCase):
 
         with tempfile.TemporaryDirectory() as tmp:
             (Path(tmp) / "wiki" / "concepts").mkdir(parents=True)
-            with patch("quant_llm_wiki.agent.tools.KB_ROOT", Path(tmp)):
+            with patch.dict(os.environ, {"QLW_KB_ROOT": tmp}):
                 result = set_status_tool.invoke({"slug": "missing", "status": "stable", "reason": "x"})
             self.assertIn("not found", result.lower())
 
@@ -306,7 +306,7 @@ class ReadWikiToolTests(unittest.TestCase):
             wiki_dir = Path(tmp) / "wiki"
             bootstrap_wiki(wiki_dir)
             write_index(wiki_dir)
-            with patch("quant_llm_wiki.agent.tools.KB_ROOT", Path(tmp)):
+            with patch.dict(os.environ, {"QLW_KB_ROOT": tmp}):
                 result = read_wiki_tool.invoke({"target": "index"})
             self.assertIn("# Knowledge Base Index", result)
 
@@ -320,7 +320,7 @@ class ReadWikiToolTests(unittest.TestCase):
         with tempfile.TemporaryDirectory() as tmp:
             wiki_dir = Path(tmp) / "wiki"
             bootstrap_wiki(wiki_dir)
-            with patch("quant_llm_wiki.agent.tools.KB_ROOT", Path(tmp)):
+            with patch.dict(os.environ, {"QLW_KB_ROOT": tmp}):
                 result = read_wiki_tool.invoke({"target": "momentum-strategies"})
             self.assertIn("Momentum Strategies", result)
 
@@ -332,7 +332,7 @@ class ReadWikiToolTests(unittest.TestCase):
 
         with tempfile.TemporaryDirectory() as tmp:
             (Path(tmp) / "wiki").mkdir(parents=True)
-            with patch("quant_llm_wiki.agent.tools.KB_ROOT", Path(tmp)):
+            with patch.dict(os.environ, {"QLW_KB_ROOT": tmp}):
                 result = read_wiki_tool.invoke({"target": "nonexistent"})
             self.assertIn("not found", result.lower())
 

@@ -118,5 +118,43 @@ class TestResolveKbRoot(unittest.TestCase):
                 )
 
 
+    def test_no_package_leak_after_brainstorm_path(self):
+        """The agent → brainstorm → lint chain must not write into the package dir."""
+        import quant_llm_wiki
+        pkg_dir = Path(quant_llm_wiki.__file__).resolve().parent
+        pkg_lint = pkg_dir / "wiki" / "lint_report.json"
+        pkg_outputs = pkg_dir / "outputs"
+
+        # Snapshot pre-state — these MUST already not exist in a clean checkout
+        self.assertFalse(pkg_lint.exists(), f"pre-test leak: {pkg_lint}")
+        self.assertFalse(pkg_outputs.exists(), f"pre-test leak: {pkg_outputs}")
+
+        # Exercise the previously-leaking chain in a tempdir cwd
+        with tempfile.TemporaryDirectory() as td:
+            td_path = Path(td)
+            (td_path / "wiki" / "concepts").mkdir(parents=True)
+            (td_path / "wiki" / "sources").mkdir(parents=True)
+            (td_path / "wiki" / "state.json").write_text("{}", encoding="utf-8")
+            (td_path / "raw").mkdir()
+            old_cwd = os.getcwd()
+            old_env = os.environ.get("QLW_KB_ROOT")
+            try:
+                os.chdir(td)
+                os.environ["QLW_KB_ROOT"] = str(td_path)
+                # Directly call the previously-leaking function
+                from quant_llm_wiki.query.brainstorm import _wiki_is_healthy_for_query
+                _wiki_is_healthy_for_query(td_path)
+            finally:
+                os.chdir(old_cwd)
+                if old_env is None:
+                    os.environ.pop("QLW_KB_ROOT", None)
+                else:
+                    os.environ["QLW_KB_ROOT"] = old_env
+
+        # Post-state — STILL must not have leaked into the package
+        self.assertFalse(pkg_lint.exists(), f"LEAKED: {pkg_lint}")
+        self.assertFalse(pkg_outputs.exists(), f"LEAKED: {pkg_outputs}")
+
+
 if __name__ == "__main__":
     unittest.main()

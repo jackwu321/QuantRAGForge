@@ -12,12 +12,12 @@ except ImportError:
     chromadb = None
 
 from quant_llm_wiki.shared import (
-    ROOT,
     KnowledgeBlock,
     call_llm_chat,
     check_vector_store_health,
     embed_text,
 )
+from quant_llm_wiki.paths import resolve_kb_root
 
 
 # ---------------------------------------------------------------------------
@@ -30,7 +30,6 @@ TRACEABILITY_WEIGHT = 0.30
 COHERENCE_WEIGHT = 0.35
 ACTIONABILITY_WEIGHT = 0.35
 DEFAULT_SCORE_ON_FAILURE = 0.5
-VECTOR_STORE_DIR = ROOT / "vector_store"
 
 
 # ---------------------------------------------------------------------------
@@ -159,7 +158,7 @@ def _open_rethink_collection(vector_store_dir: Path | None = None):
     """Open the ChromaDB knowledge_blocks collection for novelty queries."""
     if chromadb is None:
         raise RuntimeError("chromadb is required for novelty checking")
-    store_dir = vector_store_dir or VECTOR_STORE_DIR
+    store_dir = vector_store_dir or (resolve_kb_root(None) / "vector_store")
     if not store_dir.exists():
         raise RuntimeError(f"vector store directory not found: {store_dir}")
     if not check_vector_store_health(store_dir):
