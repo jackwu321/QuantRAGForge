@@ -15,9 +15,7 @@ from pathlib import Path
 from typing import Optional
 from urllib.parse import urljoin, urlparse
 
-_ROOT = Path(__file__).resolve().parent.parent.parent
-if str(_ROOT) not in sys.path:
-    sys.path.insert(0, str(_ROOT))
+from quant_llm_wiki.paths import resolve_kb_root
 
 try:
     import requests
@@ -29,7 +27,7 @@ try:
 except ImportError:  # pragma: no cover - optional dependency at runtime
     BeautifulSoup = None
 
-from _wechat import (
+from quant_llm_wiki.ingest._wechat import (
     WECHAT_BLOCK_PATTERNS,
     DEFAULT_HEADERS,
     ArticleData,
@@ -66,12 +64,12 @@ from _wechat import (
 )
 
 
-ROOT = Path(__file__).resolve().parent.parent.parent
-TEMPLATES_DIR = ROOT / "templates"
-ARTICLES_RAW_DIR = ROOT / "articles" / "raw"
-SOURCES_PROCESSED_DIR = ROOT / "sources" / "processed"
-DEFAULT_URL_LIST = ROOT / "url list.txt"
-INGEST_FAILURES_PATH = SOURCES_PROCESSED_DIR / "ingest_failures.txt"
+# NOTE: These path constants are NOT derived from a module-level ROOT to avoid
+# resolving to the package directory after pipx install.  Write paths are
+# resolved at handler time via resolve_kb_root().  Template paths are read-only
+# and resolved from this file's package location.
+_PKG_ROOT = Path(__file__).resolve().parent.parent.parent
+TEMPLATES_DIR = _PKG_ROOT / "templates"
 
 SUPPORTED_CONTENT_TYPES = ("methodology", "strategy", "allocation", "risk_control", "market_review")
 IMAGE_SECTION_PLACEHOLDER = "```markdown\n![caption](images/001.png)\n```"
@@ -284,18 +282,21 @@ def inject_code_section(rendered: str, code_blocks: list[ExtractedCodeBlock]) ->
     return rendered.replace(CODE_BLOCK_PLACEHOLDER, render_code_blocks(code_blocks))
 
 
-def find_existing_article(article: ArticleData) -> Path | None:
+def find_existing_article(article: ArticleData, articles_raw_dir: Path) -> Path | None:
     """Check if an article with the same directory name already exists in any stage."""
     dir_name = article_dir_name(article)
     for stage in ("raw", "reviewed", "high-value"):
-        candidate = ARTICLES_RAW_DIR.parent / stage / dir_name
+        candidate = articles_raw_dir.parent / stage / dir_name
         if candidate.exists() and (candidate / "article.md").exists():
             return candidate
     return None
 
 
-def write_article(article: ArticleData, force: bool = False) -> Path:
-    existing = find_existing_article(article)
+def write_article(article: ArticleData, force: bool = False, kb_root: Path | None = None) -> Path:
+    kb_root = resolve_kb_root(kb_root)
+    articles_raw_dir = kb_root / "raw"
+    sources_processed_dir = kb_root / "sources" / "processed"
+    existing = find_existing_article(article, articles_raw_dir)
     if existing and not force:
         raise DuplicateArticleError(str(existing))
 
@@ -303,11 +304,11 @@ def write_article(article: ArticleData, force: bool = False) -> Path:
     template = inject_frontmatter(template, build_frontmatter(article))
     rendered = inject_body_placeholders(template, article)
 
-    article_dir = ARTICLES_RAW_DIR / article_dir_name(article)
+    article_dir = articles_raw_dir / article_dir_name(article)
     images_dir = article_dir / "images"
     article_dir.mkdir(parents=True, exist_ok=True)
     images_dir.mkdir(exist_ok=True)
-    SOURCES_PROCESSED_DIR.mkdir(parents=True, exist_ok=True)
+    sources_processed_dir.mkdir(parents=True, exist_ok=True)
 
     image_markdown = download_images(article, images_dir)
     rendered = inject_image_section(rendered, image_markdown)
@@ -356,7 +357,7 @@ def print_summary(article: ArticleData) -> None:
     print(json.dumps(payload, ensure_ascii=False, indent=2))
 
 
-def ingest_single_url(url: str, args: argparse.Namespace) -> BatchResult:
+def ingest_single_url(url: str, args: argparse.Namespace, kb_root: Path | None = None) -> BatchResult:
     try:
         html = fetch_html(url)
         article = extract_article_data(html, url, args.title)
@@ -366,7 +367,7 @@ def ingest_single_url(url: str, args: argparse.Namespace) -> BatchResult:
             print_summary(article)
             return BatchResult(url=url, success=True)
         force = getattr(args, "force", False)
-        out_dir = write_article(article, force=force)
+        out_dir = write_article(article, force=force, kb_root=kb_root)
         return BatchResult(url=url, success=True, output_dir=str(out_dir))
     except DuplicateArticleError as exc:
         return BatchResult(url=url, success=True, output_dir=str(exc), skipped=True)
@@ -381,18 +382,21 @@ def classify_ingest_error(error: str) -> str:
     return "ingest_error"
 
 
-def write_ingest_failures(results: list[BatchResult]) -> Path:
-    SOURCES_PROCESSED_DIR.mkdir(parents=True, exist_ok=True)
+def write_ingest_failures(results: list[BatchResult], kb_root: Path | None = None) -> Path:
+    kb_root = resolve_kb_root(kb_root)
+    sources_processed_dir = kb_root / "sources" / "processed"
+    ingest_failures_path = sources_processed_dir / "ingest_failures.txt"
+    sources_processed_dir.mkdir(parents=True, exist_ok=True)
     lines = [
         f"{result.url}\t{classify_ingest_error(result.error)}\t{result.error}"
         for result in results
         if not result.success
     ]
-    INGEST_FAILURES_PATH.write_text("\n".join(lines), encoding="utf-8")
-    return INGEST_FAILURES_PATH
+    ingest_failures_path.write_text("\n".join(lines), encoding="utf-8")
+    return ingest_failures_path
 
 
-def ingest_url_list(path: str, args: argparse.Namespace) -> int:
+def ingest_url_list(path: str, args: argparse.Namespace, kb_root: Path | None = None) -> int:
     urls = load_url_list(path)
     if not urls:
         print("no valid urls found in list")
@@ -401,7 +405,7 @@ def ingest_url_list(path: str, args: argparse.Namespace) -> int:
     results: list[BatchResult] = []
     for index, url in enumerate(urls, start=1):
         print(f"[{index}/{len(urls)}] ingesting {url}")
-        result = ingest_single_url(url, args)
+        result = ingest_single_url(url, args, kb_root=kb_root)
         results.append(result)
         if result.skipped:
             print(f"  skipped (already exists): {result.output_dir}")
@@ -416,7 +420,7 @@ def ingest_url_list(path: str, args: argparse.Namespace) -> int:
     success_count = sum(1 for r in results if r.success and not r.skipped)
     skipped_count = sum(1 for r in results if r.skipped)
     failure_count = sum(1 for r in results if not r.success)
-    failure_list_path = write_ingest_failures(results)
+    failure_list_path = write_ingest_failures(results, kb_root=kb_root)
     summary = {
         "total": len(results),
         "success": success_count,
@@ -435,6 +439,7 @@ def ingest_url_list(path: str, args: argparse.Namespace) -> int:
 
 def register(parser: argparse.ArgumentParser) -> None:
     """Attach this module's CLI flags to `parser`. Called by quant_llm_wiki.cli."""
+    parser.add_argument("--kb-root", default=None, help="Knowledge base root (default: $QLW_KB_ROOT or cwd).")
     parser.add_argument("--url", help="Original article URL.")
     parser.add_argument("--url-list", help="Path to a txt file containing one article URL per line.")
     parser.add_argument("--html-file", help="Path to a previously saved HTML file.")
@@ -462,8 +467,9 @@ def register(parser: argparse.ArgumentParser) -> None:
 
 def _run(args) -> int:
     """The module's command body. Receives parsed args from the dispatcher."""
+    kb_root = resolve_kb_root(getattr(args, "kb_root", None))
     if args.url_list:
-        return ingest_url_list(args.url_list, args)
+        return ingest_url_list(args.url_list, args, kb_root=kb_root)
 
     html, detected_url = read_html(args)
     source_url = args.url or detected_url
@@ -476,7 +482,7 @@ def _run(args) -> int:
         return 0
 
     try:
-        out_dir = write_article(article, force=args.force)
+        out_dir = write_article(article, force=args.force, kb_root=kb_root)
     except DuplicateArticleError as exc:
         print(f"skipped (already exists): {exc}")
         print("use --force to re-ingest")

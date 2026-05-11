@@ -9,9 +9,8 @@ from datetime import datetime
 from pathlib import Path
 
 
-ROOT = Path(__file__).resolve().parent
-ARTICLES_DIR = ROOT / "articles"
-DEFAULT_SOURCE_DIR = ARTICLES_DIR / "raw"
+from quant_llm_wiki.paths import resolve_kb_root
+
 STATUS_TO_DIR = {
     "reviewed": "reviewed",
     "high_value": "high-value",
@@ -33,22 +32,26 @@ def parse_args() -> argparse.Namespace:
     parser = argparse.ArgumentParser(
         description="Move article folders from raw to reviewed/high-value based on frontmatter status."
     )
-    parser.add_argument("--source-dir", default=str(DEFAULT_SOURCE_DIR), help="Source directory, default articles/raw.")
+    parser.add_argument("--kb-root", default=None, help="Knowledge base root (default: $QLW_KB_ROOT or cwd).")
+    parser.add_argument("--source-dir", default=None, help="Source directory (default: kb_root/raw).")
     parser.add_argument("--dry-run", action="store_true", help="Preview moves without changing files.")
     return parser.parse_args()
 
 
 def register(parser: argparse.ArgumentParser) -> None:
     """Attach this module's CLI flags to `parser`. Called by quant_llm_wiki.cli."""
-    parser.add_argument("--source-dir", default=str(DEFAULT_SOURCE_DIR), help="Source directory, default articles/raw.")
+    parser.add_argument("--kb-root", default=None, help="Knowledge base root (default: $QLW_KB_ROOT or cwd).")
+    parser.add_argument("--source-dir", default=None, help="Source directory (default: kb_root/raw).")
     parser.add_argument("--dry-run", action="store_true", help="Preview moves without changing files.")
     parser.set_defaults(func=_run)
 
 
 def _run(args) -> int:
     """The module's command body. Receives parsed args from the dispatcher."""
-    source_dir = Path(args.source_dir).expanduser().resolve()
-    results = sync_by_status(source_dir, dry_run=args.dry_run)
+    kb_root = resolve_kb_root(getattr(args, "kb_root", None))
+    _sd = getattr(args, "source_dir", None)
+    source_dir = Path(_sd).expanduser().resolve() if _sd else kb_root / "raw"
+    results = sync_by_status(source_dir, dry_run=args.dry_run, kb_root=kb_root)
     moved = [r for r in results if r.moved]
     skipped = [r for r in results if not r.moved]
     summary = {
@@ -91,7 +94,8 @@ def safe_target_dir(base_dir: Path) -> Path:
     return base_dir.parent / f"{base_dir.name}__dup_{suffix}"
 
 
-def sync_by_status(source_dir: Path, dry_run: bool) -> list[SyncResult]:
+def sync_by_status(source_dir: Path, dry_run: bool, kb_root: Path | None = None) -> list[SyncResult]:
+    resolved_kb = resolve_kb_root(kb_root)
     results: list[SyncResult] = []
     if not source_dir.exists():
         return results
@@ -140,7 +144,7 @@ def sync_by_status(source_dir: Path, dry_run: bool) -> list[SyncResult]:
             )
             continue
 
-        target_root = ARTICLES_DIR / target_name
+        target_root = resolved_kb / target_name
         target_root.mkdir(parents=True, exist_ok=True)
         target_dir = safe_target_dir(target_root / article_dir.name)
         if not dry_run:

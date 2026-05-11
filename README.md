@@ -101,7 +101,9 @@ WeChat URL / Web URL / PDF / HTML             ├──> wiki/INDEX.md
 
 ### Query → wiki feedback
 
-Every `qlw ask`/`qlw brainstorm` (unless `--no-file-back`) files a structured note into `wiki/queries/<date>_<slug>_<mode>.md` and bumps `state.json:concepts.<slug>.importance` + `retrieval_hints` for cited concepts. `qlw lint --maintain` later distills these query logs into proposed concept-page improvements. This realizes Karpathy's *"my own explorations and queries always 'add up' in the knowledge base."*
+> Query feedback filing is planned after v0.3.0; `qlw ask` and `qlw brainstorm` currently save normal outputs only.
+
+Every `qlw ask`/`qlw brainstorm` output is written to `outputs/brainstorms/`. `qlw lint --maintain` can distill query logs into proposed concept-page improvements once feedback filing is enabled. This realizes Karpathy's *"my own explorations and queries always 'add up' in the knowledge base."*
 
 ### Schema is enforced, not advisory
 
@@ -144,28 +146,30 @@ Quant_LLM_Wiki/
 ├── llm_config.example.env          # Example LLM provider config
 ├── README.md
 ├── LICENSE
-├── ingest_source.py                # Unified ingest dispatcher (WeChat / web / PDF / HTML)
-├── _wechat.py                      # WeChat-specific extraction
-├── _web_extract.py                 # Generic web extraction (trafilatura)
-├── _pdf_extract.py                 # PDF extraction (pypdf)
-├── _code_math.py                   # Code/math preservation utilities
-├── wiki_schemas.py                 # ConceptArticle / SourceSummary dataclasses
-├── wiki_seed.py                    # Seed taxonomy + bootstrap
-├── wiki_state.py                   # Machine state manifest + scoring (freshness decay etc.)
-├── wiki_compile.py                 # compile_wiki orchestrator (schema-injected, soft-error)
-├── wiki_compile_llm.py             # assign_concepts + recompile_concept LLM wrappers
-├── wiki_index.py                   # INDEX.md generator
-├── wiki_lint.py                    # Schema enforcement + health checks + auto_fix
-├── wiki_maintain.py                # append_query_log + run_maintenance (Steps 6 + 7)
-├── quant_llm_wiki/                 # Restructured Python package (qlib-style)
+├── quant_llm_wiki/                 # Installable Python package (all functionality here)
 │   ├── __init__.py
-│   ├── cli.py                      # `qlw` dispatcher
-│   ├── shared.py                   # Shared utilities, LLM HTTP client, paths, frontmatter
-│   ├── ingest/
-│   │   └── wechat.py               # WeChat-specific ingest
+│   ├── cli.py                      # `qlw` dispatcher (9 subcommands)
+│   ├── shared.py                   # Shared utilities, LLM HTTP client, frontmatter
+│   ├── paths.py                    # KB root resolution (resolve_kb_root)
 │   ├── enrich.py                   # LLM enrichment pipeline
 │   ├── embed.py                    # ChromaDB substrate over raw/ + wiki/
 │   ├── sync.py                     # Article status-based file sync
+│   ├── ingest/
+│   │   ├── source.py               # Unified ingest dispatcher (WeChat / web / PDF / HTML)
+│   │   ├── wechat.py               # WeChat-specific ingest
+│   │   ├── _wechat.py              # WeChat HTML extraction internals
+│   │   ├── web.py                  # Generic web extraction (trafilatura)
+│   │   ├── pdf.py                  # PDF extraction (pypdf + pdfplumber)
+│   │   └── code_math.py            # Code/math preservation utilities
+│   ├── wiki/
+│   │   ├── compile.py              # compile_wiki orchestrator (schema-injected, soft-error)
+│   │   ├── compile_llm.py          # assign_concepts + recompile_concept LLM wrappers
+│   │   ├── index.py                # INDEX.md generator
+│   │   ├── lint.py                 # Schema enforcement + health checks + auto_fix
+│   │   ├── maintain.py             # append_query_log + run_maintenance (Steps 6 + 7)
+│   │   ├── schemas.py              # ConceptArticle / SourceSummary dataclasses
+│   │   ├── seed.py                 # Seed taxonomy + bootstrap
+│   │   └── state.py                # Machine state manifest + scoring (freshness decay etc.)
 │   ├── query/
 │   │   ├── brainstorm.py           # query (ask | brainstorm) — wiki-first retrieval
 │   │   └── rethink.py              # Post-generation novelty + quality validation
@@ -333,8 +337,9 @@ qlw lint --maintain --apply   # apply query-derived state updates (idempotent)
 # Manual wiki compile
 qlw compile
 
-# Query (ask mode) without filing the log back into wiki/queries/
-qlw ask --query "..." --no-file-back
+# Query (ask mode) — outputs saved to outputs/brainstorms/
+qlw ask --query "..."
+# Note: query feedback filing (--no-file-back / --file-back) is planned after v0.3.0; see the "Query → wiki feedback" section above.
 ```
 
 ## Agent Usage

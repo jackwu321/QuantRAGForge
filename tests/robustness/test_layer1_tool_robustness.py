@@ -214,62 +214,44 @@ class TestIngestArticleRobust(RobustTestBase):
     def test_duplicate_url_skipped(self, mock_download, mock_fetch):
         """Second ingestion of same URL should be skipped."""
         from quant_llm_wiki.agent.tools import ingest_article
-        import quant_llm_wiki.ingest.wechat as ingest_mod
+        # QLW_KB_ROOT is set to self.tmp_root by RobustTestBase.setUp; no need to patch module attr
+        # First ingest
+        result1 = ingest_article.invoke({"url": "https://mp.weixin.qq.com/s/article1"})
+        self.assertIn("1 ingested", result1)
 
-        original_raw_dir = ingest_mod.ARTICLES_RAW_DIR
-        ingest_mod.ARTICLES_RAW_DIR = self.tmp_root / "raw"
-        try:
-            # First ingest
-            result1 = ingest_article.invoke({"url": "https://mp.weixin.qq.com/s/article1"})
-            self.assertIn("1 ingested", result1)
-
-            # Second ingest of same URL — should skip
-            result2 = ingest_article.invoke({"url": "https://mp.weixin.qq.com/s/article1"})
-            self.assertIn("skipped", result2.lower())
-            self.assertIn("already exist", result2.lower())
-        finally:
-            ingest_mod.ARTICLES_RAW_DIR = original_raw_dir
+        # Second ingest of same URL — should skip
+        result2 = ingest_article.invoke({"url": "https://mp.weixin.qq.com/s/article1"})
+        self.assertIn("skipped", result2.lower())
+        self.assertIn("already exist", result2.lower())
 
     @patch("quant_llm_wiki.ingest.wechat.fetch_html", return_value="<html><body><h1>Test</h1><p>Content here for testing purposes.</p></body></html>")
     @patch("quant_llm_wiki.ingest.wechat.download_binary", return_value=(b"", "image/png"))
     def test_duplicate_url_force_reingest(self, mock_download, mock_fetch):
         """With force=True, duplicate should be re-ingested."""
         from quant_llm_wiki.agent.tools import ingest_article
-        import quant_llm_wiki.ingest.wechat as ingest_mod
+        # QLW_KB_ROOT is set to self.tmp_root by RobustTestBase.setUp
+        # First ingest
+        result1 = ingest_article.invoke({"url": "https://mp.weixin.qq.com/s/article1"})
+        self.assertIn("1 ingested", result1)
 
-        original_raw_dir = ingest_mod.ARTICLES_RAW_DIR
-        ingest_mod.ARTICLES_RAW_DIR = self.tmp_root / "raw"
-        try:
-            # First ingest
-            result1 = ingest_article.invoke({"url": "https://mp.weixin.qq.com/s/article1"})
-            self.assertIn("1 ingested", result1)
-
-            # Force re-ingest
-            result2 = ingest_article.invoke({"url": "https://mp.weixin.qq.com/s/article1", "force": True})
-            self.assertIn("1 ingested", result2)
-            self.assertNotIn("skipped", result2.lower())
-        finally:
-            ingest_mod.ARTICLES_RAW_DIR = original_raw_dir
+        # Force re-ingest
+        result2 = ingest_article.invoke({"url": "https://mp.weixin.qq.com/s/article1", "force": True})
+        self.assertIn("1 ingested", result2)
+        self.assertNotIn("skipped", result2.lower())
 
     @patch("quant_llm_wiki.ingest.wechat.fetch_html", return_value="<html><body><h1>Test</h1><p>Content here for testing purposes.</p></body></html>")
     @patch("quant_llm_wiki.ingest.wechat.download_binary", return_value=(b"", "image/png"))
     def test_duplicate_detected_in_raw(self, mock_download, mock_fetch):
         """Article already in raw/ should be detected as duplicate on re-ingest."""
         from quant_llm_wiki.agent.tools import ingest_article
-        import quant_llm_wiki.ingest.wechat as ingest_mod
+        # QLW_KB_ROOT is set to self.tmp_root by RobustTestBase.setUp
+        # First ingest writes to raw/
+        result1 = ingest_article.invoke({"url": "https://mp.weixin.qq.com/s/article2"})
+        self.assertIn("1 ingested", result1)
 
-        original_raw_dir = ingest_mod.ARTICLES_RAW_DIR
-        ingest_mod.ARTICLES_RAW_DIR = self.tmp_root / "raw"
-        try:
-            # First ingest writes to raw/
-            result1 = ingest_article.invoke({"url": "https://mp.weixin.qq.com/s/article2"})
-            self.assertIn("1 ingested", result1)
-
-            # Second ingest of the same URL should detect the existing article in raw/
-            result2 = ingest_article.invoke({"url": "https://mp.weixin.qq.com/s/article2"})
-            self.assertIn("skipped", result2.lower())
-        finally:
-            ingest_mod.ARTICLES_RAW_DIR = original_raw_dir
+        # Second ingest of the same URL should detect the existing article in raw/
+        result2 = ingest_article.invoke({"url": "https://mp.weixin.qq.com/s/article2"})
+        self.assertIn("skipped", result2.lower())
 
 
 # ===========================================================================
