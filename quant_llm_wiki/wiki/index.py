@@ -4,7 +4,7 @@ from collections import defaultdict
 from datetime import date
 from pathlib import Path
 
-from wiki_schemas import parse_concept
+from quant_llm_wiki.wiki.schemas import parse_concept
 
 
 def _atomic_write(path: Path, content: str) -> None:

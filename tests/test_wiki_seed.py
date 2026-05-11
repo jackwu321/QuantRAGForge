@@ -2,8 +2,8 @@ import tempfile
 import unittest
 from pathlib import Path
 
-import wiki_seed
-import wiki_schemas
+from quant_llm_wiki.wiki import seed as wiki_seed
+from quant_llm_wiki.wiki import schemas as wiki_schemas
 
 
 class WikiSeedTests(unittest.TestCase):

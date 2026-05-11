@@ -3,9 +3,9 @@ import tempfile
 import unittest
 from pathlib import Path
 
-import wiki_maintain
-from wiki_seed import bootstrap_wiki
-from wiki_state import load_wiki_state
+from quant_llm_wiki.wiki import maintain as wiki_maintain
+from quant_llm_wiki.wiki.seed import bootstrap_wiki
+from quant_llm_wiki.wiki.state import load_wiki_state
 
 
 class QueryFeedbackTests(unittest.TestCase):

@@ -105,7 +105,7 @@ def cmd_query(args: argparse.Namespace) -> int:
     # Implemented in wiki_maintain.append_query_log; here we just call it best-effort.
     if not args.no_file_back and rc == 0:
         try:
-            from wiki_maintain import append_query_log
+            from quant_llm_wiki.wiki.maintain import append_query_log
             append_query_log(
                 kb_root=Path(args.kb_root).expanduser().resolve(),
                 query=args.query,
@@ -124,7 +124,7 @@ def cmd_query(args: argparse.Namespace) -> int:
 
 
 def cmd_lint(args: argparse.Namespace) -> int:
-    from wiki_lint import lint_wiki
+    from quant_llm_wiki.wiki.lint import lint_wiki
 
     kb_root = Path(args.kb_root).expanduser().resolve()
     report = lint_wiki(kb_root)
@@ -134,7 +134,7 @@ def cmd_lint(args: argparse.Namespace) -> int:
 
     if args.fix:
         try:
-            from wiki_lint import auto_fix
+            from quant_llm_wiki.wiki.lint import auto_fix
         except ImportError:
             print("error: --fix requires Step 5 (auto_fix) to be implemented.", file=sys.stderr)
             return 1
@@ -143,7 +143,7 @@ def cmd_lint(args: argparse.Namespace) -> int:
 
     if args.maintain:
         try:
-            from wiki_maintain import run_maintenance
+            from quant_llm_wiki.wiki.maintain import run_maintenance
         except ImportError:
             print("error: --maintain requires Step 6 (wiki_maintain) to be implemented.", file=sys.stderr)
             return 1
@@ -159,7 +159,7 @@ def cmd_lint(args: argparse.Namespace) -> int:
 
 
 def cmd_compile(args: argparse.Namespace) -> int:
-    from wiki_compile import compile_wiki
+    from quant_llm_wiki.wiki.compile import compile_wiki
     from quant_llm_wiki.shared import DEFAULT_SOURCE_DIRS
 
     kb_root = Path(getattr(args, "kb_root", str(ROOT))).expanduser().resolve()

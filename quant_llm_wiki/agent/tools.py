@@ -553,7 +553,7 @@ def compile_wiki(mode: str = "incremental", dry_run: bool = False) -> str:
 
     Set dry_run=True to plan without writing files.
     """
-    import wiki_compile
+    from quant_llm_wiki.wiki import compile as wiki_compile
     if mode not in ("incremental", "rebuild"):
         return f"Invalid mode '{mode}'. Must be 'incremental' or 'rebuild'."
     try:
@@ -584,7 +584,7 @@ def audit_wiki() -> str:
     concepts/sources, oversized concepts). Calls out blocking issues that should
     push brainstorm to article-only fallback.
     """
-    import wiki_lint
+    from quant_llm_wiki.wiki import lint as wiki_lint
     try:
         report = wiki_lint.lint_wiki(KB_ROOT)
     except Exception as exc:
@@ -604,7 +604,7 @@ def list_concepts(status: str = "all") -> str:
     Status filter: 'all' (default), 'stable', 'proposed', or 'deprecated'.
     Returns a markdown list of concept slugs with title and source count.
     """
-    from wiki_schemas import parse_concept
+    from quant_llm_wiki.wiki.schemas import parse_concept
     if status not in ("all", "stable", "proposed", "deprecated"):
         return f"Invalid status filter '{status}'."
     cdir = KB_ROOT / "wiki" / "concepts"
@@ -641,7 +641,7 @@ def set_concept_status(slug: str, status: str, reason: str = "") -> str:
 
     `reason` is recorded as a short note on the change.
     """
-    from wiki_schemas import parse_concept, serialize_concept
+    from quant_llm_wiki.wiki.schemas import parse_concept, serialize_concept
     if status not in ("stable", "deprecated", "deleted"):
         return f"Invalid status '{status}'. Must be 'stable', 'deprecated', or 'deleted'."
 

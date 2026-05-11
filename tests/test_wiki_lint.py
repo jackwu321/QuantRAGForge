@@ -3,10 +3,10 @@ import tempfile
 import unittest
 from pathlib import Path
 
-import wiki_lint
-import wiki_seed
-import wiki_state
-from wiki_schemas import ConceptArticle, SourceSummary, serialize_concept, serialize_source_summary
+from quant_llm_wiki.wiki import lint as wiki_lint
+from quant_llm_wiki.wiki import seed as wiki_seed
+from quant_llm_wiki.wiki import state as wiki_state
+from quant_llm_wiki.wiki.schemas import ConceptArticle, SourceSummary, serialize_concept, serialize_source_summary
 
 
 def _write_concept(wiki_dir: Path, **overrides) -> Path:

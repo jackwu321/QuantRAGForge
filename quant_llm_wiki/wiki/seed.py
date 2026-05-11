@@ -4,7 +4,7 @@ from dataclasses import dataclass
 from datetime import date
 from pathlib import Path
 
-from wiki_schemas import ConceptArticle, serialize_concept
+from quant_llm_wiki.wiki.schemas import ConceptArticle, serialize_concept
 
 
 @dataclass(frozen=True)

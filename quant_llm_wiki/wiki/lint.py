@@ -28,13 +28,13 @@ from pathlib import Path
 from typing import Literal
 
 from quant_llm_wiki.shared import ROOT, WIKI_DIR, WIKI_LINT_PATH, WIKI_STATE_PATH
-from wiki_schemas import (
+from quant_llm_wiki.wiki.schemas import (
     ConceptArticle,
     bullet_sources,
     parse_concept,
     parse_source_summary,
 )
-from wiki_state import load_wiki_state, source_content_hash
+from quant_llm_wiki.wiki.state import load_wiki_state, source_content_hash
 
 
 SEVERITY = Literal["info", "warning", "error"]
@@ -439,10 +439,10 @@ def auto_fix(kb_root: Path, report: WikiLintReport) -> int:
     if not offenders:
         return 0
 
-    from wiki_compile import load_schema_context, _save_concept
-    from wiki_compile_llm import recompile_concept
-    from wiki_state import load_wiki_state, save_wiki_state, update_concept_entry
-    from wiki_schemas import ConceptArticle, parse_concept
+    from quant_llm_wiki.wiki.compile import load_schema_context, _save_concept
+    from quant_llm_wiki.wiki.compile_llm import recompile_concept
+    from quant_llm_wiki.wiki.state import load_wiki_state, save_wiki_state, update_concept_entry
+    from quant_llm_wiki.wiki.schemas import ConceptArticle, parse_concept
     from quant_llm_wiki.shared import parse_frontmatter
 
     schema_text = load_schema_context(kb_root / "schema")

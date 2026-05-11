@@ -4,8 +4,8 @@ import unittest
 from datetime import date, timedelta
 from pathlib import Path
 
-import wiki_state
-import wiki_schemas
+from quant_llm_wiki.wiki import state as wiki_state
+from quant_llm_wiki.wiki import schemas as wiki_schemas
 
 
 class LoadSaveTests(unittest.TestCase):

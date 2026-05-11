@@ -209,7 +209,7 @@ def update_concept_entry(state: WikiState, concept) -> None:
     source_count = len(concept.sources)
 
     # Confidence: bullets without source anchors lower confidence.
-    from wiki_schemas import bullet_sources
+    from quant_llm_wiki.wiki.schemas import bullet_sources
     bullet_pool: list[str] = (
         list(concept.key_idea_blocks)
         + list(concept.variants)

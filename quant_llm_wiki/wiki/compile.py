@@ -5,14 +5,14 @@ from datetime import date
 from pathlib import Path
 
 from quant_llm_wiki.shared import parse_frontmatter, ROOT, DEFAULT_SOURCE_DIRS
-from wiki_schemas import SourceSummary, serialize_source_summary, ConceptArticle, parse_concept, serialize_concept
-from wiki_compile_llm import (
+from quant_llm_wiki.wiki.schemas import SourceSummary, serialize_source_summary, ConceptArticle, parse_concept, serialize_concept
+from quant_llm_wiki.wiki.compile_llm import (
     ConceptAssignment, ProposedConcept, RecompileResult,
     assign_concepts, recompile_concept,
 )
-from wiki_index import write_index
-from wiki_seed import bootstrap_wiki
-from wiki_state import (
+from quant_llm_wiki.wiki.index import write_index
+from quant_llm_wiki.wiki.seed import bootstrap_wiki
+from quant_llm_wiki.wiki.state import (
     WikiState, load_wiki_state, save_wiki_state,
     is_source_changed, update_source_entry, update_concept_entry,
 )
@@ -398,7 +398,7 @@ def compile_wiki(
 
         # Run lint after compile so the agent can decide whether to trust memory.
         try:
-            from wiki_lint import lint_wiki
+            from quant_llm_wiki.wiki.lint import lint_wiki
             lint = lint_wiki(kb_root)
             report.lint_summary = lint.summary()
             report.lint_ok = lint.ok_for_brainstorm()
