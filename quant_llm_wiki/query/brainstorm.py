@@ -66,41 +66,6 @@ What Could Break
 Possible Variants"""
 
 
-def parse_args() -> argparse.Namespace:
-    parser = argparse.ArgumentParser(description="Read the knowledge base and generate answers or brainstorm ideas.")
-    subparsers = parser.add_subparsers(dest="command", required=True)
-
-    common = argparse.ArgumentParser(add_help=False)
-    common.add_argument("--query", required=True, help="Question or brainstorm goal.")
-    common.add_argument("--kb-root", default=None, help="Knowledge base root directory (defaults to $QLW_KB_ROOT or cwd).")
-    common.add_argument("--wiki-dir", help="Wiki directory, default <kb-root>/wiki.")
-    common.add_argument("--schema-dir", help="Schema directory, default <kb-root>/schema.")
-    common.add_argument("--vector-store-dir", help="Vector store directory, default <kb-root>/vector_store.")
-    common.add_argument(
-        "--source-dir",
-        default="reviewed,high-value",
-        help="Comma-separated article source directories under articles/, default reviewed,high-value.",
-    )
-    common.add_argument("--content-type", help="Filter by comma-separated content_type values.")
-    common.add_argument("--market", help="Filter by comma-separated market values.")
-    common.add_argument("--asset-type", help="Filter by comma-separated asset_type values.")
-    common.add_argument("--strategy-type", help="Filter by comma-separated strategy_type values.")
-    common.add_argument("--brainstorm-value", help="Filter by comma-separated brainstorm_value values.")
-    common.add_argument("--top-k", type=int, default=DEFAULT_TOP_K, help="Maximum number of retrieved blocks.")
-    common.add_argument(
-        "--retrieval",
-        choices=["keyword", "vector", "hybrid"],
-        default=DEFAULT_RETRIEVAL_MODE,
-        help="Retrieval mode: keyword, vector, or hybrid.",
-    )
-    common.add_argument("--output-file", help="Optional explicit output file path.")
-    common.add_argument("--dry-run", action="store_true", help="Print retrieved context without calling the model.")
-
-    subparsers.add_parser("ask", parents=[common], help="Answer a question from the knowledge base.")
-    subparsers.add_parser("brainstorm", parents=[common], help="Generate brainstorm ideas from the knowledge base.")
-    return parser.parse_args()
-
-
 def _add_common_args(parser: argparse.ArgumentParser) -> None:
     """Attach the shared --query/--top-k/... flags. Called by both register_*."""
     parser.add_argument("--query", required=True, help="Question or brainstorm goal.")
@@ -127,6 +92,11 @@ def _add_common_args(parser: argparse.ArgumentParser) -> None:
     )
     parser.add_argument("--output-file", help="Optional explicit output file path.")
     parser.add_argument("--dry-run", action="store_true", help="Print retrieved context without calling the model.")
+    parser.add_argument(
+        "--no-query-log",
+        action="store_true",
+        help="Skip writing wiki/queries/<date>_<slug>_<mode>.md after the run.",
+    )
 
 
 def register_ask(parser: argparse.ArgumentParser) -> None:
@@ -141,30 +111,134 @@ def register_brainstorm(parser: argparse.ArgumentParser) -> None:
     parser.set_defaults(func=_run_brainstorm)
 
 
-def _run_ask(args) -> int:
-    """The ask command body. Receives parsed args from the dispatcher."""
-    args.command = "ask"
-    kb_root = resolve_kb_root(args.kb_root)
-    wiki_dir = Path(args.wiki_dir).expanduser().resolve() if args.wiki_dir else kb_root / "wiki"
-    schema_dir = Path(args.schema_dir).expanduser().resolve() if args.schema_dir else kb_root / "schema"
-    vector_store_dir = Path(args.vector_store_dir).expanduser().resolve() if args.vector_store_dir else kb_root / "vector_store"
-    source_dirs = parse_csv_arg(args.source_dir) or list(DEFAULT_SOURCE_DIRS)
+def run_ask(
+    kb_root: Path,
+    *,
+    query: str,
+    wiki_dir: Path | None = None,
+    schema_dir: Path | None = None,
+    vector_store_dir: Path | None = None,
+    source_dir: str = "reviewed,high-value",
+    content_type: str | None = None,
+    market: str | None = None,
+    asset_type: str | None = None,
+    strategy_type: str | None = None,
+    brainstorm_value: str | None = None,
+    top_k: int = DEFAULT_TOP_K,
+    retrieval: str = DEFAULT_RETRIEVAL_MODE,
+    output_file: Path | None = None,
+    dry_run: bool = False,
+    write_query_log: bool = True,
+) -> int:
+    """Public typed entry point for the ask command."""
+    return _run_query(
+        "ask", kb_root,
+        query=query,
+        wiki_dir=wiki_dir,
+        schema_dir=schema_dir,
+        vector_store_dir=vector_store_dir,
+        source_dir=source_dir,
+        content_type=content_type,
+        market=market,
+        asset_type=asset_type,
+        strategy_type=strategy_type,
+        brainstorm_value=brainstorm_value,
+        top_k=top_k,
+        retrieval=retrieval,
+        output_file=output_file,
+        dry_run=dry_run,
+        write_query_log=write_query_log,
+    )
+
+
+def run_brainstorm(
+    kb_root: Path,
+    *,
+    query: str,
+    wiki_dir: Path | None = None,
+    schema_dir: Path | None = None,
+    vector_store_dir: Path | None = None,
+    source_dir: str = "reviewed,high-value",
+    content_type: str | None = None,
+    market: str | None = None,
+    asset_type: str | None = None,
+    strategy_type: str | None = None,
+    brainstorm_value: str | None = None,
+    top_k: int = DEFAULT_TOP_K,
+    retrieval: str = DEFAULT_RETRIEVAL_MODE,
+    output_file: Path | None = None,
+    dry_run: bool = False,
+    write_query_log: bool = True,
+) -> int:
+    """Public typed entry point for the brainstorm command."""
+    return _run_query(
+        "brainstorm", kb_root,
+        query=query,
+        wiki_dir=wiki_dir,
+        schema_dir=schema_dir,
+        vector_store_dir=vector_store_dir,
+        source_dir=source_dir,
+        content_type=content_type,
+        market=market,
+        asset_type=asset_type,
+        strategy_type=strategy_type,
+        brainstorm_value=brainstorm_value,
+        top_k=top_k,
+        retrieval=retrieval,
+        output_file=output_file,
+        dry_run=dry_run,
+        write_query_log=write_query_log,
+    )
+
+
+def _run_query(
+    command: str,
+    kb_root: Path,
+    *,
+    query: str,
+    wiki_dir: Path | None,
+    schema_dir: Path | None,
+    vector_store_dir: Path | None,
+    source_dir: str,
+    content_type: str | None,
+    market: str | None,
+    asset_type: str | None,
+    strategy_type: str | None,
+    brainstorm_value: str | None,
+    top_k: int,
+    retrieval: str,
+    output_file: Path | None,
+    dry_run: bool,
+    write_query_log: bool,
+) -> int:
+    """Shared body for ask and brainstorm commands."""
+    resolved_wiki_dir = wiki_dir or kb_root / "wiki"
+    resolved_schema_dir = schema_dir or kb_root / "schema"
+    resolved_vector_store_dir = vector_store_dir or kb_root / "vector_store"
+    source_dirs = parse_csv_arg(source_dir) or list(DEFAULT_SOURCE_DIRS)
     notes = load_notes(kb_root, source_dirs)
-    filtered_notes = apply_filters(notes, args)
+    filtered_notes = apply_filters(
+        notes,
+        content_type=content_type,
+        market=market,
+        asset_type=asset_type,
+        strategy_type=strategy_type,
+        brainstorm_value=brainstorm_value,
+    )
     if not filtered_notes:
         print("no candidate notes found after applying source/status/metadata filters")
         return 1
 
     retrieved, resolved_mode, warning = retrieve_blocks(
         filtered_notes,
-        args.query,
-        args.top_k,
-        args.command,
-        args.retrieval,
-        vector_store_dir,
+        query,
+        top_k,
+        command,
+        retrieval,
+        resolved_vector_store_dir,
         kb_root=kb_root,
-        wiki_dir=wiki_dir,
-        schema_dir=schema_dir,
+        wiki_dir=resolved_wiki_dir,
+        schema_dir=resolved_schema_dir,
     )
     if warning:
         print(f"warning: {warning}")
@@ -174,83 +248,89 @@ def _run_ask(args) -> int:
         return 1
 
     context = format_context(retrieved)
-    if args.dry_run:
+    if dry_run:
         print(context)
         return 0
 
-    result = call_zhipu_chat(build_messages(args.command, args.query, context))
-    if args.command == "brainstorm":
-        result = rethink(result, retrieved, args.query, vector_store_dir)
+    result = call_zhipu_chat(build_messages(command, query, context))
+    if command == "brainstorm":
+        result = rethink(result, retrieved, query, resolved_vector_store_dir)
     output_path = (
-        Path(args.output_file).expanduser().resolve()
-        if args.output_file
-        else default_output_path(args.command, args.query, kb_root / "outputs" / "brainstorms")
+        Path(output_file).expanduser().resolve()
+        if output_file
+        else default_output_path(command, query, kb_root / "outputs" / "brainstorms")
     )
-    saved = write_output(output_path, args.query, args.command, retrieved, result)
+    saved = write_output(output_path, query, command, retrieved, result)
     print(result)
     print(f"\nsaved: {saved}")
+    if write_query_log:
+        from quant_llm_wiki.wiki.maintain import append_query_log
+        log_path = append_query_log(kb_root, query, command, output_path=saved)
+        if log_path:
+            print(f"query log: {log_path}")
     return 0
+
+
+def _run_ask(args) -> int:
+    """Arg-marshalling shim: unpack CLI args and delegate to run_ask."""
+    return run_ask(
+        resolve_kb_root(getattr(args, "kb_root", None)),
+        query=args.query,
+        wiki_dir=Path(args.wiki_dir).expanduser().resolve() if args.wiki_dir else None,
+        schema_dir=Path(args.schema_dir).expanduser().resolve() if args.schema_dir else None,
+        vector_store_dir=Path(args.vector_store_dir).expanduser().resolve() if args.vector_store_dir else None,
+        source_dir=args.source_dir,
+        content_type=args.content_type,
+        market=args.market,
+        asset_type=args.asset_type,
+        strategy_type=args.strategy_type,
+        brainstorm_value=args.brainstorm_value,
+        top_k=args.top_k,
+        retrieval=args.retrieval,
+        output_file=Path(args.output_file).expanduser().resolve() if args.output_file else None,
+        dry_run=args.dry_run,
+        write_query_log=not args.no_query_log,
+    )
 
 
 def _run_brainstorm(args) -> int:
-    """The brainstorm command body. Receives parsed args from the dispatcher."""
-    args.command = "brainstorm"
-    kb_root = resolve_kb_root(args.kb_root)
-    wiki_dir = Path(args.wiki_dir).expanduser().resolve() if args.wiki_dir else kb_root / "wiki"
-    schema_dir = Path(args.schema_dir).expanduser().resolve() if args.schema_dir else kb_root / "schema"
-    vector_store_dir = Path(args.vector_store_dir).expanduser().resolve() if args.vector_store_dir else kb_root / "vector_store"
-    source_dirs = parse_csv_arg(args.source_dir) or list(DEFAULT_SOURCE_DIRS)
-    notes = load_notes(kb_root, source_dirs)
-    filtered_notes = apply_filters(notes, args)
-    if not filtered_notes:
-        print("no candidate notes found after applying source/status/metadata filters")
-        return 1
-
-    retrieved, resolved_mode, warning = retrieve_blocks(
-        filtered_notes,
-        args.query,
-        args.top_k,
-        args.command,
-        args.retrieval,
-        vector_store_dir,
-        kb_root=kb_root,
-        wiki_dir=wiki_dir,
-        schema_dir=schema_dir,
+    """Arg-marshalling shim: unpack CLI args and delegate to run_brainstorm."""
+    return run_brainstorm(
+        resolve_kb_root(getattr(args, "kb_root", None)),
+        query=args.query,
+        wiki_dir=Path(args.wiki_dir).expanduser().resolve() if args.wiki_dir else None,
+        schema_dir=Path(args.schema_dir).expanduser().resolve() if args.schema_dir else None,
+        vector_store_dir=Path(args.vector_store_dir).expanduser().resolve() if args.vector_store_dir else None,
+        source_dir=args.source_dir,
+        content_type=args.content_type,
+        market=args.market,
+        asset_type=args.asset_type,
+        strategy_type=args.strategy_type,
+        brainstorm_value=args.brainstorm_value,
+        top_k=args.top_k,
+        retrieval=args.retrieval,
+        output_file=Path(args.output_file).expanduser().resolve() if args.output_file else None,
+        dry_run=args.dry_run,
+        write_query_log=not args.no_query_log,
     )
-    if warning:
-        print(f"warning: {warning}")
-    print(f"retrieval_mode: {resolved_mode}")
-    if not retrieved:
-        print("no relevant knowledge blocks found for the query")
-        return 1
-
-    context = format_context(retrieved)
-    if args.dry_run:
-        print(context)
-        return 0
-
-    result = call_zhipu_chat(build_messages(args.command, args.query, context))
-    if args.command == "brainstorm":
-        result = rethink(result, retrieved, args.query, vector_store_dir)
-    output_path = (
-        Path(args.output_file).expanduser().resolve()
-        if args.output_file
-        else default_output_path(args.command, args.query, kb_root / "outputs" / "brainstorms")
-    )
-    saved = write_output(output_path, args.query, args.command, retrieved, result)
-    print(result)
-    print(f"\nsaved: {saved}")
-    return 0
 
 
-def apply_filters(notes: list[KnowledgeNote], args: argparse.Namespace) -> list[KnowledgeNote]:
+def apply_filters(
+    notes: list[KnowledgeNote],
+    *,
+    content_type: str | None,
+    market: str | None,
+    asset_type: str | None,
+    strategy_type: str | None,
+    brainstorm_value: str | None,
+) -> list[KnowledgeNote]:
     return filter_notes(
         notes,
-        parse_csv_arg(args.content_type),
-        parse_csv_arg(args.market),
-        parse_csv_arg(args.asset_type),
-        parse_csv_arg(args.strategy_type),
-        parse_csv_arg(args.brainstorm_value),
+        parse_csv_arg(content_type),
+        parse_csv_arg(market),
+        parse_csv_arg(asset_type),
+        parse_csv_arg(strategy_type),
+        parse_csv_arg(brainstorm_value),
     )
 
 

@@ -1,8 +1,8 @@
 import os
 import tempfile
 import unittest
-from argparse import Namespace
 from pathlib import Path
+from unittest.mock import patch
 
 import quant_llm_wiki.query.brainstorm as mod
 
@@ -46,13 +46,6 @@ class BrainstormFromKbTests(unittest.TestCase):
         self.assertEqual(note.effective_status, "high_value")
 
     def test_apply_filters_uses_metadata(self) -> None:
-        args = Namespace(
-            content_type="allocation",
-            market="a_share",
-            asset_type=None,
-            strategy_type="allocation_rotation",
-            brainstorm_value="high",
-        )
         notes = [
             self.make_note(
                 article_dir="a",
@@ -71,7 +64,14 @@ class BrainstormFromKbTests(unittest.TestCase):
                 title="B",
             ),
         ]
-        filtered = mod.apply_filters(notes, args)
+        filtered = mod.apply_filters(
+            notes,
+            content_type="allocation",
+            market="a_share",
+            asset_type=None,
+            strategy_type="allocation_rotation",
+            brainstorm_value="high",
+        )
         self.assertEqual(len(filtered), 1)
         self.assertEqual(filtered[0].title, "A")
 
@@ -136,6 +136,82 @@ class BrainstormFromKbTests(unittest.TestCase):
             notes = mod.load_notes(root, ["reviewed", "high-value"])
             self.assertEqual(len(notes), 2)
             self.assertEqual({note.title for note in notes}, {"A", "B"})
+
+
+class QueryLogWiringTests(unittest.TestCase):
+    """Verify ask/brainstorm wire append_query_log() with --no-query-log opt-out."""
+
+    def _setup_kb_with_one_note(self, root: Path) -> None:
+        """Bootstrap wiki and write a single reviewed article whose body tokens
+        will match the query keyword used in the tests ("momentum")."""
+        from quant_llm_wiki.wiki.seed import bootstrap_wiki
+        bootstrap_wiki(root / "wiki")
+        article_dir = root / "raw" / "note_momentum"
+        article_dir.mkdir(parents=True)
+        (article_dir / "article.md").write_text(
+            "---\n"
+            "status: reviewed\n"
+            "title: Momentum Strategy\n"
+            "summary: momentum factor backtest\n"
+            "idea_blocks:\n"
+            "  - momentum can combine with mean reversion\n"
+            "combination_hooks: []\n"
+            "transfer_targets: []\n"
+            "failure_modes: []\n"
+            "---\n\n"
+            "## Main Content\n\n"
+            "Momentum factor is a well-known anomaly.\n",
+            encoding="utf-8",
+        )
+
+    def test_run_ask_writes_query_log(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp:
+            root = Path(tmp)
+            self._setup_kb_with_one_note(root)
+            with patch("quant_llm_wiki.query.brainstorm.call_zhipu_chat", return_value="fake answer"):
+                rc = mod.run_ask(
+                    root,
+                    query="momentum",
+                    retrieval="keyword",
+                    write_query_log=True,
+                )
+            self.assertEqual(rc, 0)
+            queries_dir = root / "wiki" / "queries"
+            log_files = list(queries_dir.glob("*_momentum_ask.md"))
+            self.assertEqual(len(log_files), 1, f"Expected 1 log file, found: {list(queries_dir.glob('*.md'))}")
+
+    def test_run_brainstorm_writes_query_log(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp:
+            root = Path(tmp)
+            self._setup_kb_with_one_note(root)
+            with patch("quant_llm_wiki.query.brainstorm.call_zhipu_chat", return_value="fake brainstorm"), \
+                 patch("quant_llm_wiki.query.brainstorm.rethink", side_effect=lambda result, *a, **kw: result):
+                rc = mod.run_brainstorm(
+                    root,
+                    query="momentum",
+                    retrieval="keyword",
+                    write_query_log=True,
+                )
+            self.assertEqual(rc, 0)
+            queries_dir = root / "wiki" / "queries"
+            log_files = list(queries_dir.glob("*_momentum_brainstorm.md"))
+            self.assertEqual(len(log_files), 1, f"Expected 1 log file, found: {list(queries_dir.glob('*.md'))}")
+
+    def test_no_query_log_flag_suppresses_log(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp:
+            root = Path(tmp)
+            self._setup_kb_with_one_note(root)
+            with patch("quant_llm_wiki.query.brainstorm.call_zhipu_chat", return_value="fake answer"):
+                rc = mod.run_ask(
+                    root,
+                    query="momentum",
+                    retrieval="keyword",
+                    write_query_log=False,
+                )
+            self.assertEqual(rc, 0)
+            queries_dir = root / "wiki" / "queries"
+            log_files = list(queries_dir.glob("*.md")) if queries_dir.exists() else []
+            self.assertEqual(len(log_files), 0, f"Expected no log files, found: {log_files}")
 
 
 if __name__ == "__main__":
