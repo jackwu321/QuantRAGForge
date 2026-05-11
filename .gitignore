@@ -31,11 +31,11 @@ rejected_sources.json
 .obsidian/
 
 # Data directories (user-generated, not tracked)
-raw/
-wiki/
-vector_store/
-sources/processed/
-outputs/
+/raw/
+/wiki/
+/vector_store/
+/sources/processed/
+/outputs/
 
 # Personal / local HTML article files
 html list/
