@@ -2,16 +2,10 @@ from __future__ import annotations
 
 import json
 import re
-import sys
 from pathlib import Path
 from typing import Optional
 
 from langchain_core.tools import tool
-
-# Ensure project root is importable
-ROOT = Path(__file__).resolve().parent.parent.parent
-if str(ROOT) not in sys.path:
-    sys.path.insert(0, str(ROOT))
 
 from quant_llm_wiki.shared import (
     DEFAULT_SOURCE_DIRS,

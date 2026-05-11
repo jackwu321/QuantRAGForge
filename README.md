@@ -101,9 +101,9 @@ WeChat URL / Web URL / PDF / HTML             ├──> wiki/INDEX.md
 
 ### Query → wiki feedback
 
-> Query feedback filing is planned after v0.3.0; `qlw ask` and `qlw brainstorm` currently save normal outputs only.
+Every `qlw ask` / `qlw brainstorm` run writes the answer to `outputs/brainstorms/` AND files a one-line query log at `wiki/queries/<YYYY-MM-DD>_<slug>_<mode>.md`. The log captures the query text, mode, output filename, and which concepts/sources were cited. `qlw lint --maintain` digests these logs to surface gaps — under-supported concepts, unmapped sources, and stale areas worth backfilling. Pass `--no-query-log` to opt out of filing.
 
-Every `qlw ask`/`qlw brainstorm` output is written to `outputs/brainstorms/`. `qlw lint --maintain` can distill query logs into proposed concept-page improvements once feedback filing is enabled. This realizes Karpathy's *"my own explorations and queries always 'add up' in the knowledge base."*
+This realizes Karpathy's *"my own explorations and queries always 'add up' in the knowledge base."*
 
 ### Schema is enforced, not advisory
 
@@ -339,9 +339,9 @@ qlw lint --maintain --apply   # apply query-derived state updates (idempotent)
 # Manual wiki compile
 qlw compile
 
-# Query (ask mode) — outputs saved to outputs/brainstorms/
+# Query (ask mode) — outputs land in outputs/brainstorms/ AND a query log goes to wiki/queries/.
+# Use --no-query-log to skip the log entry.
 qlw ask --query "..."
-# Note: automatic query log filing into `wiki/queries/` (the loop from the "Query → wiki feedback" section above) is planned after v0.3.0. `qlw ask` and `qlw brainstorm` currently save normal command outputs only.
 ```
 
 ## Agent Usage

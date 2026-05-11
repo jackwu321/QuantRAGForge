@@ -12,16 +12,11 @@ from __future__ import annotations
 
 import argparse
 import sys
-from pathlib import Path
 from typing import Any
 
 from langchain_core.messages import HumanMessage
 
 from quant_llm_wiki.shared import _sanitize_lone_surrogates
-
-ROOT = Path(__file__).resolve().parent.parent.parent
-if str(ROOT) not in sys.path:
-    sys.path.insert(0, str(ROOT))
 
 
 def _safe_text(value: Any) -> str:
@@ -33,12 +28,6 @@ def _safe_text(value: Any) -> str:
     """
     text = value if isinstance(value, str) else str(value)
     return _sanitize_lone_surrogates(text)
-
-
-def parse_args() -> argparse.Namespace:
-    parser = argparse.ArgumentParser(description="Knowledge base agent CLI")
-    parser.add_argument("--query", help="Single query to run (non-interactive mode)")
-    return parser.parse_args()
 
 
 def _extract_last_ai_content(messages) -> str:
@@ -100,25 +89,24 @@ def register(parser: argparse.ArgumentParser) -> None:
     parser.set_defaults(func=_run)
 
 
-def _run(args) -> int:
-    """The module's command body. Receives parsed args from the dispatcher."""
+def run_agent(query: str | None = None) -> int:
+    """Run the LangGraph agent interactively or with a single query."""
     from quant_llm_wiki.agent import create_agent
 
     agent = create_agent()
-
-    if args.query:
+    if query:
         try:
-            print(_safe_text(run_query(agent, args.query)))
+            print(_safe_text(run_query(agent, query)))
         except Exception as exc:
-            print(
-                _safe_text(f"Error ({type(exc).__name__}): {exc}"),
-                file=sys.stderr,
-            )
+            print(_safe_text(f"Error ({type(exc).__name__}): {exc}"), file=sys.stderr)
             return 1
         return 0
-
     interactive_loop(agent)
     return 0
+
+
+def _run(args) -> int:
+    return run_agent(args.query)
 
 
 def main() -> int:
