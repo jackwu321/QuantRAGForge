@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import argparse
 from dataclasses import dataclass, field
 from datetime import date
 from pathlib import Path
@@ -406,3 +407,42 @@ def compile_wiki(
             report.errors.append(f"lint failed: {exc}")
 
     return report
+
+
+# ---------------------------------------------------------------------------
+# CLI integration — called by quant_llm_wiki.cli
+# ---------------------------------------------------------------------------
+
+
+def _run(args) -> int:
+    """Handler for `qlw compile`."""
+    import sys
+    kb_root = Path(getattr(args, "kb_root", str(ROOT))).expanduser().resolve()
+    report = compile_wiki(
+        kb_root=kb_root,
+        mode=getattr(args, "mode", "incremental"),
+        dry_run=getattr(args, "dry_run", False),
+        source_dirs=DEFAULT_SOURCE_DIRS,
+        verbose=getattr(args, "verbose", False),
+    )
+    print(report.summary())
+    if report.lint_summary:
+        print(f"lint: {report.lint_summary}")
+    if report.errors:
+        for e in report.errors:
+            print(f"  error: {e}", file=sys.stderr)
+    return 0 if not report.errors else 1
+
+
+def register(parser: argparse.ArgumentParser) -> None:
+    """Attach this module's CLI flags to `parser`. Called by quant_llm_wiki.cli."""
+    parser.add_argument(
+        "--mode",
+        choices=["incremental", "rebuild"],
+        default="incremental",
+        help="incremental (default) skips unchanged sources; rebuild resets state and recompiles everything.",
+    )
+    parser.add_argument("--dry-run", action="store_true", help="Show what would be compiled without writing.")
+    parser.add_argument("--verbose", action="store_true", help="Print per-article/concept progress.")
+    parser.add_argument("--kb-root", default=str(ROOT), help="Knowledge base root.")
+    parser.set_defaults(func=_run)

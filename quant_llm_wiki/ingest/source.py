@@ -5,6 +5,7 @@ import json
 import os
 import re
 from concurrent.futures import ThreadPoolExecutor, TimeoutError as FuturesTimeoutError
+from dataclasses import dataclass
 from datetime import datetime
 from pathlib import Path
 from urllib.parse import urlparse
@@ -209,6 +210,138 @@ def dispatch_pdf_file(path: str, content_type: str | None = None) -> str:
     p = Path(path).expanduser().resolve()
     pdf = _pdf_extract.extract_from_file(p)
     return str(write_pdf_article(pdf, p, content_type=content_type or "methodology"))
+
+
+@dataclass
+class DispatchResult:
+    url: str
+    success: bool
+    output_dir: str = ""
+    error: str = ""
+
+
+def dispatch_url_list(
+    path: Path,
+    content_type: str | None = None,
+    force: bool = False,
+) -> list[DispatchResult]:
+    """Ingest every non-blank URL from a file, one per line. Returns results."""
+    results: list[DispatchResult] = []
+    urls = [line.strip() for line in path.read_text(encoding="utf-8").splitlines() if line.strip()]
+    for url in urls:
+        try:
+            out = _run_with_timeout(dispatch_url, url, content_type=content_type, force=force)
+            results.append(DispatchResult(url=url, success=True, output_dir=out))
+            print(f"Ingested: {out}")
+        except FuturesTimeoutError:
+            print(f"TIMEOUT {url}: exceeded {_ingest_url_timeout()}s")
+            results.append(DispatchResult(url=url, success=False, error="timeout"))
+        except Exception as exc:
+            print(f"FAILED {url}: {exc}")
+            results.append(DispatchResult(url=url, success=False, error=str(exc)))
+    return results
+
+
+def dispatch_html_file(path: Path, content_type: str | None = None) -> str:
+    """Ingest a locally saved HTML file via the WeChat extraction pipeline."""
+    from quant_llm_wiki.ingest.wechat import extract_article_data, write_article
+    html = path.read_text(encoding="utf-8")
+    article = extract_article_data(html, "", None)
+    if content_type:
+        article.content_type = content_type
+    out_dir = write_article(article, force=False)
+    return str(out_dir)
+
+
+def _run(args) -> int:
+    """Handler for `qlw ingest`."""
+    if args.url:
+        try:
+            out = _run_with_timeout(
+                dispatch_url, args.url, content_type=args.content_type, force=args.force
+            )
+        except FuturesTimeoutError:
+            print(f"TIMEOUT {args.url}: exceeded {_ingest_url_timeout()}s")
+            return 2
+        print(f"Ingested: {out}")
+    elif args.url_list:
+        results = dispatch_url_list(
+            Path(args.url_list).expanduser().resolve(),
+            content_type=args.content_type,
+            force=args.force,
+        )
+        ok = sum(1 for r in results if r.success)
+        print(f"Ingested: {ok}/{len(results)}")
+    elif args.html_file:
+        out = dispatch_html_file(
+            Path(args.html_file).expanduser().resolve(),
+            content_type=args.content_type,
+        )
+        print(f"Ingested HTML: {out}")
+    elif args.pdf_file:
+        out = dispatch_pdf_file(args.pdf_file, content_type=args.content_type)
+        print(f"Ingested PDF: {out}")
+    elif args.pdf_url:
+        try:
+            out = _run_with_timeout(
+                _dispatch_pdf_url, args.pdf_url, content_type=args.content_type, force=args.force
+            )
+        except FuturesTimeoutError:
+            print(f"TIMEOUT {args.pdf_url}: exceeded {_ingest_url_timeout()}s")
+            return 2
+        print(f"Ingested PDF URL: {out}")
+    else:
+        import sys
+        print(
+            "error: provide one of --url / --url-list / --html-file / --pdf-file / --pdf-url",
+            file=sys.stderr,
+        )
+        return 2
+
+    if not args.no_compile:
+        from quant_llm_wiki.wiki.compile import compile_wiki, _run as compile_run
+        from quant_llm_wiki.embed import _run as embed_run
+        import types
+        kb_root = Path(ROOT)
+        compile_args = types.SimpleNamespace(
+            kb_root=str(kb_root), mode="incremental", dry_run=False, verbose=False
+        )
+        rc = compile_run(compile_args)
+        if rc != 0:
+            return rc
+        embed_args = types.SimpleNamespace(
+            kb_root=str(kb_root),
+            force=False,
+            dry_run=False,
+            source_dir="reviewed,high-value",
+            embedding_model=None,
+            vector_store_dir=str(kb_root / "vector_store"),
+        )
+        # embedding_model default
+        from quant_llm_wiki.shared import DEFAULT_EMBEDDING_MODEL
+        embed_args.embedding_model = DEFAULT_EMBEDDING_MODEL
+        rc = embed_run(embed_args)
+        if rc != 0:
+            return rc
+
+    return 0
+
+
+def register(parser: argparse.ArgumentParser) -> None:
+    """Attach this module's CLI flags to `parser`. Called by quant_llm_wiki.cli."""
+    parser.add_argument("--url", help="Single URL (auto-detected: wechat / pdf / web).")
+    parser.add_argument("--url-list", help="File with one URL per line.")
+    parser.add_argument("--html-file", help="Local HTML file path.")
+    parser.add_argument("--pdf-file", help="Local PDF file path.")
+    parser.add_argument("--pdf-url", help="Remote PDF URL.")
+    parser.add_argument("--content-type", help="Content type override.")
+    parser.add_argument("--force", action="store_true", help="Override duplicate detection.")
+    parser.add_argument(
+        "--no-compile",
+        action="store_true",
+        help="Skip the auto compile + embed after writing raw/.",
+    )
+    parser.set_defaults(func=_run)
 
 
 def main() -> int:
