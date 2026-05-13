@@ -62,3 +62,6 @@ qlw = "quant_llm_wiki.cli:main"
 
 [tool.setuptools.packages.find]
 include = ["quant_llm_wiki*"]
+
+[tool.setuptools.package-data]
+quant_llm_wiki = ["templates/*.md"]

@@ -64,11 +64,10 @@ from quant_llm_wiki.ingest._wechat import (
 )
 
 
-# NOTE: These path constants are NOT derived from a module-level ROOT to avoid
-# resolving to the package directory after pipx install.  Write paths are
-# resolved at handler time via resolve_kb_root().  Template paths are read-only
-# and resolved from this file's package location.
-_PKG_ROOT = Path(__file__).resolve().parent.parent.parent
+# Write paths are resolved at handler time via resolve_kb_root().  Templates
+# are read-only and ship inside the package (quant_llm_wiki/templates/) so
+# pipx-installed users don't need to fetch them separately.
+_PKG_ROOT = Path(__file__).resolve().parent.parent
 TEMPLATES_DIR = _PKG_ROOT / "templates"
 
 SUPPORTED_CONTENT_TYPES = ("methodology", "strategy", "allocation", "risk_control", "market_review")
