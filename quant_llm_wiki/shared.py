@@ -20,7 +20,15 @@ except ImportError:  # pragma: no cover - runtime dependency
 
 from dotenv import load_dotenv
 
-# Auto-load .env from package directory (does not override existing env vars)
+# Auto-load .env. First match wins (load_dotenv defaults to override=False), so
+# user-controlled locations take precedence over the package-bundled fallback.
+#   1. $QLW_KB_ROOT/.env   — explicit workspace, useful for pipx users
+#   2. CWD/.env             — typical convention; works for both pipx and clone
+#   3. <package_dir>/.env   — legacy fallback (editable installs)
+_kb_root_env = os.environ.get("QLW_KB_ROOT")
+if _kb_root_env:
+    load_dotenv(Path(_kb_root_env).expanduser() / ".env")
+load_dotenv(Path.cwd() / ".env")
 load_dotenv(Path(__file__).resolve().parent / ".env")
 DEFAULT_SOURCE_DIRS = ("reviewed", "high-value")
 

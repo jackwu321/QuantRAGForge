@@ -203,7 +203,7 @@ Quant_LLM_Wiki/
 └── docs/                           # Design specs and usage guides
 ```
 
-> **Repo / package / command names.** Repo: `Quant_LLM_Wiki`. Package: `quant_llm_wiki`. Console command: `qlw` (installed via `pipx install quant-llm-wiki` or `pip install -e .`). All 9 subcommands — `ingest`, `enrich`, `embed`, `sync`, `ask`, `brainstorm`, `agent`, `lint`, `compile` — are unified under `qlw`. pipx-installed users have full functionality without cloning the repo.
+> **Repo / package / command names.** Repo: `Quant_LLM_Wiki`. Package: `quant_llm_wiki`. Console command: `qlw` (installed via `pipx install quant-llm-wiki` or `pip install -e .`). All 9 subcommands — `ingest`, `enrich`, `embed`, `sync`, `ask`, `brainstorm`, `agent`, `lint`, `compile` — are unified under `qlw`. pipx users get the full CLI surface; for best wiki-compile/lint quality they should also fetch `schema/` and `templates/` into their workspace (see [Quick Start §2](#2-pick-a-workspace)).
 
 ### Command Renaming (vs. previous versions)
 
@@ -223,12 +223,24 @@ Install with `pip install -e .` to put `qlw` on PATH; otherwise use `python -m q
 
 ## Quick Start
 
+Quant_LLM_Wiki supports two install flows. **Pick one and follow that column** — the rest of the docs use the same `qlw <subcmd>` commands regardless.
+
+| | **A. pipx (end-users)** | **B. git clone (developers)** |
+|---|---|---|
+| When to use | You just want to run `qlw` and build a personal KB. | You want to read/edit the source, run tests, contribute. |
+| Repo files locally? | No | Yes (full tree under your clone) |
+| Workspace = | Any dir you `cd` into (or `$QLW_KB_ROOT`) | The clone itself by default |
+| `.env` location | `<workspace>/.env` (auto-loaded from CWD) | `<workspace>/.env` (auto-loaded from CWD) |
+| `schema/` + `templates/` | Need a one-time fetch (below) | Already present in the clone |
+
 ### 1. Install
 
-The recommended way to install is via [`pipx`](https://pipx.pypa.io/), which gives you the `qlw` command globally without polluting your system Python and without requiring you to activate a venv:
+#### A. pipx (recommended for end-users)
+
+[`pipx`](https://pipx.pypa.io/) gives you the `qlw` command globally without polluting your system Python and without requiring you to activate a venv:
 
 ```bash
-# From PyPI (once published)
+# From PyPI
 pipx install quant-llm-wiki
 
 # Or directly from GitHub (always tracks main)
@@ -240,16 +252,13 @@ After install, `qlw` is on your PATH from any shell. Upgrade later with `pipx up
 > **Requires `pipx` ≥ 1.5 (pip ≥ 25).** Older pipx (e.g. 1.4.3 shipped by Ubuntu 24.04 apt) bundles pip 24.0, which mis-parses `langgraph`'s newer wheel metadata and fails with `ResolutionImpossible: no matching distributions available for your environment: langgraph`. If you hit that, upgrade pipx first:
 >
 > ```bash
-> sudo apt install python3-pip          # if pip is missing
-> python3 -m pip install --user --upgrade pipx
+> sudo apt install python3-pip                                          # if pip is missing
+> python3 -m pip install --user --upgrade --break-system-packages pipx  # PEP 668 systems
 > hash -r
 > pipx install quant-llm-wiki
 > ```
 
-<details>
-<summary>Alternative: clone for development</summary>
-
-If you want to hack on the code, clone and install in editable mode:
+#### B. git clone + editable install (for development)
 
 ```bash
 git clone https://github.com/jackwu321/Quant_LLM_Wiki.git
@@ -260,28 +269,62 @@ source .venv/bin/activate
 pip install -e .
 ```
 
-</details>
+Clone-installed users have `schema/`, `templates/`, `llm_config.example.env`, and the test suite available locally.
 
-### 2. Configure LLM Provider
+### 2. Pick a workspace
 
-Copy the example config and fill in your API key:
+`qlw` writes data under whichever directory it considers your **KB root**, resolved in this order: explicit `--kb-root` arg → `$QLW_KB_ROOT` env var → current working directory. The same dir holds your `.env`, `raw/`, `wiki/`, `vector_store/`, etc.
+
+#### A. pipx — bootstrap a workspace
+
+```bash
+mkdir -p ~/my-kb && cd ~/my-kb         # or any dir you want
+export QLW_KB_ROOT="$PWD"              # optional but recommended; add to ~/.bashrc
+
+# One-time fetch: download schema/ + templates/ + llm_config.example.env from the repo.
+# Without these, compile/lint still run but skip schema injection — quality is degraded.
+curl -fsSL https://github.com/jackwu321/Quant_LLM_Wiki/archive/refs/heads/main.tar.gz \
+  | tar xz --strip=1 --wildcards "*/schema/*" "*/templates/*" "*/llm_config.example.env"
+```
+
+#### B. git clone — clone IS the workspace
+
+Run `qlw` from inside the clone, or `export QLW_KB_ROOT="$(pwd)"` once. `schema/`, `templates/`, and `llm_config.example.env` are already there — no fetch needed.
+
+### 3. Configure LLM Provider
+
+Quant_LLM_Wiki auto-loads `.env` from these locations (first hit wins): `$QLW_KB_ROOT/.env` → `$(pwd)/.env` → the package directory. The cleanest path for both install flows is to put a `.env` in your workspace.
+
+#### A. pipx workspace
+
+You should have `llm_config.example.env` in your workspace after step 2 (the `curl` line above). Otherwise grab it on demand:
+
+```bash
+curl -fsSL https://raw.githubusercontent.com/jackwu321/Quant_LLM_Wiki/main/llm_config.example.env -o llm_config.example.env
+cp llm_config.example.env .env
+# Edit .env with your API key and provider settings
+```
+
+#### B. clone workspace
 
 ```bash
 cp llm_config.example.env .env
 # Edit .env with your API key and provider settings
 ```
 
-Or set environment variables directly:
+#### Either flow: shell `export` (no .env needed)
 
 ```bash
 export LLM_API_KEY="your-api-key"
 export LLM_BASE_URL="https://open.bigmodel.cn/api/paas/v4"  # or any OpenAI-compatible endpoint
-export LLM_MODEL="glm-4.7"  # or gpt-4, deepseek-chat, etc.
+export LLM_MODEL="glm-4.7"                                  # or gpt-4o, deepseek-chat, etc.
 ```
 
-See [llm_config.example.env](llm_config.example.env) for provider-specific examples (DeepSeek, Moonshot, Qwen, OpenAI, Ollama).
+Persist these in `~/.bashrc` / `~/.zshrc` so every shell sees them. See [llm_config.example.env](llm_config.example.env) for provider-specific examples (DeepSeek, Moonshot, Qwen, OpenAI, Ollama).
 
-### 3. Ingest
+### 4. Ingest
+
+Run from your workspace directory (or set `--kb-root` / `$QLW_KB_ROOT`). All output lands under the resolved KB root.
 
 ```bash
 # Single URL (WeChat / web)
@@ -296,7 +339,7 @@ qlw ingest --url-list urls.txt
 
 Each URL has a hard 120 s ceiling; on hit, ingest prints `TIMEOUT <url>: exceeded 120s` and (in batch mode) continues with the next URL. Override via `INGEST_URL_TIMEOUT=<seconds>`. Note: a timed-out URL may leave a partial `raw/<date>_*/` directory behind (same as ordinary `FAILED` cases).
 
-### 4. Enrich + Embed
+### 5. Enrich + Embed
 
 ```bash
 qlw enrich                    # all raw articles (concurrent)
@@ -308,7 +351,7 @@ qlw embed                     # build/update ChromaDB vector index
 
 Each article enrichment has a hard 360 s ceiling; on hit, the article is recorded as `failed: timeout: exceeded Ns` and the batch continues. Override via `LLM_ARTICLE_TIMEOUT=<seconds>`. Start / done / TIMEOUT / `[llm-retry]` events are printed to **stderr** (separate from the per-completion `[i/N] ... ok|failed` lines on stdout) so you can see what's happening even when the LLM API is slow or backing off.
 
-### 5. Query (wiki-first)
+### 6. Query (wiki-first)
 
 ```bash
 # Factual Q&A — wiki concepts first, RAG fallback only
@@ -327,7 +370,7 @@ qlw brainstorm --query "..." --dry-run
 >
 > If your repo still uses the legacy `articles/raw/` layout, pass `qlw enrich --articles-root articles/raw` (or move articles into `raw/`) — v0.3.0 unified all subcommands on `<kb-root>/raw/`.
 
-All wiki maintenance commands are available via `qlw` — no clone required. `pipx install quant-llm-wiki` gives you the full surface:
+All wiki maintenance commands are available via `qlw` from either install flow (pipx or clone). Pipx users should have fetched `schema/` into their workspace first (see [Quick Start §2](#2-pick-a-workspace)) so `lint`/`compile` get full schema context:
 
 ```bash
 # Ingest from URL (auto-compile + auto-embed in one shot)
@@ -435,6 +478,8 @@ All articles live flat under `raw/`. The frontmatter `status` field is the sourc
 | `rejected` | Low value — removed from KB, source URL recorded to prevent re-ingestion |
 
 ## Running Tests
+
+> Tests live in the repo, not the wheel. Run them from a `git clone` checkout (install path **B**), not from a pipx install.
 
 ### Unit Tests
 
