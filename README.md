@@ -173,11 +173,12 @@ Quant_LLM_Wiki/
 │   ├── query/
 │   │   ├── brainstorm.py           # query (ask | brainstorm) — wiki-first retrieval
 │   │   └── rethink.py              # Post-generation novelty + quality validation
-│   └── agent/                      # LangGraph agent layer
-│       ├── cli.py                  # Interactive ReAct agent CLI
-│       ├── graph.py
-│       ├── prompts.py
-│       └── tools.py
+│   ├── agent/                      # LangGraph agent layer
+│   │   ├── cli.py                  # Interactive ReAct agent CLI
+│   │   ├── graph.py
+│   │   ├── prompts.py
+│   │   └── tools.py
+│   └── templates/                  # Article markdown templates (research-note / strategy-note)
 ├── raw/                            # Incoming source articles, flat (one dir per article)
 ├── wiki/                           # LLM-built Markdown memory
 │   ├── INDEX.md                    # auto-maintained TOC
@@ -192,7 +193,6 @@ Quant_LLM_Wiki/
 │   ├── source-schema.md
 │   ├── wiki-structure.md
 │   └── operations.md
-├── templates/                      # Article markdown templates (research-note / strategy-note)
 ├── tests/                          # unittest suite
 │   ├── robustness/                 # Edge-case tests (Layer 1–4)
 │   ├── test_qlw_cli.py             # qlw CLI dispatch
@@ -203,7 +203,7 @@ Quant_LLM_Wiki/
 └── docs/                           # Design specs and usage guides
 ```
 
-> **Repo / package / command names.** Repo: `Quant_LLM_Wiki`. Package: `quant_llm_wiki`. Console command: `qlw` (installed via `pipx install quant-llm-wiki` or `pip install -e .`). All 9 subcommands — `ingest`, `enrich`, `embed`, `sync`, `ask`, `brainstorm`, `agent`, `lint`, `compile` — are unified under `qlw`. pipx users get the full CLI surface; for best wiki-compile/lint quality they should also fetch `schema/` and `templates/` into their workspace (see [Quick Start §2](#2-pick-a-workspace)).
+> **Repo / package / command names.** Repo: `Quant_LLM_Wiki`. Package: `quant_llm_wiki`. Console command: `qlw` (installed via `pipx install quant-llm-wiki` or `pip install -e .`). All 9 subcommands — `ingest`, `enrich`, `embed`, `sync`, `ask`, `brainstorm`, `agent`, `lint`, `compile` — are unified under `qlw`. pipx users get the full CLI surface; for best wiki-compile/lint quality they should also fetch `schema/` into their workspace (see [Quick Start §2](#2-pick-a-workspace)). Article templates ship inside the package — no fetch needed.
 
 ### Command Renaming (vs. previous versions)
 
@@ -231,7 +231,7 @@ Quant_LLM_Wiki supports two install flows. **Pick one and follow that column** �
 | Repo files locally? | No | Yes (full tree under your clone) |
 | Workspace = | Any dir you `cd` into (or `$QLW_KB_ROOT`) | The clone itself by default |
 | `.env` location | `<workspace>/.env` (auto-loaded from CWD) | `<workspace>/.env` (auto-loaded from CWD) |
-| `schema/` + `templates/` | Need a one-time fetch (below) | Already present in the clone |
+| `schema/` | Needs a one-time fetch (below) | Already present in the clone |
 
 ### 1. Install
 
@@ -269,7 +269,7 @@ source .venv/bin/activate
 pip install -e .
 ```
 
-Clone-installed users have `schema/`, `templates/`, `llm_config.example.env`, and the test suite available locally.
+Clone-installed users have `schema/`, `llm_config.example.env`, and the test suite available locally. (Article templates ship inside the package itself for both flows.)
 
 ### 2. Pick a workspace
 
@@ -281,15 +281,16 @@ Clone-installed users have `schema/`, `templates/`, `llm_config.example.env`, an
 mkdir -p ~/my-kb && cd ~/my-kb         # or any dir you want
 export QLW_KB_ROOT="$PWD"              # optional but recommended; add to ~/.bashrc
 
-# One-time fetch: download schema/ + templates/ + llm_config.example.env from the repo.
-# Without these, compile/lint still run but skip schema injection — quality is degraded.
+# One-time fetch: download schema/ + llm_config.example.env from the repo.
+# Without schema/, compile/lint still run but skip schema injection — quality is degraded.
+# (Article templates ship inside the pipx-installed package, no fetch needed.)
 curl -fsSL https://github.com/jackwu321/Quant_LLM_Wiki/archive/refs/heads/main.tar.gz \
-  | tar xz --strip=1 --wildcards "*/schema/*" "*/templates/*" "*/llm_config.example.env"
+  | tar xz --strip=1 --wildcards "*/schema/*" "*/llm_config.example.env"
 ```
 
 #### B. git clone — clone IS the workspace
 
-Run `qlw` from inside the clone, or `export QLW_KB_ROOT="$(pwd)"` once. `schema/`, `templates/`, and `llm_config.example.env` are already there — no fetch needed.
+Run `qlw` from inside the clone, or `export QLW_KB_ROOT="$(pwd)"` once. `schema/` and `llm_config.example.env` are already there — no fetch needed.
 
 ### 3. Configure LLM Provider
 
