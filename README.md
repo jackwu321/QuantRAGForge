@@ -237,6 +237,15 @@ pipx install git+https://github.com/jackwu321/Quant_LLM_Wiki.git
 
 After install, `qlw` is on your PATH from any shell. Upgrade later with `pipx upgrade quant-llm-wiki`.
 
+> **Requires `pipx` ≥ 1.5 (pip ≥ 25).** Older pipx (e.g. 1.4.3 shipped by Ubuntu 24.04 apt) bundles pip 24.0, which mis-parses `langgraph`'s newer wheel metadata and fails with `ResolutionImpossible: no matching distributions available for your environment: langgraph`. If you hit that, upgrade pipx first:
+>
+> ```bash
+> sudo apt install python3-pip          # if pip is missing
+> python3 -m pip install --user --upgrade pipx
+> hash -r
+> pipx install quant-llm-wiki
+> ```
+
 <details>
 <summary>Alternative: clone for development</summary>
 
