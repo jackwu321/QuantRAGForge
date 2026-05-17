@@ -90,5 +90,50 @@ class RetrieveConceptArticlesTimingTests(unittest.TestCase):
                             "ms should be milliseconds — a value this large suggests wrong unit or extreme slowness")
 
 
+class RetrieveBlocksTimingTests(unittest.TestCase):
+    def test_retrieve_blocks_emits_total_ms(self):
+        from quant_llm_wiki.query.brainstorm import retrieve_blocks
+        from quant_llm_wiki.shared import KnowledgeNote
+
+        with tempfile.TemporaryDirectory() as tmp:
+            kb_root = Path(tmp)
+            (kb_root / "wiki" / "concepts").mkdir(parents=True)
+            (kb_root / "wiki" / "INDEX.md").write_text("# index\n", encoding="utf-8")
+            # Note with absolute article_dir → triggers wiki branch
+            note = KnowledgeNote(
+                article_dir=kb_root / "articles" / "x" / "article.md",
+                source_dir="articles",
+                frontmatter={"title": "x", "content_type": ""},
+                body="hello world",
+            )
+            buf = io.StringIO()
+            with unittest.mock.patch.dict(os.environ, {"QLW_PERF_DEBUG": "1"}), \
+                 unittest.mock.patch(
+                     "quant_llm_wiki.query.brainstorm._wiki_is_healthy_for_query",
+                     return_value=True,
+                 ):
+                with redirect_stderr(buf):
+                    retrieve_blocks(
+                        [note], "any query", top_k=3,
+                        command="brainstorm", retrieval_mode="keyword",
+                        kb_root=kb_root,
+                    )
+            events = parse_perf_lines(buf.getvalue())
+            rb = [e for e in events if e["event"] == "retrieve_blocks"]
+            self.assertEqual(len(rb), 1)
+            f = rb[0]["fields"]
+            # Log emits real measurements only. The "concept_retrievals == 1"
+            # invariant is locked by tests/test_brainstorm_with_wiki.py's
+            # spy test, not by a hardcoded log field — printing a constant
+            # would silently lie if a future refactor adds fallback retrieval.
+            self.assertNotIn("concept_retrievals", f)
+            self.assertIn("wiki_blocks", f)
+            self.assertIn("excluded_articles", f)
+            self.assertIn("total_ms", f)
+            ms_value = float(f["total_ms"])
+            self.assertGreaterEqual(ms_value, 0.0)
+            self.assertLess(ms_value, 5000.0)
+
+
 if __name__ == "__main__":
     unittest.main()

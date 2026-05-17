@@ -797,6 +797,8 @@ def retrieve_blocks(
     wiki_blocks: list[KnowledgeBlock] = []
     excluded_articles: set[str] = set()
     if _should_use_wiki_memory(notes) and _wiki_is_healthy_for_query(resolved_kb_root):
+        import time
+        t_wiki = time.perf_counter()
         wiki_blocks, wiki_concepts = _retrieve_concepts_and_blocks(
             query,
             top_k=DEFAULT_CONCEPT_TOP_K,
@@ -810,12 +812,12 @@ def retrieve_blocks(
                     if not src.is_absolute():
                         src = resolved_kb_root / src
                     excluded_articles.add(str(src.parent))
-        if os.environ.get("QLW_PERF_DEBUG"):
-            print(
-                f"[qlw-perf] retrieve_blocks: concept_retrievals=1 "
-                f"wiki_blocks={len(wiki_blocks)}",
-                file=sys.stderr,
-            )
+        _emit_perf(
+            "retrieve_blocks",
+            wiki_blocks=len(wiki_blocks),
+            excluded_articles=len(excluded_articles),
+            total_ms=(time.perf_counter() - t_wiki) * 1000.0,
+        )
 
     remaining_k = max(0, top_k - len(wiki_blocks))
 
