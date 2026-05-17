@@ -46,8 +46,8 @@ DEFAULT_SOURCE_DIRS = ("reviewed", "high-value")
 #   LLM_CONNECT_TIMEOUT / ZHIPU_CONNECT_TIMEOUT  — Connection timeout in seconds
 #   LLM_READ_TIMEOUT    / ZHIPU_READ_TIMEOUT     — Read timeout in seconds
 #   LLM_MAX_RETRIES     / ZHIPU_MAX_RETRIES      — Max retry attempts
-#   LLM_MIN_INTERVAL_SECONDS                     — Min seconds between LLM calls (default: 0.5)
-#   LLM_CONCURRENCY                              — Max parallel LLM requests (default: 3)
+#   LLM_MIN_INTERVAL_SECONDS                     — Min seconds between LLM calls (default: 2.0)
+#   LLM_CONCURRENCY                              — Enrichment worker parallelism (default: 3)
 # ---------------------------------------------------------------------------
 
 DEFAULT_LLM_BASE_URL = "https://open.bigmodel.cn/api/paas/v4"
@@ -56,7 +56,7 @@ DEFAULT_EMBEDDING_MODEL = "embedding-3"
 DEFAULT_CONNECT_TIMEOUT = 15
 DEFAULT_READ_TIMEOUT = 180
 DEFAULT_MAX_RETRIES = 4
-DEFAULT_MIN_INTERVAL_SECONDS = 0.5
+DEFAULT_MIN_INTERVAL_SECONDS = 2.0
 DEFAULT_LLM_CONCURRENCY = 3
 PLACEHOLDER_TEXTS = {"待补充。", "待生成。"}
 
@@ -366,6 +366,7 @@ def _is_retryable_status(status_code: int) -> bool:
 
 # Module-level rate limiter shared across all LLM API calls.
 _last_llm_call_ts: float = 0.0
+_llm_cooldown_until: float = 0.0
 _llm_call_lock = threading.Lock()
 
 
@@ -381,18 +382,29 @@ def _min_interval_seconds() -> float:
         return DEFAULT_MIN_INTERVAL_SECONDS
 
 
-def _enforce_min_interval() -> None:
-    """Sleep so successive LLM calls are spaced at least min_interval apart."""
-    global _last_llm_call_ts
+def _enforce_llm_rate_gate() -> None:
+    """Sleep until the process-wide LLM request gate allows another call."""
+    global _last_llm_call_ts, _llm_cooldown_until
     interval = _min_interval_seconds()
-    if interval <= 0:
-        return
     with _llm_call_lock:
         now = time.monotonic()
-        wait = interval - (now - _last_llm_call_ts)
+        min_interval_wait = interval - (now - _last_llm_call_ts) if interval > 0 else 0.0
+        cooldown_wait = _llm_cooldown_until - now
+        wait = max(min_interval_wait, cooldown_wait)
         if wait > 0:
             time.sleep(wait)
+            if cooldown_wait > 0:
+                _llm_cooldown_until = 0.0
         _last_llm_call_ts = time.monotonic()
+
+
+def _set_llm_cooldown(wait: float) -> None:
+    """Apply a process-wide cooldown for future LLM requests."""
+    global _llm_cooldown_until
+    if wait <= 0:
+        return
+    with _llm_call_lock:
+        _llm_cooldown_until = max(_llm_cooldown_until, time.monotonic() + wait)
 
 
 def _retry_after_seconds(response: Any) -> float | None:
@@ -468,15 +480,16 @@ def post_llm_json(path: str, payload: dict[str, Any]) -> dict[str, Any]:
     Non-retryable errors (4xx except 429) fail immediately.
     Auth errors (401/403) raise LLMAuthError for fail-fast handling.
 
-    Calls are paced by LLM_MIN_INTERVAL_SECONDS (default 0.5s) to avoid
-    slamming providers with strict per-minute limits.
+    Calls are paced by LLM_MIN_INTERVAL_SECONDS (default 2.0s) and any
+    process-wide 429 cooldown to avoid slamming providers with strict
+    per-minute limits.
     """
     require_requests()
     api_key, base_url, _ = get_llm_config()
     connect_timeout, read_timeout, max_retries = _timeouts_for_env()
     last_error: Exception | None = None
     for attempt in range(max_retries + 1):
-        _enforce_min_interval()
+        _enforce_llm_rate_gate()
         try:
             response = requests.post(
                 f"{base_url}{path}",
@@ -499,16 +512,25 @@ def post_llm_json(path: str, payload: dict[str, Any]) -> dict[str, Any]:
             if not _is_retryable_status(status):
                 raise
             last_error = exc
+            wait = _backoff_seconds(attempt, status, response)
+            retry_after = _retry_after_seconds(response) if status == 429 else None
+            if status == 429:
+                _set_llm_cooldown(wait)
             if attempt >= max_retries:
                 break
-            wait = _backoff_seconds(attempt, status, response)
+            cooldown_msg = ""
+            if status == 429:
+                cooldown_msg = ", global cooldown"
+                if retry_after is not None:
+                    cooldown_msg += ", Retry-After honored"
             print(
                 f"[llm-retry] attempt {attempt + 1}/{max_retries + 1} "
-                f"status={status}, sleeping {wait:.1f}s",
+                f"status={status}, sleeping {wait:.1f}s{cooldown_msg}",
                 file=sys.stderr,
                 flush=True,
             )
-            time.sleep(wait)
+            if status != 429:
+                time.sleep(wait)
         except requests.exceptions.RequestException as exc:
             last_error = exc
             if attempt >= max_retries:
