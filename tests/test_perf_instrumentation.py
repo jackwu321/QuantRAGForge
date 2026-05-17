@@ -50,8 +50,44 @@ class RetrieveConceptArticlesTimingTests(unittest.TestCase):
             self.assertIn("mode", f)
             self.assertIn("results", f)
             self.assertIn(f["mode"], {"chroma", "lexical", "empty"})
-            self.assertGreaterEqual(float(f["ms"]), 0.0)
+            ms_value = float(f["ms"])
+            self.assertGreaterEqual(ms_value, 0.0)
+            self.assertLess(ms_value, 5000.0,
+                            "ms should be milliseconds — a value this large suggests wrong unit or extreme slowness")
             self.assertEqual(f["results"], "0")  # empty wiki → no concepts
+
+    def test_lexical_fallback_emits_lexical_mode(self):
+        """When the concepts dir is populated but Chroma yields nothing,
+        the function should fall through to lexical and tag the line accordingly."""
+        with tempfile.TemporaryDirectory() as tmp:
+            wiki_dir = Path(tmp) / "wiki"
+            concepts_dir = wiki_dir / "concepts"
+            concepts_dir.mkdir(parents=True)
+            # One concept file — enough to make the lexical fallback actually
+            # have something to score, even if "anything" doesn't match.
+            (concepts_dir / "alpha.md").write_text(
+                "---\ntitle: Alpha\nslug: alpha\naliases: []\n"
+                "retrieval_hints: [unrelated_topic]\n---\nbody\n",
+                encoding="utf-8",
+            )
+            # Empty vector_store_dir → Chroma path returns nothing, lexical takes over
+            store_dir = Path(tmp) / "vector_store"
+            store_dir.mkdir()
+            buf = io.StringIO()
+            with unittest.mock.patch.dict(os.environ, {"QLW_PERF_DEBUG": "1"}):
+                with redirect_stderr(buf):
+                    brainstorm_mod._retrieve_concept_articles(
+                        "anything", top_k=3,
+                        vector_store_dir=store_dir, wiki_dir=wiki_dir,
+                    )
+            events = parse_perf_lines(buf.getvalue())
+            timing = [e for e in events if e["event"] == "_retrieve_concept_articles"]
+            self.assertEqual(len(timing), 1, f"got {buf.getvalue()!r}")
+            self.assertEqual(timing[0]["fields"]["mode"], "lexical")
+            ms_value = float(timing[0]["fields"]["ms"])
+            self.assertGreaterEqual(ms_value, 0.0)
+            self.assertLess(ms_value, 5000.0,
+                            "ms should be milliseconds — a value this large suggests wrong unit or extreme slowness")
 
 
 if __name__ == "__main__":
