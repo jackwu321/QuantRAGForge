@@ -36,6 +36,19 @@ from quant_llm_wiki.wiki.state import (
     concept_memory_score,
     load_wiki_state,
 )
+def _emit_perf(event: str, **fields) -> None:
+    """Emit a single [qlw-perf] line when QLW_PERF_DEBUG is set. Zero-cost when off."""
+    if not os.environ.get("QLW_PERF_DEBUG"):
+        return
+    parts = []
+    for k, v in fields.items():
+        if isinstance(v, float):
+            parts.append(f"{k}={v:.3f}")
+        else:
+            parts.append(f"{k}={v}")
+    print(f"[qlw-perf] {event}: {' '.join(parts)}", file=sys.stderr)
+
+
 DEFAULT_TOP_K = 8
 DEFAULT_RETRIEVAL_MODE = "hybrid"
 DEFAULT_RETRIEVAL_FETCH_MULTIPLIER = 3
@@ -680,14 +693,20 @@ def _retrieve_concept_articles(
     Fallback: lexical token overlap on title/aliases/retrieval_hints when
     Chroma is unavailable, the index is empty, or the query has no hits.
     """
+    import time
+    t0 = time.perf_counter()
     resolved_wiki_dir = wiki_dir or (resolve_kb_root(None) / "wiki")
     if not (resolved_wiki_dir / "concepts").exists():
+        _emit_perf("_retrieve_concept_articles", ms=(time.perf_counter() - t0) * 1000.0, mode="empty", results=0)
         return []
     store = vector_store_dir or (resolve_kb_root(None) / "vector_store")
     via_chroma = _retrieve_concepts_via_chroma(query, top_k, store, resolved_wiki_dir)
     if via_chroma:
+        _emit_perf("_retrieve_concept_articles", ms=(time.perf_counter() - t0) * 1000.0, mode="chroma", results=len(via_chroma))
         return via_chroma
-    return _retrieve_concepts_via_lexical(query, top_k, resolved_wiki_dir)
+    via_lex = _retrieve_concepts_via_lexical(query, top_k, resolved_wiki_dir)
+    _emit_perf("_retrieve_concept_articles", ms=(time.perf_counter() - t0) * 1000.0, mode="lexical", results=len(via_lex))
+    return via_lex
 
 
 def _retrieve_concepts_and_blocks(
