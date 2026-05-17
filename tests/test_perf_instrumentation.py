@@ -135,5 +135,58 @@ class RetrieveBlocksTimingTests(unittest.TestCase):
             self.assertLess(ms_value, 5000.0)
 
 
+class CompileWikiTimingTests(unittest.TestCase):
+    def test_compile_emits_phase_timings(self):
+        from quant_llm_wiki.wiki import compile as compile_mod
+        # ConceptAssignment (not AssignmentResult) is in quant_llm_wiki.wiki.compile_llm
+        from quant_llm_wiki.wiki.compile_llm import ConceptAssignment, RecompileResult
+
+        with tempfile.TemporaryDirectory() as tmp:
+            kb_root = Path(tmp)
+            (kb_root / "wiki").mkdir()
+            article_dir = kb_root / "articles" / "a1"
+            article_dir.mkdir(parents=True)
+            (article_dir / "article.md").write_text(
+                "---\ntitle: A1\ncontent_type: paper\n---\nhello\n",
+                encoding="utf-8",
+            )
+
+            fake_assign = ConceptAssignment(
+                existing_concepts=[],
+                proposed_new_concepts=[],
+                error="",
+            )
+            fake_recompile = RecompileResult(
+                synthesis="s", definition="d", related_concepts=[],
+                key_idea_blocks=[], variants=[], common_combinations=[],
+                transfer_targets=[], failure_modes=[], open_questions=[],
+                error="",
+            )
+
+            buf = io.StringIO()
+            with unittest.mock.patch.dict(os.environ, {"QLW_PERF_DEBUG": "1"}), \
+                 unittest.mock.patch.object(compile_mod, "assign_concepts", return_value=fake_assign), \
+                 unittest.mock.patch.object(compile_mod, "recompile_concept", return_value=fake_recompile):
+                with redirect_stderr(buf):
+                    compile_mod.compile_wiki(
+                        kb_root=kb_root,
+                        source_dirs=["articles"],
+                        mode="incremental",
+                        dry_run=True,
+                    )
+            events = parse_perf_lines(buf.getvalue())
+            cw = [e for e in events if e["event"] == "compile_wiki"]
+            self.assertEqual(len(cw), 1, f"got {buf.getvalue()!r}")
+            f = cw[0]["fields"]
+            for key in ("articles", "affected_concepts", "reverse_index_size", "assign_ms", "recompile_ms"):
+                self.assertIn(key, f, f"missing {key} in {f}")
+            assign_ms = float(f["assign_ms"])
+            recompile_ms = float(f["recompile_ms"])
+            self.assertGreaterEqual(assign_ms, 0.0)
+            self.assertGreaterEqual(recompile_ms, 0.0)
+            self.assertLess(assign_ms, 10000.0)
+            self.assertLess(recompile_ms, 10000.0)
+
+
 if __name__ == "__main__":
     unittest.main()
