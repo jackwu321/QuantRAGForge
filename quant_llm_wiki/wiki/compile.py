@@ -1,6 +1,8 @@
 from __future__ import annotations
 
 import argparse
+import os
+import sys
 from dataclasses import dataclass, field
 from datetime import date
 from pathlib import Path
@@ -252,7 +254,18 @@ def compile_wiki(
     articles = _list_articles(kb_root, source_dirs)
 
     affected_concept_slugs: set[str] = set()
-    article_to_concepts: dict[Path, list[str]] = {}
+    # Slug -> articles that feed it. Populated during the assignment loop and
+    # consumed by the recompile loop, giving O(1) lookups instead of a full
+    # scan over all articles per affected slug.
+    concept_to_articles: dict[str, list[Path]] = {}
+
+    def _register_article_concepts(article_dir: Path, slugs: list[str]) -> None:
+        seen: set[str] = set()
+        for slug in slugs:
+            if slug in seen:
+                continue
+            seen.add(slug)
+            concept_to_articles.setdefault(slug, []).append(article_dir)
 
     for article_index, article_dir in enumerate(articles, start=1):
         article_md = article_dir / "article.md"
@@ -272,7 +285,7 @@ def compile_wiki(
             and not is_source_changed(state, article_md)
         ):
             report.skipped += 1
-            article_to_concepts[article_dir] = list(prior_entry.feeds_concepts)
+            _register_article_concepts(article_dir, list(prior_entry.feeds_concepts))
             continue
 
         index_text = _build_index_text(wiki_dir)
@@ -310,9 +323,9 @@ def compile_wiki(
         if not assignment.error:
             for slug in assignment.existing_concepts:
                 affected_concept_slugs.add(slug)
-            article_to_concepts[article_dir] = feeds
+            _register_article_concepts(article_dir, feeds)
         else:
-            article_to_concepts[article_dir] = []
+            _register_article_concepts(article_dir, [])
 
     if not dry_run:
         save_wiki_state(state, state_path)
@@ -324,9 +337,7 @@ def compile_wiki(
         concept = _load_concept(wiki_dir, slug)
         if concept is None:
             continue
-        sources_for_concept = [
-            ad for ad, slugs in article_to_concepts.items() if slug in slugs
-        ]
+        sources_for_concept = concept_to_articles.get(slug, [])
         existing_paths = set(concept.sources)
         for ad in sources_for_concept:
             existing_paths.add(str(ad / "article.md"))
@@ -386,6 +397,14 @@ def compile_wiki(
             _save_concept(wiki_dir, new_concept)
             update_concept_entry(state, new_concept)
             save_wiki_state(state, state_path)
+
+    if os.environ.get("QLW_PERF_DEBUG"):
+        print(
+            f"[qlw-perf] compile_wiki: articles={len(articles)} "
+            f"affected_concepts={len(sorted_slugs)} "
+            f"reverse_index_size={len(concept_to_articles)}",
+            file=sys.stderr,
+        )
 
     if not dry_run:
         # Update state for proposed concepts so they have entries with their (low) confidence.
