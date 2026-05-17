@@ -125,5 +125,50 @@ class BrainstormFlowTests(unittest.TestCase):
             self.assertEqual(blocks, [])
 
 
+class RetrieveBlocksCallCountTests(unittest.TestCase):
+    def test_retrieve_blocks_calls_retrieve_concept_articles_once(self) -> None:
+        """retrieve_blocks must call _retrieve_concept_articles at most once per
+        invocation. Pre-fix this was 2 (once inside _concepts_to_blocks, once
+        directly for source exclusion). Post-fix the second call is removed."""
+        from quant_llm_wiki.shared import KnowledgeNote
+        from quant_llm_wiki.wiki.seed import bootstrap_wiki
+
+        with tempfile.TemporaryDirectory() as tmp:
+            kb_root = Path(tmp)
+            wiki_dir = kb_root / "wiki"
+            bootstrap_wiki(wiki_dir)
+
+            note = KnowledgeNote(
+                article_dir=(kb_root / "raw" / "stub").resolve(),
+                source_dir="raw",
+                frontmatter={"title": "Stub"},
+                body="momentum momentum momentum",
+            )
+
+            # Force the wiki branch unconditionally so the test isolates the
+            # call-count invariant from lint behavior.
+            with patch.object(brainstorm_from_kb, "_wiki_is_healthy_for_query", return_value=True), \
+                 patch.object(
+                     brainstorm_from_kb,
+                     "_retrieve_concept_articles",
+                     wraps=brainstorm_from_kb._retrieve_concept_articles,
+                 ) as spy:
+                brainstorm_from_kb.retrieve_blocks(
+                    [note],
+                    "momentum strategies",
+                    top_k=3,
+                    command="brainstorm",
+                    retrieval_mode="keyword",
+                    kb_root=kb_root,
+                    wiki_dir=wiki_dir,
+                    vector_store_dir=kb_root / "no-store",
+                )
+            self.assertEqual(
+                spy.call_count, 1,
+                f"_retrieve_concept_articles should be called once per "
+                f"retrieve_blocks invocation, got {spy.call_count}",
+            )
+
+
 if __name__ == "__main__":
     unittest.main()

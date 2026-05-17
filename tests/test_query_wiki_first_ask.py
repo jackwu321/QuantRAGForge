@@ -25,19 +25,24 @@ class WikiFirstAskTests(unittest.TestCase):
                 frontmatter={"title": "X", "status": "reviewed"},
                 body="ETF rotation under regime shifts.",
             )
-            with patch.object(mod, "_concepts_to_blocks", return_value=[
-                mod.KnowledgeBlock(
-                    note=KnowledgeNote(
-                        article_dir=root / "wiki" / "concepts" / "etf-rotation.md",
-                        source_dir="wiki_concepts",
-                        frontmatter={"title": "ETF Rotation"},
-                        body="",
-                    ),
-                    block_type="wiki_concept",
-                    text="ETF rotation block",
-                    score=0.9,
+            wiki_block = mod.KnowledgeBlock(
+                note=KnowledgeNote(
+                    article_dir=root / "wiki" / "concepts" / "etf-rotation.md",
+                    source_dir="wiki_concepts",
+                    frontmatter={"title": "ETF Rotation"},
+                    body="",
                 ),
-            ]) as mock_concepts:
+                block_type="wiki_concept",
+                text="ETF rotation block",
+                score=0.9,
+            )
+            # retrieve_blocks now calls the merged retrieve+convert helper so
+            # the concept retrieval only happens once per call.
+            with patch.object(
+                mod,
+                "_retrieve_concepts_and_blocks",
+                return_value=([wiki_block], []),
+            ) as mock_concepts:
                 blocks, _, _ = mod.retrieve_blocks(
                     [note],
                     "What is etf rotation?",

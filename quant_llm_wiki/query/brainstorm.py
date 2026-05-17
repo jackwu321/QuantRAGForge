@@ -1,7 +1,9 @@
 from __future__ import annotations
 
 import argparse
+import os
 import re
+import sys
 from datetime import datetime
 from pathlib import Path
 from typing import Any
@@ -688,12 +690,17 @@ def _retrieve_concept_articles(
     return _retrieve_concepts_via_lexical(query, top_k, resolved_wiki_dir)
 
 
-def _concepts_to_blocks(
+def _retrieve_concepts_and_blocks(
     query: str,
     top_k: int = DEFAULT_CONCEPT_TOP_K,
     vector_store_dir: Path | None = None,
     wiki_dir: Path | None = None,
-) -> list[KnowledgeBlock]:
+) -> tuple[list[KnowledgeBlock], list[dict]]:
+    """Retrieve concepts and convert to blocks in a single pass.
+
+    Returns both the blocks (for the prompt context) and the raw concept dicts
+    (so callers can derive source paths without a second retrieval).
+    """
     resolved_wiki_dir = wiki_dir or (resolve_kb_root(None) / "wiki")
     concepts = _retrieve_concept_articles(
         query,
@@ -702,7 +709,7 @@ def _concepts_to_blocks(
         wiki_dir=resolved_wiki_dir,
     )
     if not concepts:
-        return []
+        return [], []
     blocks: list[KnowledgeBlock] = []
     for c in concepts:
         note = KnowledgeNote(
@@ -717,6 +724,21 @@ def _concepts_to_blocks(
             text=c["body_text"],
             score=1.0,
         ))
+    return blocks, concepts
+
+
+def _concepts_to_blocks(
+    query: str,
+    top_k: int = DEFAULT_CONCEPT_TOP_K,
+    vector_store_dir: Path | None = None,
+    wiki_dir: Path | None = None,
+) -> list[KnowledgeBlock]:
+    blocks, _ = _retrieve_concepts_and_blocks(
+        query,
+        top_k=top_k,
+        vector_store_dir=vector_store_dir,
+        wiki_dir=wiki_dir,
+    )
     return blocks
 
 
@@ -756,24 +778,25 @@ def retrieve_blocks(
     wiki_blocks: list[KnowledgeBlock] = []
     excluded_articles: set[str] = set()
     if _should_use_wiki_memory(notes) and _wiki_is_healthy_for_query(resolved_kb_root):
-        wiki_blocks = _concepts_to_blocks(
+        wiki_blocks, wiki_concepts = _retrieve_concepts_and_blocks(
             query,
             top_k=DEFAULT_CONCEPT_TOP_K,
             vector_store_dir=store_dir,
             wiki_dir=resolved_wiki_dir,
         )
         if wiki_blocks:
-            for c in _retrieve_concept_articles(
-                query,
-                top_k=DEFAULT_CONCEPT_TOP_K,
-                vector_store_dir=store_dir,
-                wiki_dir=resolved_wiki_dir,
-            ):
+            for c in wiki_concepts:
                 for src_path in c["sources"]:
                     src = Path(src_path)
                     if not src.is_absolute():
                         src = resolved_kb_root / src
                     excluded_articles.add(str(src.parent))
+        if os.environ.get("QLW_PERF_DEBUG"):
+            print(
+                f"[qlw-perf] retrieve_blocks: concept_retrievals=1 "
+                f"wiki_blocks={len(wiki_blocks)}",
+                file=sys.stderr,
+            )
 
     remaining_k = max(0, top_k - len(wiki_blocks))
 
