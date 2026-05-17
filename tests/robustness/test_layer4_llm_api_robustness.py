@@ -9,6 +9,7 @@ import json
 import os
 import sys
 import tempfile
+import threading
 import unittest
 from pathlib import Path
 from unittest.mock import patch, MagicMock, PropertyMock
@@ -58,6 +59,7 @@ class TestConnectionFailures(unittest.TestCase):
     def setUp(self):
         import quant_llm_wiki.shared as kb_shared
         kb_shared._last_llm_call_ts = 0.0
+        kb_shared._llm_cooldown_until = 0.0
 
     @patch("quant_llm_wiki.shared.get_llm_config", side_effect=_mock_get_llm_config)
     @patch("quant_llm_wiki.shared.time.sleep")
@@ -144,6 +146,7 @@ class TestHTTPErrors(unittest.TestCase):
     def setUp(self):
         import quant_llm_wiki.shared as kb_shared
         kb_shared._last_llm_call_ts = 0.0
+        kb_shared._llm_cooldown_until = 0.0
 
     @patch("quant_llm_wiki.shared.get_llm_config", side_effect=_mock_get_llm_config)
     @patch("quant_llm_wiki.shared.time.sleep")
@@ -231,6 +234,7 @@ class TestRetryBehavior(unittest.TestCase):
     def setUp(self):
         import quant_llm_wiki.shared as kb_shared
         kb_shared._last_llm_call_ts = 0.0
+        kb_shared._llm_cooldown_until = 0.0
 
     @patch("quant_llm_wiki.shared.get_llm_config", side_effect=_mock_get_llm_config)
     @patch("quant_llm_wiki.shared.time.sleep")
@@ -383,6 +387,148 @@ class TestRetryBehavior(unittest.TestCase):
         self.assertEqual(len(sleeps), 1)
         self.assertAlmostEqual(sleeps[0], 60.0, places=2)
 
+    @patch("quant_llm_wiki.shared.get_llm_config", side_effect=_mock_get_llm_config)
+    @patch("quant_llm_wiki.shared.time.sleep")
+    @patch("quant_llm_wiki.shared.requests.post")
+    @patch.dict(os.environ, {"LLM_MAX_RETRIES": "0"}, clear=False)
+    def test_429_retry_after_sets_global_cooldown_for_next_request(
+        self, mock_post, mock_sleep, mock_config
+    ):
+        """A 429 with Retry-After gates the next independent request before POST."""
+        from quant_llm_wiki.shared import post_llm_json
+
+        events = []
+        http_429 = requests_lib.exceptions.HTTPError("429 Too Many Requests")
+        resp_429 = _make_mock_response(429, raise_for_status=http_429)
+        resp_429.headers = {"Retry-After": "7"}
+        http_429.response = resp_429
+        success = _make_mock_response(200, {"ok": True})
+
+        def fake_post(*args, **kwargs):
+            events.append("post")
+            return resp_429 if len(events) == 1 else success
+
+        def fake_sleep(seconds):
+            events.append(("sleep", seconds))
+
+        mock_post.side_effect = fake_post
+        mock_sleep.side_effect = fake_sleep
+
+        with self.assertRaises(requests_lib.exceptions.HTTPError):
+            post_llm_json("/chat/completions", {"model": "test", "messages": []})
+
+        result = post_llm_json("/chat/completions", {"model": "test", "messages": []})
+
+        self.assertEqual(result, {"ok": True})
+        self.assertEqual(events[0], "post")
+        self.assertEqual(events[1][0], "sleep")
+        self.assertAlmostEqual(events[1][1], 7.0, places=2)
+        self.assertEqual(events[2], "post")
+
+    @patch("quant_llm_wiki.shared.random.uniform", return_value=0.0)
+    @patch("quant_llm_wiki.shared.get_llm_config", side_effect=_mock_get_llm_config)
+    @patch("quant_llm_wiki.shared.time.sleep")
+    @patch("quant_llm_wiki.shared.requests.post")
+    @patch.dict(os.environ, {"LLM_MAX_RETRIES": "0"}, clear=False)
+    def test_429_without_retry_after_sets_exponential_global_cooldown(
+        self, mock_post, mock_sleep, mock_config, mock_uniform
+    ):
+        """A 429 without Retry-After gates the next request with 429 backoff."""
+        from quant_llm_wiki.shared import post_llm_json
+
+        http_429 = requests_lib.exceptions.HTTPError("429 Too Many Requests")
+        resp_429 = _make_mock_response(429, raise_for_status=http_429)
+        resp_429.headers = {}
+        http_429.response = resp_429
+        success = _make_mock_response(200, {"ok": True})
+        mock_post.side_effect = [resp_429, success]
+
+        with self.assertRaises(requests_lib.exceptions.HTTPError):
+            post_llm_json("/chat/completions", {"model": "test", "messages": []})
+
+        result = post_llm_json("/chat/completions", {"model": "test", "messages": []})
+
+        self.assertEqual(result, {"ok": True})
+        sleeps = [c[0][0] for c in mock_sleep.call_args_list]
+        self.assertEqual(len(sleeps), 1)
+        self.assertAlmostEqual(sleeps[0], 5.0, places=2)
+
+    @patch("quant_llm_wiki.shared.get_llm_config", side_effect=_mock_get_llm_config)
+    @patch("quant_llm_wiki.shared.time.sleep")
+    @patch("quant_llm_wiki.shared.requests.post")
+    @patch.dict(os.environ, {"LLM_MAX_RETRIES": "0"}, clear=False)
+    def test_non_429_http_error_does_not_set_global_cooldown(
+        self, mock_post, mock_sleep, mock_config
+    ):
+        """Server errors retry per call but do not gate the next request globally."""
+        from quant_llm_wiki.shared import post_llm_json
+
+        http_500 = requests_lib.exceptions.HTTPError("500 Internal Server Error")
+        resp_500 = _make_mock_response(500, raise_for_status=http_500)
+        resp_500.headers = {}
+        http_500.response = resp_500
+        success = _make_mock_response(200, {"ok": True})
+        mock_post.side_effect = [resp_500, success]
+
+        with self.assertRaises(requests_lib.exceptions.HTTPError):
+            post_llm_json("/chat/completions", {"model": "test", "messages": []})
+
+        result = post_llm_json("/chat/completions", {"model": "test", "messages": []})
+
+        self.assertEqual(result, {"ok": True})
+        mock_sleep.assert_not_called()
+
+    @patch("quant_llm_wiki.shared.get_llm_config", side_effect=_mock_get_llm_config)
+    @patch("quant_llm_wiki.shared.time.sleep")
+    @patch("quant_llm_wiki.shared.requests.post")
+    @patch.dict(os.environ, {"LLM_MAX_RETRIES": "0"}, clear=False)
+    def test_later_thread_observes_429_global_cooldown(
+        self, mock_post, mock_sleep, mock_config
+    ):
+        """A later worker thread waits on the cooldown set by another worker's 429."""
+        from quant_llm_wiki.shared import post_llm_json
+
+        events = []
+        first_done = threading.Event()
+        http_429 = requests_lib.exceptions.HTTPError("429 Too Many Requests")
+        resp_429 = _make_mock_response(429, raise_for_status=http_429)
+        resp_429.headers = {"Retry-After": "7"}
+        http_429.response = resp_429
+        success = _make_mock_response(200, {"ok": True})
+
+        def fake_post(*args, **kwargs):
+            events.append("post")
+            return resp_429 if len(events) == 1 else success
+
+        def fake_sleep(seconds):
+            events.append(("sleep", seconds))
+
+        mock_post.side_effect = fake_post
+        mock_sleep.side_effect = fake_sleep
+
+        def first_worker():
+            with self.assertRaises(requests_lib.exceptions.HTTPError):
+                post_llm_json("/chat/completions", {"model": "test", "messages": []})
+            first_done.set()
+
+        def second_worker():
+            first_done.wait(timeout=1)
+            post_llm_json("/chat/completions", {"model": "test", "messages": []})
+
+        t1 = threading.Thread(target=first_worker)
+        t2 = threading.Thread(target=second_worker)
+        t1.start()
+        t2.start()
+        t1.join(timeout=1)
+        t2.join(timeout=1)
+
+        self.assertFalse(t1.is_alive())
+        self.assertFalse(t2.is_alive())
+        self.assertEqual(events[0], "post")
+        self.assertEqual(events[1][0], "sleep")
+        self.assertAlmostEqual(events[1][1], 7.0, places=2)
+        self.assertEqual(events[2], "post")
+
 
 # ===========================================================================
 # Inter-Call Rate Limiter Tests
@@ -395,6 +541,20 @@ class TestMinIntervalRateLimiter(unittest.TestCase):
     def setUp(self):
         import quant_llm_wiki.shared as kb_shared
         kb_shared._last_llm_call_ts = 0.0
+        kb_shared._llm_cooldown_until = 0.0
+
+    @patch.dict(os.environ, {}, clear=True)
+    def test_default_min_interval_is_conservative(self):
+        import quant_llm_wiki.shared as kb_shared
+
+        self.assertEqual(kb_shared.DEFAULT_MIN_INTERVAL_SECONDS, 2.0)
+        self.assertEqual(kb_shared._min_interval_seconds(), 2.0)
+
+    @patch.dict(os.environ, {"ZHIPU_MIN_INTERVAL_SECONDS": "1.25"}, clear=True)
+    def test_zhipu_min_interval_fallback_still_overrides_default(self):
+        import quant_llm_wiki.shared as kb_shared
+
+        self.assertEqual(kb_shared._min_interval_seconds(), 1.25)
 
     @patch("quant_llm_wiki.shared.get_llm_config", side_effect=_mock_get_llm_config)
     @patch("quant_llm_wiki.shared.time.sleep")
@@ -442,6 +602,7 @@ class TestMalformedResponses(unittest.TestCase):
     def setUp(self):
         import quant_llm_wiki.shared as kb_shared
         kb_shared._last_llm_call_ts = 0.0
+        kb_shared._llm_cooldown_until = 0.0
 
     @patch("quant_llm_wiki.shared.get_llm_config", side_effect=_mock_get_llm_config)
     @patch("quant_llm_wiki.shared.requests.post")
@@ -515,6 +676,7 @@ class TestConfigurationRobustness(unittest.TestCase):
     def setUp(self):
         import quant_llm_wiki.shared as kb_shared
         kb_shared._last_llm_call_ts = 0.0
+        kb_shared._llm_cooldown_until = 0.0
 
     @patch.dict(
         os.environ,

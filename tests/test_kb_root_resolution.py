@@ -97,7 +97,8 @@ class TestResolveKbRoot(unittest.TestCase):
             try:
                 os.chdir(tmpdir)
                 # Call with no kb_root — should default to cwd (tmpdir)
-                lint_wiki()
+                with patch.dict(os.environ, {}, clear=True):
+                    lint_wiki()
             finally:
                 os.chdir(orig_cwd)
 
