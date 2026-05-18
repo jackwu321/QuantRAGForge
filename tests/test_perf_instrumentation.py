@@ -10,6 +10,11 @@ from pathlib import Path
 
 from quant_llm_wiki.query import brainstorm as brainstorm_mod
 
+# Make scripts/ importable for _parse_event tests.
+_REPO_ROOT = Path(__file__).parent.parent
+if str(_REPO_ROOT / "scripts") not in sys.path:
+    sys.path.insert(0, str(_REPO_ROOT / "scripts"))
+
 
 PERF_LINE_RE = re.compile(r"^\[qlw-perf\] ([a-z_]+): (.+)$")
 
@@ -186,6 +191,84 @@ class CompileWikiTimingTests(unittest.TestCase):
             self.assertGreaterEqual(recompile_ms, 0.0)
             self.assertLess(assign_ms, 10000.0)
             self.assertLess(recompile_ms, 10000.0)
+
+
+class RetrieveConceptArticlesChromaTests(unittest.TestCase):
+    def test_chroma_mode_emits_chroma(self):
+        """When _retrieve_concepts_via_chroma returns results, mode should be 'chroma'."""
+        with tempfile.TemporaryDirectory() as tmp:
+            wiki_dir = Path(tmp) / "wiki"
+            (wiki_dir / "concepts").mkdir(parents=True)
+            fake_concepts = [{"slug": "s", "title": "T", "body_text": "b", "sources": []}]
+            buf = io.StringIO()
+            with unittest.mock.patch.dict(os.environ, {"QLW_PERF_DEBUG": "1"}), \
+                 unittest.mock.patch.object(brainstorm_mod, "_retrieve_concepts_via_chroma",
+                                            return_value=fake_concepts):
+                with redirect_stderr(buf):
+                    brainstorm_mod._retrieve_concept_articles(
+                        "anything", top_k=3, wiki_dir=wiki_dir,
+                    )
+            events = parse_perf_lines(buf.getvalue())
+            timing = [e for e in events if e["event"] == "_retrieve_concept_articles"]
+            self.assertEqual(len(timing), 1, f"got {buf.getvalue()!r}")
+            self.assertEqual(timing[0]["fields"]["mode"], "chroma")
+            self.assertEqual(timing[0]["fields"]["results"], "1")
+
+    def test_empty_mode_when_no_concepts_dir(self):
+        """When the concepts directory does not exist, mode should be 'empty'."""
+        with tempfile.TemporaryDirectory() as tmp:
+            wiki_dir = Path(tmp) / "wiki"
+            wiki_dir.mkdir()
+            # No concepts subdir created — _retrieve_concept_articles should early-exit.
+            buf = io.StringIO()
+            with unittest.mock.patch.dict(os.environ, {"QLW_PERF_DEBUG": "1"}):
+                with redirect_stderr(buf):
+                    brainstorm_mod._retrieve_concept_articles(
+                        "anything", top_k=3, wiki_dir=wiki_dir,
+                    )
+            events = parse_perf_lines(buf.getvalue())
+            timing = [e for e in events if e["event"] == "_retrieve_concept_articles"]
+            self.assertEqual(len(timing), 1, f"got {buf.getvalue()!r}")
+            self.assertEqual(timing[0]["fields"]["mode"], "empty")
+            self.assertEqual(timing[0]["fields"]["results"], "0")
+
+
+class ParseEventTests(unittest.TestCase):
+    def setUp(self):
+        from benchmark_perf import _parse_event
+        self._parse_event = _parse_event
+
+    def test_multiple_calls_sets_calls_count(self):
+        """When the same event appears twice in stderr, calls should reflect both."""
+        stderr = (
+            "[qlw-perf] myevent: ms=1.2 mode=lexical\n"
+            "[qlw-perf] myevent: ms=3.4 mode=chroma\n"
+        )
+        result = self._parse_event(stderr, "myevent")
+        self.assertEqual(result["calls"], 2)
+        # Last value wins for numeric fields (dict overwritten by second line)
+        self.assertAlmostEqual(result["ms"], 3.4, places=5)
+
+    def test_value_error_falls_back_to_str(self):
+        """Non-numeric values should be stored as strings rather than raising."""
+        stderr = "[qlw-perf] myevent: mode=lexical flag=yes\n"
+        result = self._parse_event(stderr, "myevent")
+        self.assertEqual(result["mode"], "lexical")
+        self.assertEqual(result["flag"], "yes")
+        self.assertEqual(result["calls"], 1)
+
+
+class EmitPerfTests(unittest.TestCase):
+    def test_zero_cost_when_env_not_set(self):
+        """_emit_perf should write nothing to stderr when QLW_PERF_DEBUG is unset."""
+        from quant_llm_wiki.shared_perf import _emit_perf
+        buf = io.StringIO()
+        env_without_debug = {k: v for k, v in os.environ.items() if k != "QLW_PERF_DEBUG"}
+        with unittest.mock.patch.dict(os.environ, env_without_debug, clear=True), \
+             redirect_stderr(buf):
+            for _ in range(10_000):
+                _emit_perf("noop", ms=0.0, mode="test")
+        self.assertEqual(buf.getvalue(), "")
 
 
 if __name__ == "__main__":
