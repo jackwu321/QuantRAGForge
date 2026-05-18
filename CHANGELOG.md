@@ -6,7 +6,7 @@ All notable changes to this project will be documented in this file.
 
 ### Performance
 
-- **`_build_index_text` hoist** (`compile_wiki`): moved the single `_build_index_text` call out of the per-article assign loop so it runs once per compile rather than once per article. At large scale (500 articles), `assign_ms` drops from ~22,000 ms to ~884 ms (96% reduction). The precondition that makes the hoist safe — that index-text output is stable across the assign loop — is locked by the Phase 0 invariant test (`BuildIndexTextInvariantTests`).
+- **`_build_index_text` hoist** (`compile_wiki`): moved the single `_build_index_text` call out of the per-article assign loop so it runs once per compile rather than once per article. Structurally O(A) → O(1) in stable-concept-file reads. The mocked-LLM harness shows `assign_ms` dropping from ~22,000 ms to ~884 ms at large scale (96% in-harness reduction, ≈25 s of redundant filesystem scans eliminated per compile); production proportional saving will be smaller because real `assign_concepts` LLM time dominates the per-iteration budget, but the absolute per-compile saving is the same. The precondition that makes the hoist safe — that index-text output is stable across the assign loop — is locked by the Phase 0 invariant test (`BuildIndexTextInvariantTests`).
 - **`build_index_text_ms` instrumentation**: `compile_wiki` now emits `build_index_text_ms` in its `[qlw-perf]` output, giving independent visibility into the cost of the single (post-hoist) index-text build separate from the rest of `assign_ms`.
 
 ### Documentation
