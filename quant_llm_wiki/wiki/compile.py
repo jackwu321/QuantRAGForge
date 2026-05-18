@@ -270,13 +270,17 @@ def compile_wiki(
 
     import time
     _t_assign_start = time.perf_counter()
-    # Hoist: assign loop never writes stable concepts (only proposed),
-    # and _build_index_text filters by status == "stable", so the index
-    # text is invariant for the duration of this loop. Locked by
-    # tests/test_wiki_compile.py::BuildIndexTextInvariantTests.
-    _t_idx_start = time.perf_counter()
-    index_text = _build_index_text(wiki_dir)
-    _build_index_text_ms = (time.perf_counter() - _t_idx_start) * 1000.0
+    # Lazy hoist: _build_index_text is loop-invariant (filters
+    # status == "stable", loop only writes status == "proposed"), so we
+    # cache it on first real use. Build is deferred past the skip path
+    # so a fully-idempotent no-op compile pays zero index-build cost.
+    # Invariants:
+    #   - within-loop stability: tests/test_wiki_compile.py
+    #     ::BuildIndexTextInvariantTests
+    #   - skip-path zero cost: tests/test_wiki_compile.py
+    #     ::IndexTextNotBuiltOnNoOpCompileTests
+    index_text: str | None = None
+    _build_index_text_ms = 0.0
     for article_index, article_dir in enumerate(articles, start=1):
         article_md = article_dir / "article.md"
         existing_summary = wiki_dir / "sources" / f"{article_dir.name}.md"
@@ -304,6 +308,11 @@ def compile_wiki(
         except Exception as exc:
             report.errors.append(f"{article_dir}: read failed — {exc}")
             continue
+
+        if index_text is None:
+            _t_idx_start = time.perf_counter()
+            index_text = _build_index_text(wiki_dir)
+            _build_index_text_ms = (time.perf_counter() - _t_idx_start) * 1000.0
 
         assign_kwargs = {"article_frontmatter": fm, "index_text": index_text}
         if schema_text:

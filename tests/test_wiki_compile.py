@@ -404,5 +404,60 @@ class BuildIndexTextInvariantTests(unittest.TestCase):
             )
 
 
+class IndexTextNotBuiltOnNoOpCompileTests(unittest.TestCase):
+    def test_no_op_incremental_compile_does_not_build_index(self):
+        """
+        Idempotent no-op compile (all articles cached, unchanged) must
+        not call _build_index_text. Locks in the lazy-hoist behavior
+        so the unconditional-eager hoist regression doesn't reappear.
+        """
+        from unittest.mock import patch
+        from quant_llm_wiki.wiki import compile as wiki_compile
+        from quant_llm_wiki.wiki import compile_llm as wiki_compile_llm
+
+        with tempfile.TemporaryDirectory() as tmp:
+            root = Path(tmp)
+            # Reuse the _setup_corpus pattern from CompileOrchestratorTests
+            # to seed one article + bootstrap-default wiki.
+            from quant_llm_wiki.wiki.seed import bootstrap_wiki
+            bootstrap_wiki(root / "wiki")
+            article_dir = root / "raw" / "2026-03-22_test_article"
+            article_dir.mkdir(parents=True, exist_ok=True)
+            (article_dir / "article.md").write_text(
+                "---\n"
+                "title: Test Article\n"
+                "content_type: methodology\n"
+                "brainstorm_value: high\n"
+                "core_hypothesis: Momentum predicts.\n"
+                "idea_blocks: [Idea A, Idea B]\n"
+                "summary: A study.\n"
+                "status: reviewed\n"
+                "---\n\n## Main Content\n\nBody.\n",
+                encoding="utf-8",
+            )
+
+            assignment = wiki_compile_llm.ConceptAssignment(
+                existing_concepts=["momentum-strategies"],
+                proposed_new_concepts=[],
+            )
+            recompile = wiki_compile_llm.RecompileResult(
+                "S", "D", [], [], [], [], [], [], [],
+            )
+
+            with patch("quant_llm_wiki.wiki.compile.assign_concepts", return_value=assignment), \
+                 patch("quant_llm_wiki.wiki.compile.recompile_concept", return_value=recompile):
+                # First compile: populates state, calls _build_index_text once.
+                wiki_compile.compile_wiki(kb_root=root, mode="incremental")
+
+                # Second compile: everything cached, all articles skipped.
+                # _build_index_text MUST NOT be called.
+                with patch(
+                    "quant_llm_wiki.wiki.compile._build_index_text",
+                    wraps=wiki_compile._build_index_text,
+                ) as spy_idx:
+                    wiki_compile.compile_wiki(kb_root=root, mode="incremental")
+                    self.assertEqual(spy_idx.call_count, 0)
+
+
 if __name__ == "__main__":
     unittest.main()
