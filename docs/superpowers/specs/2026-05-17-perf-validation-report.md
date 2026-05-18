@@ -47,7 +47,7 @@ Host: `ip-172-31-6-158`, Python `3.12.3`, timestamp `2026-05-18T06:18:04Z`.
 
 ### Context
 
-Phase 1 instrumentation (commits `b3f71f7`, `93327b9`, merged in v0.4.4) revealed that `build_index_text_ms` — the cost of rebuilding the full wiki index text string — was being accumulated once per article inside the assign loop, accounting for ~96.8% of `assign_ms` at large scale. Phase 2 (commit `30976f3`, v0.4.5-HEAD) hoists this single `_build_index_text` call out of the loop so it runs exactly once per `compile_wiki` invocation. The precondition that makes the hoist semantically safe — that `_build_index_text` output does not change across the assign loop — is locked by the Phase 0 invariant test (`BuildIndexTextInvariantTests`, commit `7349091`).
+Phase 1 instrumentation (commits `b3f71f7`, `93327b9` — added on this v0.4.5 branch, measured before Phase 2 landed) revealed that `build_index_text_ms` — the cost of rebuilding the full wiki index text string — was being accumulated once per article inside the assign loop, accounting for ~96.8% of `assign_ms` at large scale. Phase 2 (commit `30976f3`) hoists the single `_build_index_text` call out of the loop. A subsequent fix (commit `f09a10c`) makes the hoist *lazy* — `index_text` stays `None` until an article actually needs assignment, so an idempotent no-op compile (all articles cache-hit skipped) pays zero index-build cost. Two invariants lock the change: `BuildIndexTextInvariantTests` (commit `7349091`) asserts that the stable-concept set is invariant within the assign loop window; `IndexTextNotBuiltOnNoOpCompileTests` (commit `f09a10c`) asserts that a fully-skipped compile never calls `_build_index_text`.
 
 ### Numbers (median of 3 trials, milliseconds)
 
@@ -60,7 +60,7 @@ Phase 1 instrumentation (commits `b3f71f7`, `93327b9`, merged in v0.4.4) reveale
 | v0.4.4-HEAD   | large  |           22029.1 | n/a (field added in this change)  |                373.7 |         23090.2 |
 | v0.4.5-HEAD   | large  |             883.5 |                              50.4 |                442.2 |          2117.2 |
 
-Note: v0.4.4 baseline files are labeled `v0.4.3-HEAD` (same code — v0.4.4 added instrumentation only, no behavior change). `build_index_text_ms` was introduced in v0.4.4, so the baseline cannot report it.
+Note: v0.4.4 baseline files are labeled `v0.4.3-HEAD` (same code — v0.4.4 added instrumentation only, no behavior change). `build_index_text_ms` was added on this v0.4.5 branch in Phase 1, so the v0.4.4 baseline column reads `n/a`.
 
 Host: `ip-172-31-6-158`, Python `3.12.3`, timestamp `2026-05-18T14:33:16Z`.
 
