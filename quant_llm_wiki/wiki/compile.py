@@ -14,6 +14,7 @@ from quant_llm_wiki.wiki.compile_llm import (
     ConceptAssignment, ProposedConcept, RecompileResult,
     assign_concepts, recompile_concept,
 )
+from quant_llm_wiki.shared_perf import _emit_perf
 from quant_llm_wiki.wiki.index import write_index
 from quant_llm_wiki.wiki.seed import bootstrap_wiki
 from quant_llm_wiki.wiki.state import (
@@ -267,6 +268,8 @@ def compile_wiki(
             seen.add(slug)
             concept_to_articles.setdefault(slug, []).append(article_dir)
 
+    import time
+    _t_assign_start = time.perf_counter()
     for article_index, article_dir in enumerate(articles, start=1):
         article_md = article_dir / "article.md"
         existing_summary = wiki_dir / "sources" / f"{article_dir.name}.md"
@@ -329,6 +332,9 @@ def compile_wiki(
 
     if not dry_run:
         save_wiki_state(state, state_path)
+
+    _assign_ms = (time.perf_counter() - _t_assign_start) * 1000.0
+    _t_recompile_start = time.perf_counter()
 
     # Recompile each affected concept
     sorted_slugs = sorted(affected_concept_slugs)
@@ -398,13 +404,15 @@ def compile_wiki(
             update_concept_entry(state, new_concept)
             save_wiki_state(state, state_path)
 
-    if os.environ.get("QLW_PERF_DEBUG"):
-        print(
-            f"[qlw-perf] compile_wiki: articles={len(articles)} "
-            f"affected_concepts={len(sorted_slugs)} "
-            f"reverse_index_size={len(concept_to_articles)}",
-            file=sys.stderr,
-        )
+    _recompile_ms = (time.perf_counter() - _t_recompile_start) * 1000.0
+    _emit_perf(
+        "compile_wiki",
+        articles=len(articles),
+        affected_concepts=len(sorted_slugs),
+        reverse_index_size=len(concept_to_articles),
+        assign_ms=_assign_ms,
+        recompile_ms=_recompile_ms,
+    )
 
     if not dry_run:
         # Update state for proposed concepts so they have entries with their (low) confidence.

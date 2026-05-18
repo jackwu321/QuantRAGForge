@@ -36,6 +36,9 @@ from quant_llm_wiki.wiki.state import (
     concept_memory_score,
     load_wiki_state,
 )
+from quant_llm_wiki.shared_perf import _emit_perf
+
+
 DEFAULT_TOP_K = 8
 DEFAULT_RETRIEVAL_MODE = "hybrid"
 DEFAULT_RETRIEVAL_FETCH_MULTIPLIER = 3
@@ -680,14 +683,20 @@ def _retrieve_concept_articles(
     Fallback: lexical token overlap on title/aliases/retrieval_hints when
     Chroma is unavailable, the index is empty, or the query has no hits.
     """
+    import time
+    t0 = time.perf_counter()
     resolved_wiki_dir = wiki_dir or (resolve_kb_root(None) / "wiki")
     if not (resolved_wiki_dir / "concepts").exists():
+        _emit_perf("_retrieve_concept_articles", ms=(time.perf_counter() - t0) * 1000.0, mode="empty", results=0)
         return []
     store = vector_store_dir or (resolve_kb_root(None) / "vector_store")
     via_chroma = _retrieve_concepts_via_chroma(query, top_k, store, resolved_wiki_dir)
     if via_chroma:
+        _emit_perf("_retrieve_concept_articles", ms=(time.perf_counter() - t0) * 1000.0, mode="chroma", results=len(via_chroma))
         return via_chroma
-    return _retrieve_concepts_via_lexical(query, top_k, resolved_wiki_dir)
+    via_lex = _retrieve_concepts_via_lexical(query, top_k, resolved_wiki_dir)
+    _emit_perf("_retrieve_concept_articles", ms=(time.perf_counter() - t0) * 1000.0, mode="lexical", results=len(via_lex))
+    return via_lex
 
 
 def _retrieve_concepts_and_blocks(
@@ -778,6 +787,8 @@ def retrieve_blocks(
     wiki_blocks: list[KnowledgeBlock] = []
     excluded_articles: set[str] = set()
     if _should_use_wiki_memory(notes) and _wiki_is_healthy_for_query(resolved_kb_root):
+        import time
+        t_wiki = time.perf_counter()
         wiki_blocks, wiki_concepts = _retrieve_concepts_and_blocks(
             query,
             top_k=DEFAULT_CONCEPT_TOP_K,
@@ -791,12 +802,12 @@ def retrieve_blocks(
                     if not src.is_absolute():
                         src = resolved_kb_root / src
                     excluded_articles.add(str(src.parent))
-        if os.environ.get("QLW_PERF_DEBUG"):
-            print(
-                f"[qlw-perf] retrieve_blocks: concept_retrievals=1 "
-                f"wiki_blocks={len(wiki_blocks)}",
-                file=sys.stderr,
-            )
+        _emit_perf(
+            "retrieve_blocks",
+            wiki_blocks=len(wiki_blocks),
+            excluded_articles=len(excluded_articles),
+            total_ms=(time.perf_counter() - t_wiki) * 1000.0,
+        )
 
     remaining_k = max(0, top_k - len(wiki_blocks))
 
