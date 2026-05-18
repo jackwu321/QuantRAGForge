@@ -23,7 +23,7 @@ SCALES = {
 }
 
 
-def build_synthetic_kb(root: Path, n_articles: int, n_concepts: int, feeds_per_article: int) -> None:
+def build_synthetic_kb(root: Path, n_articles: int, n_concepts: int) -> None:
     """Lay out a deterministic KB at `root` ready for compile_wiki."""
     # Articles must live under raw/ — compile.py's _list_articles scans raw/
     articles_root = root / "raw"
@@ -74,7 +74,7 @@ def _run_trial(scale: dict) -> dict:
 
     with tempfile.TemporaryDirectory() as tmp:
         kb_root = Path(tmp)
-        build_synthetic_kb(kb_root, scale["articles"], scale["concepts"], scale["feeds"])
+        build_synthetic_kb(kb_root, scale["articles"], scale["concepts"])
 
         # Mock LLM: assignment picks `feeds` existing concepts deterministically per article.
         def fake_assign(*, article_frontmatter, index_text, schema_text=None):
