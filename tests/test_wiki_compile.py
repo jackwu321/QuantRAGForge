@@ -1,6 +1,5 @@
 import tempfile
 import unittest
-import unittest.mock
 from pathlib import Path
 
 from quant_llm_wiki.wiki import compile as wiki_compile
@@ -285,7 +284,7 @@ class CompileOrchestratorTests(unittest.TestCase):
 # Helpers for BuildIndexTextInvariantTests
 # ---------------------------------------------------------------------------
 
-def _seed_kb_with_articles(kb_root: "Path") -> None:
+def _seed_kb_with_articles(kb_root: Path) -> None:
     """Bootstrap the wiki and create two minimal article dirs under kb_root/raw/."""
     from quant_llm_wiki.wiki.seed import bootstrap_wiki
     bootstrap_wiki(kb_root / "wiki")
@@ -309,7 +308,7 @@ def _seed_kb_with_articles(kb_root: "Path") -> None:
         )
 
 
-def _mock_assign_with_existing_and_proposed(existing: list) -> "callable":
+def _mock_assign_with_existing_and_proposed(existing: list):
     """Return a zero-arg callable that produces a ConceptAssignment each call.
 
     Each call yields a fresh ProposedConcept with a unique slug (proposed-1,
@@ -358,6 +357,7 @@ class BuildIndexTextInvariantTests(unittest.TestCase):
         existing_concept so recompile fires (proposed-only assignments
         do not enter affected_concept_slugs).
         """
+        from unittest.mock import patch
         from quant_llm_wiki.wiki.compile import _build_index_text, compile_wiki
         with tempfile.TemporaryDirectory() as tmp:
             kb_root = Path(tmp)
@@ -383,10 +383,10 @@ class BuildIndexTextInvariantTests(unittest.TestCase):
                 )
                 return _mock_recompile_result()
 
-            with unittest.mock.patch(
+            with patch(
                 "quant_llm_wiki.wiki.compile.assign_concepts",
                 side_effect=_assign_side_effect,
-            ), unittest.mock.patch(
+            ), patch(
                 "quant_llm_wiki.wiki.compile.recompile_concept",
                 side_effect=_recompile_side_effect,
             ):
