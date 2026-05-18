@@ -270,6 +270,7 @@ def compile_wiki(
 
     import time
     _t_assign_start = time.perf_counter()
+    _build_index_text_ms = 0.0
     for article_index, article_dir in enumerate(articles, start=1):
         article_md = article_dir / "article.md"
         existing_summary = wiki_dir / "sources" / f"{article_dir.name}.md"
@@ -291,7 +292,9 @@ def compile_wiki(
             _register_article_concepts(article_dir, list(prior_entry.feeds_concepts))
             continue
 
+        _t_idx_start = time.perf_counter()
         index_text = _build_index_text(wiki_dir)
+        _build_index_text_ms += (time.perf_counter() - _t_idx_start) * 1000.0
         try:
             article_md_text = article_md.read_text(encoding="utf-8")
             fm, _ = parse_frontmatter(article_md_text)
@@ -411,6 +414,7 @@ def compile_wiki(
         affected_concepts=len(sorted_slugs),
         reverse_index_size=len(concept_to_articles),
         assign_ms=_assign_ms,
+        build_index_text_ms=round(_build_index_text_ms, 3),
         recompile_ms=_recompile_ms,
     )
 
