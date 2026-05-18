@@ -2,6 +2,17 @@
 
 All notable changes to this project will be documented in this file.
 
+## [0.4.5] - 2026-05-18
+
+### Performance
+
+- **`_build_index_text` hoist** (`compile_wiki`): moved the single `_build_index_text` call out of the per-article assign loop so it runs once per compile rather than once per article. At large scale (500 articles), `assign_ms` drops from ~22,000 ms to ~884 ms (96% reduction). The precondition that makes the hoist safe — that index-text output is stable across the assign loop — is locked by the Phase 0 invariant test (`BuildIndexTextInvariantTests`).
+- **`build_index_text_ms` instrumentation**: `compile_wiki` now emits `build_index_text_ms` in its `[qlw-perf]` output, giving independent visibility into the cost of the single (post-hoist) index-text build separate from the rest of `assign_ms`.
+
+### Documentation
+
+- **v0.4.5 perf measurement addendum** (`docs/superpowers/specs/2026-05-17-perf-validation-report.md`): three-scale benchmark of the Phase 2 hoist across small/medium/large, comparing v0.4.4 baseline to v0.4.5-HEAD. Updated "Out of scope" to mark `_build_index_text` hoist as done; only `lint_wiki` staleness remains as a follow-up.
+
 ## [0.4.4] - 2026-05-18
 
 ### Added
