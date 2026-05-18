@@ -414,7 +414,7 @@ def compile_wiki(
         affected_concepts=len(sorted_slugs),
         reverse_index_size=len(concept_to_articles),
         assign_ms=_assign_ms,
-        build_index_text_ms=round(_build_index_text_ms, 3),
+        build_index_text_ms=_build_index_text_ms,
         recompile_ms=_recompile_ms,
     )
 
