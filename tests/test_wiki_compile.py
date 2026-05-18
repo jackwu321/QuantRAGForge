@@ -1,5 +1,6 @@
 import tempfile
 import unittest
+import unittest.mock
 from pathlib import Path
 
 from quant_llm_wiki.wiki import compile as wiki_compile
@@ -278,6 +279,129 @@ class CompileOrchestratorTests(unittest.TestCase):
             self.assertTrue(path.exists())
             concept = parse_concept(path.read_text(encoding="utf-8"))
             self.assertEqual(concept.status, "proposed")
+
+
+# ---------------------------------------------------------------------------
+# Helpers for BuildIndexTextInvariantTests
+# ---------------------------------------------------------------------------
+
+def _seed_kb_with_articles(kb_root: "Path") -> None:
+    """Bootstrap the wiki and create two minimal article dirs under kb_root/raw/."""
+    from quant_llm_wiki.wiki.seed import bootstrap_wiki
+    bootstrap_wiki(kb_root / "wiki")
+    for i, (dir_name, title) in enumerate([
+        ("2026-01-10_article1", "Article One"),
+        ("2026-01-11_article2", "Article Two"),
+    ], start=1):
+        article_dir = kb_root / "raw" / dir_name
+        article_dir.mkdir(parents=True, exist_ok=True)
+        (article_dir / "article.md").write_text(
+            f"---\n"
+            f"title: {title}\n"
+            f"content_type: methodology\n"
+            f"brainstorm_value: high\n"
+            f"core_hypothesis: Hypothesis {i}.\n"
+            f"idea_blocks: [Idea {i}A, Idea {i}B]\n"
+            f"summary: Summary {i}.\n"
+            f"status: reviewed\n"
+            f"---\n\n## Main\n\nBody {i}.\n",
+            encoding="utf-8",
+        )
+
+
+def _mock_assign_with_existing_and_proposed(existing: list) -> "callable":
+    """Return a zero-arg callable that produces a ConceptAssignment each call.
+
+    Each call yields a fresh ProposedConcept with a unique slug (proposed-1,
+    proposed-2, …) via a closure counter, so two iterations don't collide.
+    """
+    from quant_llm_wiki.wiki.compile_llm import ConceptAssignment, ProposedConcept
+    counter = [0]
+
+    def _make_assignment():
+        counter[0] += 1
+        n = counter[0]
+        proposed = ProposedConcept(
+            slug=f"proposed-{n}",
+            title=f"Proposed {n}",
+            aliases=[],
+            rationale=f"Rationale {n}",
+            draft_synthesis=f"Synthesis {n}",
+        )
+        return ConceptAssignment(
+            existing_concepts=list(existing),
+            proposed_new_concepts=[proposed],
+        )
+
+    return _make_assignment
+
+
+def _mock_recompile_result():
+    from quant_llm_wiki.wiki.compile_llm import RecompileResult
+    return RecompileResult("S", "D", [], [], [], [], [], [], [])
+
+
+class BuildIndexTextInvariantTests(unittest.TestCase):
+    def test_build_index_text_unchanged_across_assign_loop(self):
+        """
+        Assign loop must not change the stable-concept set that
+        _build_index_text reads. Locks in the precondition for the
+        _build_index_text hoist optimization.
+
+        Snapshots are taken INSIDE compile_wiki via side_effect:
+          - first assign_concepts call  = state at iteration 1 entry
+          - first recompile_concept call = state at end of assign loop
+        Anything bootstrap/rebuild does BEFORE the assign loop is
+        irrelevant — the hoist only affects the loop-internal window.
+
+        Trigger: mocked assign_concepts MUST return at least one
+        existing_concept so recompile fires (proposed-only assignments
+        do not enter affected_concept_slugs).
+        """
+        from quant_llm_wiki.wiki.compile import _build_index_text, compile_wiki
+        with tempfile.TemporaryDirectory() as tmp:
+            kb_root = Path(tmp)
+            wiki_dir = kb_root / "wiki"
+            _seed_kb_with_articles(kb_root)  # bootstrap will seed stable concept
+
+            snapshot = {}
+            _assign_mock = _mock_assign_with_existing_and_proposed(
+                existing=["momentum-strategies"],
+            )
+
+            def _assign_side_effect(*args, **kwargs):
+                snapshot.setdefault(
+                    "index_text_at_loop_entry",
+                    _build_index_text(wiki_dir),
+                )
+                return _assign_mock()
+
+            def _recompile_side_effect(*args, **kwargs):
+                snapshot.setdefault(
+                    "index_text_at_loop_exit",
+                    _build_index_text(wiki_dir),
+                )
+                return _mock_recompile_result()
+
+            with unittest.mock.patch(
+                "quant_llm_wiki.wiki.compile.assign_concepts",
+                side_effect=_assign_side_effect,
+            ), unittest.mock.patch(
+                "quant_llm_wiki.wiki.compile.recompile_concept",
+                side_effect=_recompile_side_effect,
+            ):
+                compile_wiki(kb_root=kb_root, mode="incremental")
+
+            self.assertIn("index_text_at_loop_entry", snapshot)
+            self.assertIn("index_text_at_loop_exit", snapshot)
+            # Sanity: stable set is non-empty (bootstrap seeded
+            # momentum-strategies), so the equality isn't trivially
+            # satisfied by empty == empty.
+            self.assertNotEqual(snapshot["index_text_at_loop_entry"], "")
+            self.assertEqual(
+                snapshot["index_text_at_loop_entry"],
+                snapshot["index_text_at_loop_exit"],
+            )
 
 
 if __name__ == "__main__":
