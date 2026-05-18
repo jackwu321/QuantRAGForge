@@ -5,7 +5,6 @@ from __future__ import annotations
 import argparse
 import json
 import os
-import shutil
 import sys
 import tempfile
 import time
@@ -187,6 +186,7 @@ def _parse_event(stderr: str, event: str, wall_ms: float | None = None, default:
 
 
 def main() -> int:
+    os.environ.setdefault("QLW_PERF_DEBUG", "1")
     args = parse_args()
     scale_cfg = SCALES[args.scale]
     args.out.mkdir(parents=True, exist_ok=True)
