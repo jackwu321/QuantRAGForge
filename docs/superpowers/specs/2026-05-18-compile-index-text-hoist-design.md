@@ -36,6 +36,10 @@ Codex 二次评审指出这条语义风险**按当前代码不成立**：
 
 **新增测试** `tests/test_wiki_compile.py`：
 
+**关键设计要点（v2，2026-05-18 修订）**：我们要锁的不变量是**"从 assign 循环第一次迭代开始 → assign 循环结束"**这个窗口内 `_build_index_text(wiki_dir)` 不变，而不是从"compile_wiki 调用前"到"compile_wiki 调用后"。原因：`compile_wiki` 在进入 assign 循环**之前**会调用 `bootstrap_wiki` (L234) 和（rebuild 模式下）删除 + 重写所有 concept 文件 (L237–250)；这些操作虽然可能改变 stable 集合，但都不在 hoist 影响的窗口里。Hoist 把 `_build_index_text` 从循环内移到循环外、但仍在 `_t_assign_start` **之后**——所以我们要测的就是这个 window-internal invariant。
+
+具体做法：用 `side_effect` 在**第一次 `assign_concepts` 调用**（assign 循环 iteration 1 进入时）和**第一次 `recompile_concept` 调用**（assign 循环结束、recompile 循环开始第一刻，对应 compile.py:L336 计时切分点之后立刻）两个点 snapshot。这两个点恰好是 assign loop 的进入/退出边界，且都在 `compile_wiki` 内部，对 bootstrap 的行为无感。
+
 ```python
 class BuildIndexTextInvariantTests(unittest.TestCase):
     def test_build_index_text_unchanged_across_assign_loop(self):
@@ -44,48 +48,64 @@ class BuildIndexTextInvariantTests(unittest.TestCase):
         _build_index_text reads. Locks in the precondition for the
         _build_index_text hoist optimization.
 
-        Trigger: snapshot index text on the first recompile_concept
-        call. To make recompile fire, the mocked assign_concepts
-        MUST return at least one existing_concept (proposed-only
-        assignments do not enter affected_concept_slugs, so recompile
-        would never be invoked).
+        Snapshots are taken INSIDE compile_wiki via side_effect:
+          - first assign_concepts call  = state at iteration 1 entry
+          - first recompile_concept call = state at end of assign loop
+        Anything bootstrap/rebuild does BEFORE the assign loop is
+        irrelevant — the hoist only affects the loop-internal window.
+
+        Trigger: mocked assign_concepts MUST return at least one
+        existing_concept so recompile fires (proposed-only assignments
+        do not enter affected_concept_slugs).
         """
+        from quant_llm_wiki.wiki import compile as wiki_compile
         from quant_llm_wiki.wiki.compile import _build_index_text, compile_wiki
         with tempfile.TemporaryDirectory() as tmp:
             kb_root = Path(tmp)
             wiki_dir = kb_root / "wiki"
-            # Seed: one stable concept "momentum-strategies" + two
-            # articles. Mocked assign_concepts returns BOTH the seeded
-            # existing concept (so recompile fires) AND a proposed new
-            # concept (so the assign loop exercises _create_proposed_concept).
-            _seed_kb_with_stable_concept_and_articles(
-                kb_root, stable_slug="momentum-strategies",
-            )
+            _seed_kb_with_articles(kb_root)  # 不需要 pre-seed concept；bootstrap 会做
 
-            before = _build_index_text(wiki_dir)
             snapshot = {}
-            def _capture(*a, **kw):
+            real_assign = wiki_compile.assign_concepts  # not used; just for clarity
+
+            def _assign_side_effect(*args, **kwargs):
                 snapshot.setdefault(
-                    "index_text_at_end_of_assign",
+                    "index_text_at_loop_entry",
+                    _build_index_text(wiki_dir),
+                )
+                return _mock_assign_with_existing_and_proposed(
+                    existing=["momentum-strategies"],
+                )()
+
+            def _recompile_side_effect(*args, **kwargs):
+                snapshot.setdefault(
+                    "index_text_at_loop_exit",
                     _build_index_text(wiki_dir),
                 )
                 return _mock_recompile_result()
+
             with unittest.mock.patch(
                 "quant_llm_wiki.wiki.compile.assign_concepts",
-                side_effect=_mock_assign_with_existing_and_proposed(
-                    existing=["momentum-strategies"],
-                ),
+                side_effect=_assign_side_effect,
             ), unittest.mock.patch(
                 "quant_llm_wiki.wiki.compile.recompile_concept",
-                side_effect=_capture,
+                side_effect=_recompile_side_effect,
             ):
-                compile_wiki(kb_root=kb_root, mode="rebuild")
+                compile_wiki(kb_root=kb_root, mode="incremental")
 
-            self.assertIn("index_text_at_end_of_assign", snapshot)
-            self.assertEqual(before, snapshot["index_text_at_end_of_assign"])
+            self.assertIn("index_text_at_loop_entry", snapshot)
+            self.assertIn("index_text_at_loop_exit", snapshot)
+            # Sanity: the stable set is non-empty (bootstrap seeded
+            # momentum-strategies as stable), so the test isn't
+            # trivially satisfied by empty == empty.
+            self.assertNotEqual(snapshot["index_text_at_loop_entry"], "")
+            self.assertEqual(
+                snapshot["index_text_at_loop_entry"],
+                snapshot["index_text_at_loop_exit"],
+            )
 ```
 
-`_seed_kb_with_stable_concept_and_articles`、`_mock_assign_with_existing_and_proposed`、`_mock_recompile_result` 在测试文件顶部以小 helper 形式存在（不复用现成 fixture，本测试要明确控制 stable/proposed 边界）。
+`_seed_kb_with_articles`、`_mock_assign_with_existing_and_proposed`、`_mock_recompile_result` 在测试文件顶部以小 helper 形式存在。`_seed_kb_with_articles` 创建两个 article dir（仿 `_setup_corpus` 行 119–132 的 frontmatter shape），让 assign 循环至少跑两轮（一轮证明不了"循环内不变"）。**不**手动 pre-seed concept——bootstrap 会自己写入 `momentum-strategies`（status: stable），它会自然进入 `_build_index_text` 输出。`_mock_assign_with_existing_and_proposed(existing=[...])` 每次返回一个不同 slug 的 `ProposedConcept`（用闭包计数器避免两个 article 抢同名 file），让 assign 循环真的写出 proposed concepts。
 
 **Gate-1**：测试在当前 HEAD pass。
 
