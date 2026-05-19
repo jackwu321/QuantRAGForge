@@ -287,7 +287,12 @@ class WikiHealthCacheTests(unittest.TestCase):
             self._set_mtime(cache_path, now)
             self._set_all_inputs_older(root, now)
 
-            with patch("quant_llm_wiki.wiki.lint.lint_wiki") as mock_lint:
+            # Patch the call-site binding in brainstorm (lint_wiki was imported
+            # at module level), and give the mock a return_value so any
+            # accidental fallback would *also* yield truthy — making
+            # assert_not_called() the actual guard, not assertTrue.
+            with patch("quant_llm_wiki.query.brainstorm.lint_wiki") as mock_lint:
+                mock_lint.return_value = type("R", (), {"ok_for_brainstorm": lambda self: True})()
                 result = mod._wiki_is_healthy_for_query(root)
 
             self.assertTrue(result)
