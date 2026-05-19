@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import argparse
+import json
 import os
 import re
 import sys
@@ -38,6 +39,7 @@ from quant_llm_wiki.wiki.state import (
     load_wiki_state,
 )
 from quant_llm_wiki.shared_perf import _emit_perf
+from quant_llm_wiki.wiki.lint import lint_wiki
 
 
 DEFAULT_TOP_K = 8
@@ -751,11 +753,90 @@ def _concepts_to_blocks(
     return blocks
 
 
+def _lint_cache_ok_for_brainstorm(kb_root: Path) -> bool | None:
+    """Return cached ok_for_brainstorm if lint_report.json is strictly newer than
+    all lint_wiki inputs; return None to signal a cache miss (caller must re-lint).
+
+    Input classes covered (mirrors lint_wiki's full read set):
+      1. kb_root/wiki/concepts/*.md
+      2. kb_root/wiki/sources/*.md
+      3. kb_root/wiki/state.json
+      4. Every article file referenced by state.sources keys  ← spec-gap fix:
+         hand-editing an article invalidates the cache even when the other
+         three classes are untouched.
+
+    state.json is parsed with json.loads; any OSError / JSONDecodeError → cache miss.
+    """
+    lint_path = kb_root / "wiki" / "lint_report.json"
+    try:
+        cache_mtime = lint_path.stat().st_mtime
+    except OSError:
+        return None  # no cache file
+
+    # Collect mtime of every input file (skip missing paths — they can't be newer)
+    input_mtimes: list[float] = []
+    for pattern_dir, glob in [
+        (kb_root / "wiki" / "concepts", "*.md"),
+        (kb_root / "wiki" / "sources", "*.md"),
+    ]:
+        if pattern_dir.exists():
+            for p in pattern_dir.glob(glob):
+                try:
+                    input_mtimes.append(p.stat().st_mtime)
+                except OSError:
+                    pass
+
+    state_path = kb_root / "wiki" / "state.json"
+    try:
+        state_mtime = state_path.stat().st_mtime
+        input_mtimes.append(state_mtime)
+    except OSError:
+        return None  # state.json missing → treat as cache-invalid
+
+    # Input #4: article files referenced by state.sources keys
+    try:
+        state_data = json.loads(state_path.read_text(encoding="utf-8"))
+        for article_path_str in state_data.get("sources", {}).keys():
+            article_path = Path(article_path_str)
+            try:
+                input_mtimes.append(article_path.stat().st_mtime)
+            except OSError:
+                pass  # article deleted → not newer; stale-source lint handles it
+    except (OSError, json.JSONDecodeError, AttributeError):
+        return None  # state.json unreadable/unparseable → cache miss
+
+    if not input_mtimes:
+        return None  # no inputs found; nothing to compare against
+
+    max_input_mtime = max(input_mtimes)
+    if cache_mtime <= max_input_mtime:
+        return None  # cache is stale (strict: equality also falls through)
+
+    # Cache is valid — parse the report and compute ok_for_brainstorm inline.
+    # (Mirrors WikiLintReport.ok_for_brainstorm; see lint.py:81.)
+    try:
+        data = json.loads(lint_path.read_text(encoding="utf-8"))
+        return not any(i.get("severity") == "error" for i in data.get("issues", []))
+    except (OSError, json.JSONDecodeError, AttributeError):
+        return None  # corrupt report → fall through to fresh lint
+
+
 def _wiki_is_healthy_for_query(kb_root: Path) -> bool:
-    """Audit the wiki — return True if brainstorm should use compiled memory."""
+    """Audit the wiki — return True if brainstorm should use compiled memory.
+
+    Fast path: if wiki/lint_report.json is strictly newer than all lint_wiki
+    inputs (concepts/*.md, sources/*.md, state.json, and every article file
+    referenced by state.sources), return its cached ok_for_brainstorm value
+    without invoking lint_wiki at all.
+
+    Slow path: run lint_wiki(kb_root) fresh (the previous behaviour).
+    """
     _t0 = time.perf_counter()
     try:
-        from quant_llm_wiki.wiki.lint import lint_wiki
+        cached = _lint_cache_ok_for_brainstorm(kb_root)
+        if cached is not None:
+            _emit_perf("query_lint", lint_ms=(time.perf_counter() - _t0) * 1000.0, cache="hit")
+            return cached
         return lint_wiki(kb_root).ok_for_brainstorm()
     except Exception:
         return True  # absence of lint is not a blocker; the lint itself is best-effort
