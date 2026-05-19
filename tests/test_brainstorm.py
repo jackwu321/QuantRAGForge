@@ -214,5 +214,187 @@ class QueryLogWiringTests(unittest.TestCase):
             self.assertEqual(len(log_files), 0, f"Expected no log files, found: {log_files}")
 
 
+class WikiHealthCacheTests(unittest.TestCase):
+    """Test the mtime-based short-circuit in _wiki_is_healthy_for_query."""
+
+    # ------------------------------------------------------------------
+    # Helpers
+    # ------------------------------------------------------------------
+
+    _STATE_V1 = "v1"
+
+    def _make_kb(self, tmp: str) -> Path:
+        """Create a minimal KB layout with concepts, sources, state.json, and an article."""
+        root = Path(tmp)
+        (root / "wiki" / "concepts").mkdir(parents=True)
+        (root / "wiki" / "sources").mkdir(parents=True)
+        (root / "raw" / "x").mkdir(parents=True)
+        # concept
+        (root / "wiki" / "concepts" / "foo.md").write_text("# foo\n", encoding="utf-8")
+        # source summary
+        (root / "wiki" / "sources" / "bar.md").write_text("# bar\n", encoding="utf-8")
+        # article referenced by state.sources
+        article = root / "raw" / "x" / "article.md"
+        article.write_text("content\n", encoding="utf-8")
+        # state.json pointing at the article
+        import json as _json
+        state = {
+            "schema_version": self._STATE_V1,
+            "sources": {
+                str(article): {"content_hash": "abc", "last_seen": "", "feeds_concepts": []},
+            },
+            "concepts": {},
+        }
+        (root / "wiki" / "state.json").write_text(
+            _json.dumps(state), encoding="utf-8"
+        )
+        return root
+
+    def _write_lint_report(self, root: Path, *, has_error: bool = False) -> Path:
+        """Write a lint_report.json and return its path."""
+        import json as _json
+        issues = []
+        if has_error:
+            issues.append({"severity": "error", "kind": "malformed_concept",
+                           "path": "x", "message": "bad"})
+        report = {"issues": issues}
+        p = root / "wiki" / "lint_report.json"
+        p.write_text(_json.dumps(report), encoding="utf-8")
+        return p
+
+    def _set_mtime(self, path: Path, t: float) -> None:
+        os.utime(str(path), (t, t))
+
+    def _set_all_inputs_older(self, root: Path, cache_mtime: float) -> None:
+        old = cache_mtime - 10.0
+        for p in [
+            root / "wiki" / "concepts" / "foo.md",
+            root / "wiki" / "sources" / "bar.md",
+            root / "wiki" / "state.json",
+            root / "raw" / "x" / "article.md",
+        ]:
+            self._set_mtime(p, old)
+
+    # ------------------------------------------------------------------
+    # Test 1 — cache hit: report newer than all inputs
+    # ------------------------------------------------------------------
+
+    def test_cache_hit_returns_cached_value_without_lint(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp:
+            root = self._make_kb(tmp)
+            cache_path = self._write_lint_report(root, has_error=False)
+            now = 1_700_000_100.0
+            self._set_mtime(cache_path, now)
+            self._set_all_inputs_older(root, now)
+
+            # Patch the call-site binding in brainstorm (lint_wiki was imported
+            # at module level), and give the mock a return_value so any
+            # accidental fallback would *also* yield truthy — making
+            # assert_not_called() the actual guard, not assertTrue.
+            with patch("quant_llm_wiki.query.brainstorm.lint_wiki") as mock_lint:
+                mock_lint.return_value = type("R", (), {"ok_for_brainstorm": lambda self: True})()
+                result = mod._wiki_is_healthy_for_query(root)
+
+            self.assertTrue(result)
+            mock_lint.assert_not_called()
+
+    # ------------------------------------------------------------------
+    # Test 2 — cache miss: no lint_report.json
+    # ------------------------------------------------------------------
+
+    def test_cache_miss_no_report_calls_fresh_lint(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp:
+            root = self._make_kb(tmp)
+            # no lint_report.json written
+
+            with patch("quant_llm_wiki.query.brainstorm.lint_wiki") as mock_lint:
+                mock_lint.return_value = type("R", (), {"ok_for_brainstorm": lambda self: True})()
+                result = mod._wiki_is_healthy_for_query(root)
+
+            mock_lint.assert_called_once_with(root)
+
+    # ------------------------------------------------------------------
+    # Test 3 — cache miss: concept newer than cache
+    # ------------------------------------------------------------------
+
+    def test_cache_miss_concept_newer_calls_fresh_lint(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp:
+            root = self._make_kb(tmp)
+            cache_path = self._write_lint_report(root)
+            base = 1_700_000_100.0
+            self._set_mtime(cache_path, base)
+            self._set_all_inputs_older(root, base)
+            # Make concept newer
+            self._set_mtime(root / "wiki" / "concepts" / "foo.md", base + 5.0)
+
+            with patch("quant_llm_wiki.query.brainstorm.lint_wiki") as mock_lint:
+                mock_lint.return_value = type("R", (), {"ok_for_brainstorm": lambda self: True})()
+                mod._wiki_is_healthy_for_query(root)
+
+            mock_lint.assert_called_once_with(root)
+
+    # ------------------------------------------------------------------
+    # Test 4 — cache miss: source summary newer than cache
+    # ------------------------------------------------------------------
+
+    def test_cache_miss_source_newer_calls_fresh_lint(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp:
+            root = self._make_kb(tmp)
+            cache_path = self._write_lint_report(root)
+            base = 1_700_000_100.0
+            self._set_mtime(cache_path, base)
+            self._set_all_inputs_older(root, base)
+            # Make source summary newer
+            self._set_mtime(root / "wiki" / "sources" / "bar.md", base + 5.0)
+
+            with patch("quant_llm_wiki.query.brainstorm.lint_wiki") as mock_lint:
+                mock_lint.return_value = type("R", (), {"ok_for_brainstorm": lambda self: True})()
+                mod._wiki_is_healthy_for_query(root)
+
+            mock_lint.assert_called_once_with(root)
+
+    # ------------------------------------------------------------------
+    # Test 5 — cache miss: state.json newer than cache
+    # ------------------------------------------------------------------
+
+    def test_cache_miss_state_newer_calls_fresh_lint(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp:
+            root = self._make_kb(tmp)
+            cache_path = self._write_lint_report(root)
+            base = 1_700_000_100.0
+            self._set_mtime(cache_path, base)
+            self._set_all_inputs_older(root, base)
+            # Make state.json newer
+            self._set_mtime(root / "wiki" / "state.json", base + 5.0)
+
+            with patch("quant_llm_wiki.query.brainstorm.lint_wiki") as mock_lint:
+                mock_lint.return_value = type("R", (), {"ok_for_brainstorm": lambda self: True})()
+                mod._wiki_is_healthy_for_query(root)
+
+            mock_lint.assert_called_once_with(root)
+
+    # ------------------------------------------------------------------
+    # Test 6 — cache miss: referenced article newer than cache (spec-gap fix)
+    # ------------------------------------------------------------------
+
+    def test_cache_miss_article_newer_calls_fresh_lint(self) -> None:
+        """Article files referenced by state.sources are input #4; touching one
+        must invalidate the cache even when concepts/sources/state.json are older."""
+        with tempfile.TemporaryDirectory() as tmp:
+            root = self._make_kb(tmp)
+            cache_path = self._write_lint_report(root)
+            base = 1_700_000_100.0
+            self._set_mtime(cache_path, base)
+            self._set_all_inputs_older(root, base)
+            # Make the referenced article newer (spec-gap case)
+            self._set_mtime(root / "raw" / "x" / "article.md", base + 5.0)
+
+            with patch("quant_llm_wiki.query.brainstorm.lint_wiki") as mock_lint:
+                mock_lint.return_value = type("R", (), {"ok_for_brainstorm": lambda self: True})()
+                mod._wiki_is_healthy_for_query(root)
+
+            mock_lint.assert_called_once_with(root)
+
+
 if __name__ == "__main__":
     unittest.main()

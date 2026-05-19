@@ -22,6 +22,7 @@ Lint rules (order matters — short-circuit logic in ok_for_brainstorm):
 from __future__ import annotations
 
 import json
+import time
 from collections import defaultdict
 from dataclasses import asdict, dataclass, field
 from pathlib import Path
@@ -37,6 +38,7 @@ from quant_llm_wiki.wiki.schemas import (
     parse_source_summary,
 )
 from quant_llm_wiki.wiki.state import load_wiki_state, source_content_hash
+from quant_llm_wiki.shared_perf import _emit_perf
 
 
 SEVERITY = Literal["info", "warning", "error"]
@@ -351,63 +353,74 @@ def lint_wiki(
     state_path = kb_root / "wiki" / "state.json"
     lint_path = kb_root / "wiki" / "lint_report.json"
 
+    _t_total = time.perf_counter()
+    _scan_ms = 0.0
+    _write_ms = 0.0
     report = WikiLintReport()
-    if not wiki_dir.exists():
-        return report
-
-    concepts: list[ConceptArticle] = []
-    cdir = wiki_dir / "concepts"
-    if cdir.exists():
-        for md in sorted(cdir.glob("*.md")):
-            raw_text = md.read_text(encoding="utf-8")
-            try:
-                concept = parse_concept(raw_text)
-            except Exception as exc:
-                report.issues.append(WikiLintIssue(
-                    severity="error",
-                    kind="malformed_concept",
-                    path=str(md),
-                    message=f"Failed to parse: {exc}",
-                    suggested_action="Inspect the file or rerun compile_wiki --rebuild.",
-                ))
-                continue
-            concepts.append(concept)
-            report.issues.extend(_check_unsupported_bullets(concept, md))
-            report.issues.extend(_check_unsupported_claims(concept, md))
-            report.issues.extend(_check_orphan_concept(concept, md))
-            report.issues.extend(_check_oversized(concept, md, oversized_byte_limit))
-            report.issues.extend(_check_concept_sections(concept, raw_text, md))
-
-    sources_dir = wiki_dir / "sources"
-    if sources_dir.exists():
-        for md in sorted(sources_dir.glob("*.md")):
-            raw_text = md.read_text(encoding="utf-8")
-            try:
-                summary = parse_source_summary(raw_text)
-            except Exception as exc:
-                report.issues.append(WikiLintIssue(
-                    severity="warning",
-                    kind="malformed_source_summary",
-                    path=str(md),
-                    message=f"Failed to parse: {exc}",
-                    suggested_action="Re-run compile_wiki to regenerate.",
-                ))
-                continue
-            report.issues.extend(_check_source_summary_schema(summary, raw_text, md))
-
-    state = load_wiki_state(state_path)
-    report.issues.extend(_check_stale_sources(state, kb_root))
-    report.issues.extend(_check_duplicate_aliases(concepts))
-    report.issues.extend(_check_orphan_sources(wiki_dir, concepts))
-
-    # Persist for audit_wiki and external introspection
     try:
-        lint_path.parent.mkdir(parents=True, exist_ok=True)
-        lint_path.write_text(json.dumps(report.to_dict(), ensure_ascii=False, indent=2), encoding="utf-8")
-    except OSError:
-        pass
+        if not wiki_dir.exists():
+            return report
 
-    return report
+        _t_scan = time.perf_counter()
+        concepts: list[ConceptArticle] = []
+        cdir = wiki_dir / "concepts"
+        if cdir.exists():
+            for md in sorted(cdir.glob("*.md")):
+                raw_text = md.read_text(encoding="utf-8")
+                try:
+                    concept = parse_concept(raw_text)
+                except Exception as exc:
+                    report.issues.append(WikiLintIssue(
+                        severity="error",
+                        kind="malformed_concept",
+                        path=str(md),
+                        message=f"Failed to parse: {exc}",
+                        suggested_action="Inspect the file or rerun compile_wiki --rebuild.",
+                    ))
+                    continue
+                concepts.append(concept)
+                report.issues.extend(_check_unsupported_bullets(concept, md))
+                report.issues.extend(_check_unsupported_claims(concept, md))
+                report.issues.extend(_check_orphan_concept(concept, md))
+                report.issues.extend(_check_oversized(concept, md, oversized_byte_limit))
+                report.issues.extend(_check_concept_sections(concept, raw_text, md))
+
+        sources_dir = wiki_dir / "sources"
+        if sources_dir.exists():
+            for md in sorted(sources_dir.glob("*.md")):
+                raw_text = md.read_text(encoding="utf-8")
+                try:
+                    summary = parse_source_summary(raw_text)
+                except Exception as exc:
+                    report.issues.append(WikiLintIssue(
+                        severity="warning",
+                        kind="malformed_source_summary",
+                        path=str(md),
+                        message=f"Failed to parse: {exc}",
+                        suggested_action="Re-run compile_wiki to regenerate.",
+                    ))
+                    continue
+                report.issues.extend(_check_source_summary_schema(summary, raw_text, md))
+
+        state = load_wiki_state(state_path)
+        report.issues.extend(_check_stale_sources(state, kb_root))
+        report.issues.extend(_check_duplicate_aliases(concepts))
+        report.issues.extend(_check_orphan_sources(wiki_dir, concepts))
+        _scan_ms = (time.perf_counter() - _t_scan) * 1000.0
+
+        # Persist for audit_wiki and external introspection
+        _t_write = time.perf_counter()
+        try:
+            lint_path.parent.mkdir(parents=True, exist_ok=True)
+            lint_path.write_text(json.dumps(report.to_dict(), ensure_ascii=False, indent=2), encoding="utf-8")
+        except OSError:
+            pass
+        _write_ms = (time.perf_counter() - _t_write) * 1000.0
+
+        return report
+    finally:
+        _total_ms = (time.perf_counter() - _t_total) * 1000.0
+        _emit_perf("lint_wiki", scan_ms=_scan_ms, write_ms=_write_ms, total_ms=_total_ms)
 
 
 # ---------------------------------------------------------------------------
