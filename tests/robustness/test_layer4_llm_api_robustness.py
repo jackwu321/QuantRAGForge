@@ -531,6 +531,58 @@ class TestRetryBehavior(unittest.TestCase):
 
 
 # ===========================================================================
+# Retry-After Header Parsing Tests
+# ===========================================================================
+
+
+class TestRetryAfterParsing(unittest.TestCase):
+    """_retry_after_seconds: plain seconds, HTTP-date, and edge values."""
+
+    @staticmethod
+    def _resp(value):
+        r = MagicMock()
+        r.headers = {} if value is None else {"Retry-After": value}
+        return r
+
+    def test_plain_seconds_positive(self):
+        from quant_llm_wiki.shared import _retry_after_seconds
+        self.assertAlmostEqual(_retry_after_seconds(self._resp("7")), 7.0)
+
+    def test_plain_seconds_zero(self):
+        from quant_llm_wiki.shared import _retry_after_seconds
+        self.assertEqual(_retry_after_seconds(self._resp("0")), 0.0)
+
+    def test_plain_seconds_negative_clamps_to_zero(self):
+        from quant_llm_wiki.shared import _retry_after_seconds
+        self.assertEqual(_retry_after_seconds(self._resp("-5")), 0.0)
+
+    def test_plain_seconds_very_large_passes_through(self):
+        from quant_llm_wiki.shared import _retry_after_seconds
+        self.assertAlmostEqual(_retry_after_seconds(self._resp("86400")), 86400.0)
+
+    def test_http_date_future_returns_seconds_until_target(self):
+        from datetime import datetime, timezone, timedelta
+        from email.utils import format_datetime
+        from quant_llm_wiki.shared import _retry_after_seconds
+        target = datetime.now(timezone.utc) + timedelta(seconds=120)
+        value = format_datetime(target, usegmt=True)
+        result = _retry_after_seconds(self._resp(value))
+        self.assertIsNotNone(result)
+        self.assertAlmostEqual(result, 120.0, delta=2.0)
+
+    def test_http_date_in_past_returns_zero(self):
+        from quant_llm_wiki.shared import _retry_after_seconds
+        self.assertEqual(
+            _retry_after_seconds(self._resp("Wed, 21 Oct 2020 07:28:00 GMT")),
+            0.0,
+        )
+
+    def test_garbage_returns_none(self):
+        from quant_llm_wiki.shared import _retry_after_seconds
+        self.assertIsNone(_retry_after_seconds(self._resp("not-a-date")))
+
+
+# ===========================================================================
 # Inter-Call Rate Limiter Tests
 # ===========================================================================
 

@@ -10,6 +10,8 @@ import sys
 import threading
 import time
 from dataclasses import dataclass
+from datetime import datetime
+from email.utils import parsedate_to_datetime
 from pathlib import Path
 from typing import Any
 
@@ -408,7 +410,11 @@ def _set_llm_cooldown(wait: float) -> None:
 
 
 def _retry_after_seconds(response: Any) -> float | None:
-    """Parse a Retry-After header into seconds, or None if missing/unparseable."""
+    """Parse a Retry-After header into seconds, or None if missing/unparseable.
+
+    Accepts plain seconds (RFC 7231 §7.1.3 delta-seconds) and HTTP-date.
+    Negative deltas and past HTTP-dates clamp to 0.0.
+    """
     if response is None:
         return None
     headers = getattr(response, "headers", None)
@@ -420,11 +426,19 @@ def _retry_after_seconds(response: Any) -> float | None:
         return None
     if not value:
         return None
+    raw = str(value).strip()
     try:
-        return max(0.0, float(str(value).strip()))
+        return max(0.0, float(raw))
     except (TypeError, ValueError):
-        # HTTP-date format is rare from LLM providers; skip rather than parse.
+        pass
+    try:
+        target = parsedate_to_datetime(raw)
+    except (TypeError, ValueError):
         return None
+    if target is None:
+        return None
+    now = datetime.now(target.tzinfo) if target.tzinfo else datetime.now()
+    return max(0.0, (target - now).total_seconds())
 
 
 def _backoff_seconds(attempt: int, status: int, response: Any = None) -> float:
