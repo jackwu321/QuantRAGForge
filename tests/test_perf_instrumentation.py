@@ -456,5 +456,56 @@ class BenchmarkHarnessParsesNewEventsTests(unittest.TestCase):
         self.assertEqual(result2, {"calls": 0})
 
 
+class LLMRateGatePerfTests(unittest.TestCase):
+    """post_llm_json emits a llm_rate_gate perf line, gated on QLW_PERF_DEBUG."""
+
+    def _make_success_response(self):
+        resp = unittest.mock.MagicMock()
+        resp.status_code = 200
+        resp.raise_for_status.return_value = None
+        resp.json.return_value = {"ok": True}
+        return resp
+
+    def _run_post(self):
+        import quant_llm_wiki.shared as kb_shared
+        kb_shared._last_llm_call_ts = 0.0
+        kb_shared._llm_cooldown_until = 0.0
+        with unittest.mock.patch(
+            "quant_llm_wiki.shared.get_llm_config",
+            return_value=("test-key", "https://fake.url/v4", "glm-4"),
+        ), unittest.mock.patch(
+            "quant_llm_wiki.shared.requests.post",
+            return_value=self._make_success_response(),
+        ), unittest.mock.patch("quant_llm_wiki.shared.time.sleep"):
+            kb_shared.post_llm_json("/chat/completions", {"model": "test", "messages": []})
+
+    def test_emits_when_debug_enabled(self):
+        buf = io.StringIO()
+        with unittest.mock.patch.dict(
+            os.environ,
+            {"QLW_PERF_DEBUG": "1", "LLM_MIN_INTERVAL_SECONDS": "0"},
+            clear=False,
+        ), redirect_stderr(buf):
+            self._run_post()
+        events = parse_perf_lines(buf.getvalue())
+        gate_events = [e for e in events if e["event"] == "llm_rate_gate"]
+        self.assertEqual(len(gate_events), 1)
+        fields = gate_events[0]["fields"]
+        self.assertIn("cooldowns_applied", fields)
+        self.assertIn("total_wait_ms", fields)
+        self.assertEqual(fields["cooldowns_applied"], "0")
+
+    def test_silent_when_debug_disabled(self):
+        buf = io.StringIO()
+        env_without_debug = {
+            k: v for k, v in os.environ.items() if k != "QLW_PERF_DEBUG"
+        }
+        env_without_debug["LLM_MIN_INTERVAL_SECONDS"] = "0"
+        with unittest.mock.patch.dict(os.environ, env_without_debug, clear=True), \
+             redirect_stderr(buf):
+            self._run_post()
+        self.assertNotIn("llm_rate_gate", buf.getvalue())
+
+
 if __name__ == "__main__":
     unittest.main()

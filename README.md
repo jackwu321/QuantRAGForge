@@ -448,12 +448,15 @@ Quant_LLM_Wiki works with **any OpenAI-compatible API**. Configure via `.env` fi
 | `LLM_BASE_URL` | `https://open.bigmodel.cn/api/paas/v4` | API base URL |
 | `LLM_MODEL` | `glm-4.7` | Chat model name |
 | `LLM_EMBEDDING_MODEL` | `embedding-3` | Embedding model name |
-| `LLM_CONNECT_TIMEOUT` | `10` | Connection timeout (seconds) |
-| `LLM_READ_TIMEOUT` | `120` | Read timeout (seconds) |
-| `LLM_MAX_RETRIES` | `2` | Max retry attempts |
-| `LLM_CONCURRENCY` | `3` | Max parallel LLM requests for enrichment |
+| `LLM_CONNECT_TIMEOUT` | `15` | Connection timeout (seconds) |
+| `LLM_READ_TIMEOUT` | `180` | Read timeout (seconds) |
+| `LLM_MAX_RETRIES` | `4` | Max retry attempts |
+| `LLM_MIN_INTERVAL_SECONDS` | `2.0` | Process-local minimum spacing before LLM provider requests; set `0` to disable pacing for tests or local providers |
+| `LLM_CONCURRENCY` | `3` | Worker parallelism for enrichment; request pacing is controlled separately by `LLM_MIN_INTERVAL_SECONDS` and 429 cooldowns |
 
 Legacy `ZHIPU_*` prefixed variables are also supported as fallbacks.
+
+When a provider returns HTTP 429, later LLM requests in the same process honor a shared cooldown based on `Retry-After` when present, or the normal 429 retry backoff otherwise. This intentionally favors conservative batch processing over maximum provider throughput.
 
 ### Content Classification
 

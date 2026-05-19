@@ -10,6 +10,8 @@ import sys
 import threading
 import time
 from dataclasses import dataclass
+from datetime import datetime
+from email.utils import parsedate_to_datetime
 from pathlib import Path
 from typing import Any
 
@@ -19,6 +21,8 @@ except ImportError:  # pragma: no cover - runtime dependency
     requests = None
 
 from dotenv import load_dotenv
+
+from quant_llm_wiki.shared_perf import _emit_perf
 
 # Auto-load .env. First match wins (load_dotenv defaults to override=False), so
 # user-controlled locations take precedence over the package-bundled fallback.
@@ -46,8 +50,8 @@ DEFAULT_SOURCE_DIRS = ("reviewed", "high-value")
 #   LLM_CONNECT_TIMEOUT / ZHIPU_CONNECT_TIMEOUT  — Connection timeout in seconds
 #   LLM_READ_TIMEOUT    / ZHIPU_READ_TIMEOUT     — Read timeout in seconds
 #   LLM_MAX_RETRIES     / ZHIPU_MAX_RETRIES      — Max retry attempts
-#   LLM_MIN_INTERVAL_SECONDS                     — Min seconds between LLM calls (default: 0.5)
-#   LLM_CONCURRENCY                              — Max parallel LLM requests (default: 3)
+#   LLM_MIN_INTERVAL_SECONDS                     — Min seconds between LLM calls (default: 2.0)
+#   LLM_CONCURRENCY                              — Enrichment worker parallelism (default: 3)
 # ---------------------------------------------------------------------------
 
 DEFAULT_LLM_BASE_URL = "https://open.bigmodel.cn/api/paas/v4"
@@ -56,7 +60,7 @@ DEFAULT_EMBEDDING_MODEL = "embedding-3"
 DEFAULT_CONNECT_TIMEOUT = 15
 DEFAULT_READ_TIMEOUT = 180
 DEFAULT_MAX_RETRIES = 4
-DEFAULT_MIN_INTERVAL_SECONDS = 0.5
+DEFAULT_MIN_INTERVAL_SECONDS = 2.0
 DEFAULT_LLM_CONCURRENCY = 3
 PLACEHOLDER_TEXTS = {"待补充。", "待生成。"}
 
@@ -366,6 +370,7 @@ def _is_retryable_status(status_code: int) -> bool:
 
 # Module-level rate limiter shared across all LLM API calls.
 _last_llm_call_ts: float = 0.0
+_llm_cooldown_until: float = 0.0
 _llm_call_lock = threading.Lock()
 
 
@@ -381,22 +386,42 @@ def _min_interval_seconds() -> float:
         return DEFAULT_MIN_INTERVAL_SECONDS
 
 
-def _enforce_min_interval() -> None:
-    """Sleep so successive LLM calls are spaced at least min_interval apart."""
-    global _last_llm_call_ts
+def _enforce_llm_rate_gate() -> tuple[bool, float]:
+    """Sleep until the gate allows; return (cooldown_applied, wait_seconds_paid)."""
+    global _last_llm_call_ts, _llm_cooldown_until
     interval = _min_interval_seconds()
-    if interval <= 0:
-        return
+    cooldown_applied = False
+    wait_paid = 0.0
     with _llm_call_lock:
         now = time.monotonic()
-        wait = interval - (now - _last_llm_call_ts)
+        min_interval_wait = interval - (now - _last_llm_call_ts) if interval > 0 else 0.0
+        cooldown_wait = _llm_cooldown_until - now
+        wait = max(min_interval_wait, cooldown_wait)
         if wait > 0:
             time.sleep(wait)
+            wait_paid = wait
+            if cooldown_wait > 0:
+                cooldown_applied = True
+                _llm_cooldown_until = 0.0
         _last_llm_call_ts = time.monotonic()
+    return cooldown_applied, wait_paid
+
+
+def _set_llm_cooldown(wait: float) -> None:
+    """Apply a process-wide cooldown for future LLM requests."""
+    global _llm_cooldown_until
+    if wait <= 0:
+        return
+    with _llm_call_lock:
+        _llm_cooldown_until = max(_llm_cooldown_until, time.monotonic() + wait)
 
 
 def _retry_after_seconds(response: Any) -> float | None:
-    """Parse a Retry-After header into seconds, or None if missing/unparseable."""
+    """Parse a Retry-After header into seconds, or None if missing/unparseable.
+
+    Accepts plain seconds (RFC 7231 §7.1.3 delta-seconds) and HTTP-date.
+    Negative deltas and past HTTP-dates clamp to 0.0.
+    """
     if response is None:
         return None
     headers = getattr(response, "headers", None)
@@ -408,11 +433,19 @@ def _retry_after_seconds(response: Any) -> float | None:
         return None
     if not value:
         return None
+    raw = str(value).strip()
     try:
-        return max(0.0, float(str(value).strip()))
+        return max(0.0, float(raw))
     except (TypeError, ValueError):
-        # HTTP-date format is rare from LLM providers; skip rather than parse.
+        pass
+    try:
+        target = parsedate_to_datetime(raw)
+    except (TypeError, ValueError):
         return None
+    if target is None:
+        return None
+    now = datetime.now(target.tzinfo) if target.tzinfo else datetime.now()
+    return max(0.0, (target - now).total_seconds())
 
 
 def _backoff_seconds(attempt: int, status: int, response: Any = None) -> float:
@@ -468,66 +501,88 @@ def post_llm_json(path: str, payload: dict[str, Any]) -> dict[str, Any]:
     Non-retryable errors (4xx except 429) fail immediately.
     Auth errors (401/403) raise LLMAuthError for fail-fast handling.
 
-    Calls are paced by LLM_MIN_INTERVAL_SECONDS (default 0.5s) to avoid
-    slamming providers with strict per-minute limits.
+    Calls are paced by LLM_MIN_INTERVAL_SECONDS (default 2.0s) and any
+    process-wide 429 cooldown to avoid slamming providers with strict
+    per-minute limits.
     """
     require_requests()
     api_key, base_url, _ = get_llm_config()
     connect_timeout, read_timeout, max_retries = _timeouts_for_env()
     last_error: Exception | None = None
-    for attempt in range(max_retries + 1):
-        _enforce_min_interval()
-        try:
-            response = requests.post(
-                f"{base_url}{path}",
-                headers={
-                    "Authorization": f"Bearer {api_key}",
-                    "Content-Type": "application/json",
-                },
-                json=payload,
-                timeout=(connect_timeout, read_timeout),
-            )
-            response.raise_for_status()
-            return _sanitize_response_strings(response.json())
-        except requests.exceptions.HTTPError as exc:
-            response = exc.response
-            status = response.status_code if response is not None else 0
-            if status in (401, 403):
-                raise LLMAuthError(
-                    f"LLM API authentication failed ({status}). Check your LLM_API_KEY."
-                ) from exc
-            if not _is_retryable_status(status):
-                raise
-            last_error = exc
-            if attempt >= max_retries:
-                break
-            wait = _backoff_seconds(attempt, status, response)
-            print(
-                f"[llm-retry] attempt {attempt + 1}/{max_retries + 1} "
-                f"status={status}, sleeping {wait:.1f}s",
-                file=sys.stderr,
-                flush=True,
-            )
-            time.sleep(wait)
-        except requests.exceptions.RequestException as exc:
-            last_error = exc
-            if attempt >= max_retries:
-                break
-            wait = _backoff_seconds(attempt, 0, None)
-            print(
-                f"[llm-retry] attempt {attempt + 1}/{max_retries + 1} "
-                f"network error ({type(exc).__name__}), sleeping {wait:.1f}s",
-                file=sys.stderr,
-                flush=True,
-            )
-            time.sleep(wait)
-    if last_error is None:
-        raise RuntimeError("LLM API request failed without an explicit exception")
-    url = f"{base_url}{path}"
-    raise type(last_error)(
-        f"LLM API request to {url} failed after {max_retries + 1} attempt(s): "
-        f"{type(last_error).__name__}: {last_error}"
-    ) from last_error
+    cooldowns_applied = 0
+    total_wait_seconds = 0.0
+    try:
+        for attempt in range(max_retries + 1):
+            cd_applied, waited = _enforce_llm_rate_gate()
+            if cd_applied:
+                cooldowns_applied += 1
+            total_wait_seconds += waited
+            try:
+                response = requests.post(
+                    f"{base_url}{path}",
+                    headers={
+                        "Authorization": f"Bearer {api_key}",
+                        "Content-Type": "application/json",
+                    },
+                    json=payload,
+                    timeout=(connect_timeout, read_timeout),
+                )
+                response.raise_for_status()
+                return _sanitize_response_strings(response.json())
+            except requests.exceptions.HTTPError as exc:
+                response = exc.response
+                status = response.status_code if response is not None else 0
+                if status in (401, 403):
+                    raise LLMAuthError(
+                        f"LLM API authentication failed ({status}). Check your LLM_API_KEY."
+                    ) from exc
+                if not _is_retryable_status(status):
+                    raise
+                last_error = exc
+                wait = _backoff_seconds(attempt, status, response)
+                retry_after = _retry_after_seconds(response) if status == 429 else None
+                if status == 429:
+                    _set_llm_cooldown(wait)
+                if attempt >= max_retries:
+                    break
+                cooldown_msg = ""
+                if status == 429:
+                    cooldown_msg = ", global cooldown"
+                    if retry_after is not None:
+                        cooldown_msg += ", Retry-After honored"
+                print(
+                    f"[llm-retry] attempt {attempt + 1}/{max_retries + 1} "
+                    f"status={status}, sleeping {wait:.1f}s{cooldown_msg}",
+                    file=sys.stderr,
+                    flush=True,
+                )
+                if status != 429:
+                    time.sleep(wait)
+            except requests.exceptions.RequestException as exc:
+                last_error = exc
+                if attempt >= max_retries:
+                    break
+                wait = _backoff_seconds(attempt, 0, None)
+                print(
+                    f"[llm-retry] attempt {attempt + 1}/{max_retries + 1} "
+                    f"network error ({type(exc).__name__}), sleeping {wait:.1f}s",
+                    file=sys.stderr,
+                    flush=True,
+                )
+                time.sleep(wait)
+        if last_error is None:
+            raise RuntimeError("LLM API request failed without an explicit exception")
+        url = f"{base_url}{path}"
+        raise type(last_error)(
+            f"LLM API request to {url} failed after {max_retries + 1} attempt(s): "
+            f"{type(last_error).__name__}: {last_error}"
+        ) from last_error
+    finally:
+        _emit_perf(
+            "llm_rate_gate",
+            cooldowns_applied=cooldowns_applied,
+            total_wait_ms=total_wait_seconds * 1000.0,
+        )
 
 
 # Backward-compatible alias
