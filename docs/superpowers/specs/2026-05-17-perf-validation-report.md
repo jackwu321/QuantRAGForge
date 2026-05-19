@@ -76,6 +76,57 @@ Host: `ip-172-31-6-158`, Python `3.12.3`, timestamp `2026-05-18T14:33:16Z`.
 
 **Wall time.** End-to-end `compile_wiki` wall time drops from 23,090 ms → 2,117 ms at large scale (~91% reduction), directly tracking the assign_ms win.
 
+---
+
+## lint_wiki on Query Path — A1b Measurement (2026-05-19)
+
+### Context
+
+Spec: `docs/superpowers/specs/2026-05-18-next-steps-lint-and-zhipu.md` (Track A, Phase 1).
+v0.4.5 instrumented `_wiki_is_healthy_for_query` via `_emit_perf("query_lint", lint_ms=…)` on the brainstorm query path; `scripts/benchmark_perf.py` gained `--no-mock-lint` to exercise the real `lint_wiki` against a realistically-seeded synthetic KB. This section records the resulting query-path `lint_wiki` cost so the A.1 / A.2 / A.3 gate can be decided.
+
+### Method
+
+`scripts/benchmark_perf.py --no-mock-lint`, 5 trials per scale (more than v0.4.5's 3 — query latency wants better noise control). Synthetic KB only; the user has no real wiki on this host to spot-check against. Concept stubs are seeded with `status=stable`, populated `sources`, `related_concepts`, `key_idea_blocks`; sources directory is mirrored so `_check_orphan_sources`/`_check_stale_sources` traverse real files. The harness reads `query_lint.lint_ms` directly from the `[qlw-perf]` line on the query path; `lint_wiki.*_ms` (last-line semantics in `_parse_event`) tracks the same call.
+
+Commands run:
+
+    QLW_PERF_DEBUG=1 python3 scripts/benchmark_perf.py --scale small  --trials 5 --label lint-measure --no-mock-lint
+    QLW_PERF_DEBUG=1 python3 scripts/benchmark_perf.py --scale medium --trials 5 --label lint-measure --no-mock-lint
+    QLW_PERF_DEBUG=1 python3 scripts/benchmark_perf.py --scale large  --trials 5 --label lint-measure --no-mock-lint
+
+### Numbers (5-trial median, milliseconds)
+
+| scale  | articles × concepts | query_lint.lint_ms | lint_wiki.scan_ms | lint_wiki.write_ms |
+|--------|---------------------|-------------------:|------------------:|-------------------:|
+| small  | 20 × 10             |              27.29 |             26.69 |               0.32 |
+| medium | 100 × 40            |             120.43 |            121.45 |               0.83 |
+| large  | 500 × 100           |             580.71 |            562.31 |               3.32 |
+
+Per-trial values were tight (large: 567 / 574 / 590 / 585 / 581 ms — <5% trial-to-trial spread, low noise floor for a measurement at this magnitude). Host: `ip-172-31-6-158`, Python `3.12.3`, timestamp `2026-05-19T03:33Z`. Raw JSON in `benchmarks/20260519-033225-small-lint-measure.json`, `…-033235-medium…`, `…-033253-large…`.
+
+Note on `lint_wiki.calls`: the harness sees `calls=2` per trial — one call inside `compile_wiki` (compile-time lint), one on the query path. `_parse_event` records last-line values, so `lint_wiki.{scan,write,total}_ms` reflect the query-path call and align with `query_lint.lint_ms` (27.29 ≈ 27.00; 120.43 ≈ 122.30; 580.71 ≈ 565.64 — small drift is harness wall vs in-call accounting, not two different calls).
+
+### Findings
+
+**Cost dominated by scan, not write.** Across all scales, ≥97% of `lint_wiki` cost is the scan phase (`_check_*` traversals over `wiki/concepts/*.md` + `wiki/sources/*.md`); writing `lint_report.json` is sub-millisecond at small/medium and 3 ms at large. The cache-short-circuit pattern in A.2 (`stat().st_mtime` over inputs vs cached `lint_report.json`) directly attacks the dominant cost.
+
+**Linear-growth check.** small→medium: concepts grow 4×, `lint_ms` grows 4.4×; medium→large: concepts grow 2.5× while articles grow 5×, and `lint_ms` grows 4.8×. The growth is roughly linear in the combined input file count (concepts + sources scanned), exactly as `lint_wiki`'s `_check_*` loops would predict. There is no inflection that would saturate at higher scale — extrapolation to even larger wikis remains linear-in-inputs.
+
+**Gate verdict.** Large-scale median **580 ms** is **>200 ms**, the A.3 threshold. The trajectory 27 / 120 / 581 also exceeds the spec's A.3 example trajectory (10 / 40 / 180), so both criteria for A.3 are met.
+
+**Real-wiki spot-check pending.** This run is synthetic-only (no user wiki on this host). Before committing to A.3 design work, a one-shot run on the user's actual wiki at current concept count would calibrate whether the synthetic ratio (cost ∝ concepts + articles) maps cleanly to production. Suggested single command at the user's wiki root:
+
+    QLW_PERF_DEBUG=1 python3 -c "from quant_llm_wiki.wiki.lint import lint_wiki; from pathlib import Path; lint_wiki(kb_root=Path('.'), write_report=False)"
+
+If real-wiki `lint_wiki.total_ms` lands above ~50 ms, A.3 is confirmed irrespective of synthetic trajectory.
+
+### Recommendation toward G1
+
+A.3 — **full staleness model + degradation strategy** — is mechanically indicated. Caveat: A.3 is explicitly spec-deferred ("requires a fresh brainstorm session") because choosing a staleness threshold and a stale-cache fallback policy is a design question, not an implementation one. The arrangement's A2.3 row already captures this: Track A in this iteration ends at the measurement, and A.3 opens a follow-up plan.
+
+A.2 (the mtime short-circuit) would still capture most of the wins **and** is structurally compatible with a later A.3 layer — A.3's `LintCacheEntry`/staleness model would replace the A.2 mtime comparator without affecting the call-site contract. If the user prefers to ship a low-risk patch first and design A.3 separately, A.2 is a clean intermediate.
+
 ## How to reproduce
 
     QLW_PERF_DEBUG=1 python3 scripts/benchmark_perf.py --scale medium --trials 3 --label myrun
