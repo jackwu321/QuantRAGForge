@@ -415,5 +415,46 @@ class LintWikiTimingTests(unittest.TestCase):
             self.assertLess(total_ms, 5000.0)
 
 
+class BenchmarkHarnessParsesNewEventsTests(unittest.TestCase):
+    """Smoke test that _parse_event (from benchmark_perf) can consume the exact
+    lines emitted by A0's _emit_perf("query_lint", ...) and
+    _emit_perf("lint_wiki", ...) calls.  This closes the drift loop opened by
+    the A0 lock test: A0 locks the emit format, A1a locks that the harness
+    parser can consume it."""
+
+    def setUp(self):
+        from benchmark_perf import _parse_event
+        self._parse_event = _parse_event
+
+    def test_parse_event_handles_query_lint_and_lint_wiki(self):
+        """Construct synthetic stderr with both new perf lines and assert round-trip."""
+        synthetic_stderr = (
+            "[qlw-perf] query_lint: lint_ms=12.34\n"
+            "[qlw-perf] lint_wiki: scan_ms=1.0 write_ms=2.0 total_ms=3.0\n"
+        )
+
+        query_lint = self._parse_event(synthetic_stderr, "query_lint")
+        self.assertEqual(query_lint["calls"], 1)
+        self.assertIsInstance(query_lint["lint_ms"], float)
+        self.assertAlmostEqual(query_lint["lint_ms"], 12.34, places=5)
+
+        lint_wiki = self._parse_event(synthetic_stderr, "lint_wiki")
+        self.assertEqual(lint_wiki["calls"], 1)
+        self.assertIsInstance(lint_wiki["scan_ms"], float)
+        self.assertAlmostEqual(lint_wiki["scan_ms"], 1.0, places=5)
+        self.assertIsInstance(lint_wiki["write_ms"], float)
+        self.assertAlmostEqual(lint_wiki["write_ms"], 2.0, places=5)
+        self.assertIsInstance(lint_wiki["total_ms"], float)
+        self.assertAlmostEqual(lint_wiki["total_ms"], 3.0, places=5)
+
+    def test_parse_event_returns_default_when_event_absent(self):
+        """When the event is not present and default is provided, return default."""
+        result = self._parse_event("", "query_lint", default={"calls": 0})
+        self.assertEqual(result, {"calls": 0})
+
+        result2 = self._parse_event("", "lint_wiki", default={"calls": 0})
+        self.assertEqual(result2, {"calls": 0})
+
+
 if __name__ == "__main__":
     unittest.main()

@@ -4,6 +4,7 @@ import argparse
 import os
 import re
 import sys
+import time
 from datetime import datetime
 from pathlib import Path
 from typing import Any
@@ -683,7 +684,6 @@ def _retrieve_concept_articles(
     Fallback: lexical token overlap on title/aliases/retrieval_hints when
     Chroma is unavailable, the index is empty, or the query has no hits.
     """
-    import time
     t0 = time.perf_counter()
     resolved_wiki_dir = wiki_dir or (resolve_kb_root(None) / "wiki")
     if not (resolved_wiki_dir / "concepts").exists():
@@ -753,7 +753,6 @@ def _concepts_to_blocks(
 
 def _wiki_is_healthy_for_query(kb_root: Path) -> bool:
     """Audit the wiki — return True if brainstorm should use compiled memory."""
-    import time
     _t0 = time.perf_counter()
     try:
         from quant_llm_wiki.wiki.lint import lint_wiki
@@ -791,7 +790,6 @@ def retrieve_blocks(
     wiki_blocks: list[KnowledgeBlock] = []
     excluded_articles: set[str] = set()
     if _should_use_wiki_memory(notes) and _wiki_is_healthy_for_query(resolved_kb_root):
-        import time
         t_wiki = time.perf_counter()
         wiki_blocks, wiki_concepts = _retrieve_concepts_and_blocks(
             query,
