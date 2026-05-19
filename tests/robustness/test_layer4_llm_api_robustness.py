@@ -529,6 +529,19 @@ class TestRetryBehavior(unittest.TestCase):
         self.assertAlmostEqual(events[1][1], 7.0, places=2)
         self.assertEqual(events[2], "post")
 
+    def test_429_backoff_has_full_jitter_distribution(self):
+        """Verify-only: _backoff_seconds adds uniform(0, base) jitter on 429s."""
+        from quant_llm_wiki.shared import _backoff_seconds
+
+        attempt = 2  # base=5, backoff=20, well below the 60s cap
+        base = 5.0
+        backoff = base * (2 ** attempt)
+        samples = [_backoff_seconds(attempt, 429, response=None) for _ in range(20)]
+        for v in samples:
+            self.assertGreaterEqual(v, backoff)
+            self.assertLessEqual(v, backoff + base)
+        self.assertGreater(len(set(samples)), 1)
+
 
 # ===========================================================================
 # Retry-After Header Parsing Tests
