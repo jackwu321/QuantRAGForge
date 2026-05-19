@@ -127,6 +127,40 @@ A.3 — **full staleness model + degradation strategy** — is mechanically indi
 
 A.2 (the mtime short-circuit) would still capture most of the wins **and** is structurally compatible with a later A.3 layer — A.3's `LintCacheEntry`/staleness model would replace the A.2 mtime comparator without affecting the call-site contract. If the user prefers to ship a low-risk patch first and design A.3 separately, A.2 is a clean intermediate.
 
+---
+
+## A2.2 Phase 2 Measurement — Cached lint_report Short-Circuit (2026-05-19)
+
+### Context
+
+Following G1 the user picked tier **A.2**: implement the mtime-based cache short-circuit before any A.3 design work. Commit `f8fb327` adds `_lint_cache_ok_for_brainstorm()` to `quant_llm_wiki/query/brainstorm.py` and rewires `_wiki_is_healthy_for_query` so the brainstorm path reads cached `wiki/lint_report.json` whenever it is strictly newer than every `lint_wiki` input. The input set covers all four classes the controller pre-grep identified — concepts, sources, `state.json`, and each article path referenced by `state.sources` (the spec-gap fix). Cache miss falls back to fresh `lint_wiki`. Commit `5d14ce6` fixes a vacuous mock-target in the cache-hit test (was patching the definition module, not the call-site binding).
+
+This section measures the cached path against the A1b baseline.
+
+### Numbers (5-trial median, milliseconds)
+
+| scale  | A1b uncached `query_lint.lint_ms` | A2.2 cached `query_lint.lint_ms` | reduction | `lint_wiki.calls` / trial |
+|--------|----------------------------------:|---------------------------------:|----------:|--------------------------:|
+| small  |                             27.29 |                             0.52 |     98.1% | 2 → 1                     |
+| medium |                            120.43 |                             1.78 |     98.5% | 2 → 1                     |
+| large  |                            580.71 |                             8.50 |     98.5% | 2 → 1                     |
+
+Per-trial values (cached): small `[0.52, 0.54, 0.53, 0.52, 0.49]`; medium `[1.62, 1.60, 1.86, 1.85, 1.78]`; large `[8.25, 8.50, 8.08, 11.11, 8.52]`. Host: `ip-172-31-6-158`, Python `3.12.3`, timestamp `2026-05-19T03:59Z`. Raw JSON: `benchmarks/20260519-035919-small-A2.2-cached.json` + medium + large.
+
+### Findings
+
+**Cached path meets the spec "single-digit ms" target at every scale.** Small and medium are sub-2 ms; large is 8.5 ms median (one trial 11 ms — within noise for a measurement at this magnitude). The spec required "single-digit ms on cached path" — confirmed.
+
+**`lint_wiki.calls` drops from 2 → 1 per trial.** Compile-time `lint_wiki` still runs once (writes the cache file as side effect); the query-time call is fully short-circuited. This is the operational signal that the cache is being hit, not just that timing improved.
+
+**Where the cached-path cost goes.** At large scale, ~8.5 ms is spent in the mtime comparator itself — primarily 500 `Path.stat()` calls over the `state.sources` article files (input class #4). Sub-ms at small/medium where the article count is 20/100. This cost is structural — it scales with article count, not with `lint_wiki`'s scan cost — and is acceptable: even at large scale it's 68× cheaper than the uncached scan and lands inside the spec budget. If/when a single-digit-ms ceiling becomes binding at much larger wikis (~5k+ articles), batching stat into a single readdir or trusting a `state.json`-only mtime are obvious follow-ups.
+
+**Spec-gap correctness.** Input class #4 (article files via `state.sources`) was added to the comparator after Opus's pre-grep noticed the original spec listed only inputs 1–3. The unit test `test_cache_miss_article_newer_calls_fresh_lint` constructs the strict case (cache newer than concepts/sources/state.json, but one referenced article is newer than cache) and asserts the fallback fires. Without input #4 the cache would silently mask `_check_stale_sources` hash-mismatch detection on hand-edited articles. The test was demanded by the user explicitly and passes.
+
+### Conclusion
+
+A.2 ships query-path lint costs from 27/120/581 ms to 0.5/1.8/8.5 ms while preserving correctness against hand-edits. The A.3 staleness-model work remains the proper long-term path, but A.2 captures the headline wins and is structurally compatible — `LintCacheEntry`/staleness can replace the mtime comparator without touching the call-site contract.
+
 ## How to reproduce
 
     QLW_PERF_DEBUG=1 python3 scripts/benchmark_perf.py --scale medium --trials 3 --label myrun
