@@ -2,6 +2,40 @@
 
 All notable changes to this project will be documented in this file.
 
+## [0.4.6] - 2026-05-19
+
+Bundle release: Track A (lint/brainstorm mtime cache + observability) and Track B (Zhipu 429 hardening + Retry-After HTTP-date + rate-gate observability).
+
+### Performance
+
+- **`lint_report` query-path mtime short-circuit** (`query/brainstorm`, #6): repeat queries against an unchanged KB skip the full lint scan. First query primes the cache; subsequent queries within the same process reuse it until any source file's mtime advances. Strict win — no API change, no env knob required.
+
+### Added
+
+- **Process-wide 429 cooldown gate** (`shared.py`, #7): when any worker receives an HTTP 429, every subsequent `post_llm_json` call in the same process honors a shared cooldown before issuing its next request. `_set_llm_cooldown(wait)` uses `max(existing, now + wait)` so concurrent 429s extend rather than overwrite the cooldown. Honors `Retry-After` ahead of exponential backoff, capped at 60 s.
+- **Retry-After HTTP-date support** (`shared.py`, #7): `_retry_after_seconds` now parses RFC 7231 HTTP-date via `email.utils.parsedate_to_datetime` in addition to the existing delta-seconds path. Past dates and negative deltas clamp to 0.0.
+- **`[qlw-perf] llm_rate_gate` line** (`shared.py`, #7): once per `post_llm_json` call, emits `cooldowns_applied=N total_wait_ms=T` under `QLW_PERF_DEBUG`. Zero overhead when the env var is unset.
+- **`[qlw-perf] query_lint` and `[qlw-perf] lint_wiki` lines** (`query/brainstorm`, `wiki/lint`, #6): per-call timing with `lint_ms` and `scan_ms`/`write_ms`/`total_ms` respectively, gated on `QLW_PERF_DEBUG`.
+- **Benchmark harness enhancements** (`scripts/benchmark_perf.py`, #6): `--no-mock-lint` flag and realistic concept seeding for the synthetic KB, plus a regex smoke test for the harness parser.
+
+### Changed
+
+- **`LLM_MIN_INTERVAL_SECONDS` default `0.5` → `2.0`** (`shared.py`, #7): more conservative pacing for batch enrichment. Restore the old default with `LLM_MIN_INTERVAL_SECONDS=0.5` in `.env` if needed.
+- **`LLM_CONNECT_TIMEOUT` default `10` → `15`**, **`LLM_READ_TIMEOUT` `120` → `180`**, **`LLM_MAX_RETRIES` `2` → `4`** (`shared.py`, #7): better tolerance for slow provider regions.
+- **429 retry path no longer calls `time.sleep(wait)` inside the retry loop** (`shared.py`, #7): the wait is converted into a cooldown that the next attempt's `_enforce_llm_rate_gate` consumes, avoiding double-sleep.
+- **`[llm-retry]` stderr line enriched with `global cooldown` / `Retry-After honored` flags** (`shared.py`, #7).
+
+### Documentation
+
+- **README**: documents the new `LLM_MIN_INTERVAL_SECONDS` knob, the updated timeout/retry defaults, and the 429 cooldown behavior.
+- **`llm_config.example.env`**: adds `LLM_MIN_INTERVAL_SECONDS=2.0` and updates `LLM_MAX_RETRIES=4`.
+- **Plan & spec docs** (#6, #7): execution arrangement for the lint + Zhipu tracks, the Track B execution plan with pre-rebase audit, and the v0.4.5 perf validation addendum.
+
+### Known limitations (deferred — own spec)
+
+- **Lock held during `_enforce_llm_rate_gate` sleep**: pre-existing v0.4.3 behavior. With concurrent enrichment workers, in-flight requests cannot enter `_set_llm_cooldown()` while another worker is sleeping in the gate, leaving a small window where a request can slip through after the provider rate-limited but before the cooldown is recorded. Strictly improved over no-cooldown baseline; full fix requires releasing the lock during sleep and needs its own spec to preserve `_last_llm_call_ts` race safety.
+- **Naive HTTP-date Retry-After** (`-0000` obsolete form): `parsedate_to_datetime` returns a naive datetime, which the code compares using `datetime.now()` in local time. LLM providers in practice send `GMT` (tz-aware UTC), so the practical impact is zero; can be tightened in a 1-line follow-up if it ever surfaces.
+
 ## [0.4.5] - 2026-05-18
 
 ### Performance
