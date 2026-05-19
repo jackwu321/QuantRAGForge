@@ -753,11 +753,15 @@ def _concepts_to_blocks(
 
 def _wiki_is_healthy_for_query(kb_root: Path) -> bool:
     """Audit the wiki — return True if brainstorm should use compiled memory."""
+    import time
+    _t0 = time.perf_counter()
     try:
         from quant_llm_wiki.wiki.lint import lint_wiki
         return lint_wiki(kb_root).ok_for_brainstorm()
     except Exception:
         return True  # absence of lint is not a blocker; the lint itself is best-effort
+    finally:
+        _emit_perf("query_lint", lint_ms=(time.perf_counter() - _t0) * 1000.0)
 
 
 def _should_use_wiki_memory(notes: list[KnowledgeNote]) -> bool:

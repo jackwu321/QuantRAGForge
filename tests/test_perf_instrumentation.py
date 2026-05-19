@@ -271,5 +271,149 @@ class EmitPerfTests(unittest.TestCase):
         self.assertEqual(buf.getvalue(), "")
 
 
+class QueryLintTimingTests(unittest.TestCase):
+    def test_query_lint_emits_lint_ms_float(self):
+        """_wiki_is_healthy_for_query must emit exactly one query_lint line, even on exception."""
+        with tempfile.TemporaryDirectory() as tmp:
+            # Minimal wiki subdir — no concepts yet; lint will succeed fast
+            (Path(tmp) / "wiki").mkdir()
+            buf = io.StringIO()
+            with unittest.mock.patch.dict(os.environ, {"QLW_PERF_DEBUG": "1"}):
+                with redirect_stderr(buf):
+                    brainstorm_mod._wiki_is_healthy_for_query(Path(tmp))
+            events = parse_perf_lines(buf.getvalue())
+            timing = [e for e in events if e["event"] == "query_lint"]
+            self.assertEqual(len(timing), 1, f"expected exactly 1 query_lint line, got {buf.getvalue()!r}")
+            f = timing[0]["fields"]
+            self.assertIn("lint_ms", f, f"missing lint_ms in {f}")
+            lint_ms = float(f["lint_ms"])
+            self.assertGreaterEqual(lint_ms, 0.0)
+            self.assertLess(lint_ms, 5000.0,
+                            "lint_ms should be milliseconds — a value this large suggests wrong unit")
+
+    def test_query_lint_emits_on_no_wiki_dir(self):
+        """query_lint line must be emitted even when wiki dir is absent (exception path)."""
+        with tempfile.TemporaryDirectory() as tmp:
+            # No wiki/ dir — lint will return early but line must still emit
+            buf = io.StringIO()
+            with unittest.mock.patch.dict(os.environ, {"QLW_PERF_DEBUG": "1"}):
+                with redirect_stderr(buf):
+                    brainstorm_mod._wiki_is_healthy_for_query(Path(tmp))
+            events = parse_perf_lines(buf.getvalue())
+            timing = [e for e in events if e["event"] == "query_lint"]
+            self.assertEqual(len(timing), 1, f"expected exactly 1 query_lint line, got {buf.getvalue()!r}")
+            f = timing[0]["fields"]
+            lint_ms = float(f["lint_ms"])
+            self.assertGreaterEqual(lint_ms, 0.0)
+            self.assertLess(lint_ms, 5000.0)
+
+
+class LintWikiTimingTests(unittest.TestCase):
+    def _make_minimal_concept(self) -> str:
+        """Return a minimal valid concept markdown accepted by parse_concept."""
+        return (
+            "---\n"
+            "title: Alpha Concept\n"
+            "slug: alpha-concept\n"
+            "aliases: []\n"
+            "status: stable\n"
+            "related_concepts: []\n"
+            "sources: []\n"
+            "content_types: []\n"
+            "last_compiled: 2026-01-01\n"
+            "compile_version: 1\n"
+            "---\n"
+            "\n"
+            "# Alpha Concept\n"
+            "\n"
+            "## Synthesis\n"
+            "\n"
+            "A minimal synthesis.\n"
+            "\n"
+            "## Definition\n"
+            "\n"
+            "A minimal definition.\n"
+            "\n"
+            "## Key Idea Blocks\n"
+            "\n"
+            "- _none_\n"
+            "\n"
+            "## Variants & Implementations\n"
+            "\n"
+            "- _none_\n"
+            "\n"
+            "## Common Combinations\n"
+            "\n"
+            "- _none_\n"
+            "\n"
+            "## Transfer Targets\n"
+            "\n"
+            "- _none_\n"
+            "\n"
+            "## Failure Modes\n"
+            "\n"
+            "- _none_\n"
+            "\n"
+            "## Open Questions\n"
+            "\n"
+            "- _none_\n"
+            "\n"
+            "## Sources\n"
+            "\n"
+            "- _none_\n"
+        )
+
+    def test_lint_wiki_emits_scan_write_total(self):
+        """lint_wiki must emit exactly one lint_wiki line with scan_ms/write_ms/total_ms."""
+        from quant_llm_wiki.wiki.lint import lint_wiki
+        with tempfile.TemporaryDirectory() as tmp:
+            kb_root = Path(tmp)
+            concepts_dir = kb_root / "wiki" / "concepts"
+            concepts_dir.mkdir(parents=True)
+            (concepts_dir / "alpha-concept.md").write_text(
+                self._make_minimal_concept(), encoding="utf-8"
+            )
+            buf = io.StringIO()
+            with unittest.mock.patch.dict(os.environ, {"QLW_PERF_DEBUG": "1"}):
+                with redirect_stderr(buf):
+                    lint_wiki(kb_root)
+            events = parse_perf_lines(buf.getvalue())
+            timing = [e for e in events if e["event"] == "lint_wiki"]
+            self.assertEqual(len(timing), 1, f"expected exactly 1 lint_wiki line, got {buf.getvalue()!r}")
+            f = timing[0]["fields"]
+            for key in ("scan_ms", "write_ms", "total_ms"):
+                self.assertIn(key, f, f"missing {key} in {f}")
+            scan_ms = float(f["scan_ms"])
+            write_ms = float(f["write_ms"])
+            total_ms = float(f["total_ms"])
+            for name, val in (("scan_ms", scan_ms), ("write_ms", write_ms), ("total_ms", total_ms)):
+                self.assertGreaterEqual(val, 0.0, f"{name} must be >= 0.0")
+                self.assertLess(val, 5000.0, f"{name} should be milliseconds — value too large")
+            self.assertGreaterEqual(total_ms, scan_ms,
+                                    "total_ms must be >= scan_ms")
+            self.assertGreaterEqual(total_ms, write_ms,
+                                    "total_ms must be >= write_ms")
+
+    def test_lint_wiki_emits_zeros_when_no_wiki_dir(self):
+        """When wiki/ does not exist, lint_wiki must still emit scan_ms=0.0 write_ms=0.0."""
+        from quant_llm_wiki.wiki.lint import lint_wiki
+        with tempfile.TemporaryDirectory() as tmp:
+            kb_root = Path(tmp)
+            # No wiki/ dir
+            buf = io.StringIO()
+            with unittest.mock.patch.dict(os.environ, {"QLW_PERF_DEBUG": "1"}):
+                with redirect_stderr(buf):
+                    lint_wiki(kb_root)
+            events = parse_perf_lines(buf.getvalue())
+            timing = [e for e in events if e["event"] == "lint_wiki"]
+            self.assertEqual(len(timing), 1, f"expected exactly 1 lint_wiki line, got {buf.getvalue()!r}")
+            f = timing[0]["fields"]
+            self.assertAlmostEqual(float(f["scan_ms"]), 0.0, places=5)
+            self.assertAlmostEqual(float(f["write_ms"]), 0.0, places=5)
+            total_ms = float(f["total_ms"])
+            self.assertGreaterEqual(total_ms, 0.0)
+            self.assertLess(total_ms, 5000.0)
+
+
 if __name__ == "__main__":
     unittest.main()
