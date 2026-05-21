@@ -149,16 +149,12 @@ Agent 会调度 [docs/architecture.md#agent-layer](docs/architecture.md#agent-la
 
 ## 文档导航
 
-- [docs/architecture.md](docs/architecture.md) — 系统架构、检索不变量、设计原则
-- [docs/ingestion-workflow.md](docs/ingestion-workflow.md) — 端到端入库流水线
-- [docs/ingest-script-usage.md](docs/ingest-script-usage.md) — `qlw ingest` 用法
-- [docs/llm-enrichment-usage.md](docs/llm-enrichment-usage.md) — `qlw enrich` 用法
-- [docs/embed-knowledge-base-usage.md](docs/embed-knowledge-base-usage.md) — `qlw embed` 用法
-- [docs/brainstorm-cli-usage.md](docs/brainstorm-cli-usage.md) — `qlw ask` / `qlw brainstorm` 用法
-- [docs/brainstorm-output-spec.md](docs/brainstorm-output-spec.md) — 头脑风暴输出格式
-- [docs/metadata-schema.md](docs/metadata-schema.md) — 文章 frontmatter 字段
+- [docs/architecture.md](docs/architecture.md) — 系统架构、三动词流水线、检索不变量、设计原则
+- [docs/metadata-schema.md](docs/metadata-schema.md) — 文章 frontmatter 字段与枚举
+- [docs/brainstorm-output-spec.md](docs/brainstorm-output-spec.md) — 头脑风暴输出契约
 - [docs/releasing.md](docs/releasing.md) — 维护者发布流程
 - [`schema/`](schema/) — `qlw lint` 强制执行的契约
+- CLI 详细参数请用 `qlw <subcommand> --help`（命令本身就是 source of truth）。
 
 ## 跑测试
 

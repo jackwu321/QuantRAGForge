@@ -149,16 +149,12 @@ Article status lifecycle and `content_type` classification are documented in [do
 
 ## Documentation
 
-- [docs/architecture.md](docs/architecture.md) — system architecture, retrieval invariants, design principles
-- [docs/ingestion-workflow.md](docs/ingestion-workflow.md) — the end-to-end ingestion pipeline
-- [docs/ingest-script-usage.md](docs/ingest-script-usage.md) — `qlw ingest` reference
-- [docs/llm-enrichment-usage.md](docs/llm-enrichment-usage.md) — `qlw enrich` reference
-- [docs/embed-knowledge-base-usage.md](docs/embed-knowledge-base-usage.md) — `qlw embed` reference
-- [docs/brainstorm-cli-usage.md](docs/brainstorm-cli-usage.md) — `qlw ask` / `qlw brainstorm` reference
-- [docs/brainstorm-output-spec.md](docs/brainstorm-output-spec.md) — output shape for brainstorm runs
-- [docs/metadata-schema.md](docs/metadata-schema.md) — article frontmatter fields
+- [docs/architecture.md](docs/architecture.md) — system architecture, three-verb pipeline, retrieval invariants, design principles
+- [docs/metadata-schema.md](docs/metadata-schema.md) — article frontmatter fields and enums
+- [docs/brainstorm-output-spec.md](docs/brainstorm-output-spec.md) — output contract for brainstorm runs
 - [docs/releasing.md](docs/releasing.md) — release process for maintainers
 - [`schema/`](schema/) — the contract enforced by `qlw lint`
+- For CLI reference, `qlw <subcommand> --help` is the source of truth.
 
 ## Running tests
 
