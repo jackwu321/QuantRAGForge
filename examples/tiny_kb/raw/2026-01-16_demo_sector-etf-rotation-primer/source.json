@@ -1,0 +1,13 @@
+{
+  "title": "A Short Primer on Sector ETF Rotation",
+  "source_url": "https://example.com/demo/sector-etf-rotation-primer",
+  "source_type": "html_import",
+  "account": "Quant_LLM_Wiki demo",
+  "author": "Quant_LLM_Wiki demo",
+  "publish_date": "2026-01-16",
+  "ingested_at": "2026-01-16",
+  "content_type": "allocation",
+  "summary": "Synthetic primer covering a canonical sector ETF rotation pipeline (universe, scoring, ranking, rebalance, risk overlay), common signal-combination patterns (single signal, trend+momentum, multi-factor), capacity considerations, and characteristic failure modes including whipsaw, concentration, regime breaks, and backtest fragility.",
+  "image_urls": [],
+  "tags": ["sector rotation", "ETF", "allocation", "primer", "demo"]
+}

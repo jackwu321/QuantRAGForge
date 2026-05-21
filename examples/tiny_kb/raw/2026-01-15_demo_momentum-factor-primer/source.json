@@ -1,0 +1,13 @@
+{
+  "title": "A Short Primer on the Cross-Sectional Momentum Factor",
+  "source_url": "https://example.com/demo/momentum-primer",
+  "source_type": "html_import",
+  "account": "Quant_LLM_Wiki demo",
+  "author": "Quant_LLM_Wiki demo",
+  "publish_date": "2026-01-15",
+  "ingested_at": "2026-01-15",
+  "content_type": "methodology",
+  "summary": "Synthetic primer covering the construction of cross-sectional momentum (lookback, skip, ranking, holding period), the behavioral vs risk-premium explanations, common overlays (vol scaling, market-state filter, sector neutrality), and known failure modes including momentum crashes.",
+  "image_urls": [],
+  "tags": ["momentum", "factor", "primer", "demo"]
+}
