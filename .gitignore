@@ -57,3 +57,18 @@ CLAUDE.md
 
 # Spurious file from accidental pip invocation
 =1.0.0
+
+# Local plans, specs, and agent work-in-progress (not part of the public repo)
+/PLAN.md
+/docs/plan/
+/docs/superpowers/
+/.local-archive/
+
+# Defensive: common local agent / workbench dirs
+/.codex/
+/.gstack/
+/.agents/
+
+# Local secrets sometimes pasted at the root
+/github-api.txt
+/recent.csv
