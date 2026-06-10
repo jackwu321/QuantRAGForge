@@ -16,6 +16,7 @@ def _parse(argv):
     from quant_llm_wiki.ingest import source as ingest_source
     from quant_llm_wiki.query import brainstorm
     from quant_llm_wiki.agent import cli as agent_cli
+    from quant_llm_wiki.agent.memory import cli as memory_cli
     from quant_llm_wiki.wiki import lint as wiki_lint_mod
     from quant_llm_wiki.wiki import compile as wiki_compile_mod
 
@@ -28,19 +29,21 @@ def _parse(argv):
     brainstorm.register_ask(sub.add_parser("ask", help="RAG Q&A."))
     brainstorm.register_brainstorm(sub.add_parser("brainstorm", help="Brainstorm."))
     agent_cli.register(sub.add_parser("agent", help="Agent."))
+    memory_cli.register(sub.add_parser("memory", help="Workflow memory."))
     wiki_lint_mod.register(sub.add_parser("lint", help="Lint wiki."))
     wiki_compile_mod.register(sub.add_parser("compile", help="Compile wiki."))
     return parser.parse_args(argv)
 
 
 class QlwCliParserTests(unittest.TestCase):
-    def test_parser_exposes_nine_subcommands(self) -> None:
-        """qlw --help must list exactly these 9 subcommands."""
+    def test_parser_exposes_ten_subcommands(self) -> None:
+        """qlw --help must list exactly these 10 subcommands."""
         import argparse
         from quant_llm_wiki import enrich, embed, sync
         from quant_llm_wiki.ingest import source as ingest_source
         from quant_llm_wiki.query import brainstorm
         from quant_llm_wiki.agent import cli as agent_cli
+        from quant_llm_wiki.agent.memory import cli as memory_cli
         from quant_llm_wiki.wiki import lint as wiki_lint_mod
         from quant_llm_wiki.wiki import compile as wiki_compile_mod
 
@@ -53,6 +56,7 @@ class QlwCliParserTests(unittest.TestCase):
         brainstorm.register_ask(sub.add_parser("ask"))
         brainstorm.register_brainstorm(sub.add_parser("brainstorm"))
         agent_cli.register(sub.add_parser("agent"))
+        memory_cli.register(sub.add_parser("memory"))
         wiki_lint_mod.register(sub.add_parser("lint"))
         wiki_compile_mod.register(sub.add_parser("compile"))
 
@@ -60,8 +64,33 @@ class QlwCliParserTests(unittest.TestCase):
         all_sub_action = parser._subparsers._actions[1]  # type: ignore[attr-defined]
         self.assertEqual(
             set(all_sub_action.choices.keys()),
-            {"ingest", "enrich", "embed", "sync", "ask", "brainstorm", "agent", "lint", "compile"},
+            {"ingest", "enrich", "embed", "sync", "ask", "brainstorm", "agent",
+             "memory", "lint", "compile"},
         )
+
+    def test_agent_memory_flags_parse(self) -> None:
+        ns = _parse(["agent", "--query", "hi", "--thread", "alpha", "--new",
+                     "--summary", "--no-memory"])
+        self.assertEqual(ns.thread, "alpha")
+        self.assertTrue(ns.new)
+        self.assertTrue(ns.summary)
+        self.assertTrue(ns.no_memory)
+        ns2 = _parse(["agent", "--query", "hi"])
+        self.assertIsNone(ns2.thread)
+        self.assertFalse(ns2.new or ns2.summary or ns2.no_memory)
+
+    def test_memory_subcommands_parse(self) -> None:
+        for argv in (["memory", "status"], ["memory", "tasks", "--all"],
+                     ["memory", "decisions", "--limit", "5"],
+                     ["memory", "notes", "--thread", "a", "--all"],
+                     ["memory", "note-status", "3", "folded"],
+                     ["memory", "recall", "fallback"],
+                     ["memory", "promote-procedure", "2", "--name", "x", "--force"],
+                     ["memory", "reject-draft", "2"],
+                     ["memory", "audit"], ["memory", "clear-current"],
+                     ["memory", "drafts"], ["memory", "show"]):
+            ns = _parse(argv)
+            self.assertTrue(callable(ns.func), argv)
 
     def test_ingest_no_compile_default_false(self) -> None:
         ns = _parse(["ingest", "--url", "https://x"])
