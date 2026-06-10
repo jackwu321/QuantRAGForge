@@ -2,6 +2,29 @@
 
 All notable changes to this project will be documented in this file.
 
+## [0.5.0] - 2026-06-10
+
+Agent skills refactor: known multi-step workflows move out of the system prompt into a filesystem skill registry.
+
+### Added
+
+- **Built-in skill registry with KB-level overrides** (`agent/skill_registry.py`): skills are SOP markdown files with YAML frontmatter (`name` / `description` / `triggers` / `requires_user_decision` / `tools_used`). Package built-ins ship in the wheel and load via `importlib.resources`; `<kb_root>/.qlw/skills/*.md` extends or overrides them by name. Invalid files are reported in `_errors` without blocking valid skills.
+- **Two new agent tools** — `list_skills` and `read_skill` (ALL_TOOLS 12 → 14). `read_skill` resolves names against the registry keyset only; traversal-style names (`../x`, absolute paths, `foo.md`) return structured `skill_not_found`.
+- **Four core skills**: `full-ingest`, `concept-review`, `wiki-explanation`, `kb-health-check`. Skills with `requires_user_decision: true` carry explicit `[PAUSE]` review points where the agent must stop and hand the decision to the user.
+
+### Changed
+
+- **Agent system prompt routes repeated workflows through skills**: inline workflow walkthroughs are replaced by a grouped 1-line tool listing plus skill-system rules (trigger matching, `[PAUSE]` stop/resume semantics, write-action authorization). The prompt no longer grows with skill count.
+- **PyYAML is now an explicit dependency** (previously transitive).
+
+### Fixed
+
+- **Empty agent replies on Zhipu GLM-4.7**: thinking mode could return the final answer only in `reasoning_content` with an empty `content` (reproducible on skill registry queries). The agent now disables thinking via `extra_body` when talking to Zhipu; other OpenAI-compatible providers are unaffected.
+
+### Notes
+
+- The agent-level `ingest_article` tool intentionally does **not** auto compile+embed (unlike CLI `qlw ingest`); the `full-ingest` skill runs `compile_wiki` / `embed_knowledge` as explicit post-review steps. A regression test pins this invariant.
+
 ## [0.4.6] - 2026-05-19
 
 Bundle release: Track A (lint/brainstorm mtime cache + observability) and Track B (Zhipu 429 hardening + Retry-After HTTP-date + rate-gate observability).
