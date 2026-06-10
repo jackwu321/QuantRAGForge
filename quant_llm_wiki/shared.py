@@ -346,6 +346,16 @@ def get_llm_config() -> tuple[str, str, str]:
     return api_key, base_url, model
 
 
+def get_memory_config() -> dict:
+    """Workflow-memory settings (see agent/memory/). Read at call time."""
+    return {
+        "enabled": os.environ.get("MEMORY_ENABLED", "1") != "0",
+        "auto_summary": os.environ.get("MEMORY_AUTO_SUMMARY", "0") == "1",
+        "debug_jsonl": os.environ.get("MEMORY_DEBUG_JSONL", "0") == "1",
+        "preamble_token_budget": int(os.environ.get("MEMORY_PREAMBLE_TOKEN_BUDGET", "2000")),
+        "recent_sessions_n": int(os.environ.get("MEMORY_RECENT_SESSIONS_N", "3")),
+        "recent_sessions_keep": int(os.environ.get("MEMORY_RECENT_SESSIONS_KEEP", "10")),
+    }
 
 
 def _timeouts_for_env() -> tuple[int, int, int]:

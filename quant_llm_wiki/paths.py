@@ -21,3 +21,8 @@ def resolve_kb_root(cli_arg: str | Path | None = None) -> Path:
     if env:
         return Path(env).expanduser().resolve()
     return Path.cwd().resolve()
+
+
+def memory_root(kb_root: Path) -> Path:
+    """Workflow-memory directory for a KB. Strictly separate from wiki data."""
+    return kb_root / ".qlw" / "memory"
