@@ -37,6 +37,9 @@ rejected_sources.json
 /sources/processed/
 /outputs/
 
+# Agent workflow memory + KB-local skills (user-generated, KB-scoped)
+/.qlw/
+
 # Personal / local HTML article files
 html list/
 =1.0.0
