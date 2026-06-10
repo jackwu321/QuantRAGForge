@@ -2,6 +2,30 @@
 
 All notable changes to this project will be documented in this file.
 
+## [0.6.0] - 2026-06-10
+
+Agent workflow memory: the agent now resumes prior context across sessions. Memory is workflow state (handoff, tasks, decisions, research notes, procedure drafts) and stays strictly separated from the wiki KB.
+
+### Added
+
+- **Two-substrate memory layer** (`agent/memory/`, stored under `<kb_root>/.qlw/memory/`): `workflow.md` — human-editable narrative (Current Handoff / Next Steps / Blockers / Recent Sessions; hand-edits always win, sha-guarded) — and `memory.sqlite` — tool-managed sessions / tasks / decisions / notes / events / threads with FTS5 search and automatic LIKE fallback.
+- **Six memory agent tools** (registered only when memory is enabled; 14 → 20): `record_decision`, `add_task`, `complete_task`, `list_open_tasks`, `record_note`, `propose_procedure`.
+- **Research-process notes**: `record_note(kind: hypothesis/direction/observation)` holds unstable research state — fuzzy strategy directions, hypotheses, observations — scoped per thread. This state never goes into the wiki (wiki is stable knowledge only). Multi-session strategy conversations = `--thread <name>` resume + notes + brainstorm.
+- **Procedure draft pool → skill promotion**: `propose_procedure` saves conversational "以后按这个流程做" flows as inert drafts; `qlw memory promote-procedure <id>` generates a real `.qlw/skills/<name>.md` (validated through the skill registry loader). The skill registry remains the only runtime SOP system — there is no second "active procedures" tier.
+- **Session-start preamble**: handoff/next-steps/blockers verbatim, recent sessions, open tasks, recent decisions, and open notes for the active thread (token-budgeted, `MEMORY_PREAMBLE_TOKEN_BUDGET`).
+- **`qlw agent` flags**: `--thread <name>`, `--new`, `--summary` (opt-in LLM session summarizer), `--no-memory` (fully stateless, byte-identical memory dir).
+- **`qlw memory` subcommand**: status / show / tasks / decisions / notes / note-status / recall / audit / clear-current / drafts / promote-procedure / reject-draft.
+
+### Changed
+
+- **System prompt**: adds a compact Memory rules section (same style as the skill rules — role, tool groups, skill rules, memory rules; no SOPs in the prompt). Interaction principles: skills never auto-write memory; PAUSE progress may be recorded deliberately for cross-session continuity; `propose_procedure` is the sole conversational entrance to the draft pool; notes are research state, never wiki content.
+
+### Notes
+
+- **workflow.md anti-churn gate**: only *significant* sessions (any write-action tool ran, or `--summary`) append to Recent Sessions, which is capped at 10 entries (`MEMORY_RECENT_SESSIONS_KEEP`; full history stays in SQLite). Read-only Q&A leaves workflow.md byte-identical — frequent `qlw agent --query` runs cannot turn it into a click log.
+- Memory never touches `wiki/`, `vector_store/`, `raw/`, `schema/` — pinned by a sha256 regression test.
+- A corrupt `memory.sqlite` disables memory for the run with a warning instead of breaking the agent.
+
 ## [0.5.0] - 2026-06-10
 
 Agent skills refactor: known multi-step workflows move out of the system prompt into a filesystem skill registry.
