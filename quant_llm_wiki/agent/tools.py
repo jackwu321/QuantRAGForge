@@ -715,6 +715,8 @@ def read_wiki(target: str) -> str:
 # All tools for registration
 # ---------------------------------------------------------------------------
 
+from quant_llm_wiki.agent.skill_registry import list_skills, read_skill  # noqa: E402
+
 ALL_TOOLS = [
     ingest_article,
     enrich_articles,
@@ -728,4 +730,6 @@ ALL_TOOLS = [
     list_concepts,
     set_concept_status,
     read_wiki,
+    list_skills,
+    read_skill,
 ]
