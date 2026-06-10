@@ -7,6 +7,7 @@ from quant_llm_wiki import enrich, embed, sync
 from quant_llm_wiki.ingest import source as ingest_source
 from quant_llm_wiki.query import brainstorm
 from quant_llm_wiki.agent import cli as agent_cli
+from quant_llm_wiki.agent.memory import cli as memory_cli
 from quant_llm_wiki.wiki import lint as wiki_lint_mod
 from quant_llm_wiki.wiki import compile as wiki_compile_mod
 
@@ -22,6 +23,7 @@ def main(argv=None) -> int:
     brainstorm.register_ask(sub.add_parser("ask", help="RAG Q&A over the knowledge base."))
     brainstorm.register_brainstorm(sub.add_parser("brainstorm", help="Generate brainstorm ideas with Rethink validation."))
     agent_cli.register(sub.add_parser("agent", help="Run the LangGraph agent (interactive or one-shot)."))
+    memory_cli.register(sub.add_parser("memory", help="Inspect/manage agent workflow memory (.qlw/memory/)."))
     wiki_lint_mod.register(sub.add_parser("lint", help="Schema + health audit of the wiki."))
     wiki_compile_mod.register(sub.add_parser("compile", help="Compile concept pages and source summaries from raw/."))
 

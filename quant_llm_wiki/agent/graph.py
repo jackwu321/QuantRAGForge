@@ -54,11 +54,15 @@ def _sanitize_agent_message(state: dict[str, Any]) -> dict[str, Any]:
     return {"messages": [last.model_copy(update=update)]}
 
 
-def create_agent():
+def create_agent(memory_tools: list | None = None, preamble: str | None = None):
     """Create and return a compiled LangGraph ReAct agent.
 
     Uses the OpenAI-compatible API configured via LLM_* or ZHIPU_* env vars.
     Works with any provider: Zhipu GLM, DeepSeek, Moonshot, Qwen, OpenAI, etc.
+
+    memory_tools: extra tools registered when workflow memory is enabled.
+    preamble: session-start working-memory text, appended to the system
+    prompt (kept out of SYSTEM_PROMPT itself so the prompt stays static).
     """
     try:
         api_key, base_url, model = get_llm_config()
@@ -85,10 +89,14 @@ def create_agent():
         extra_body=extra_body,
     )
 
+    prompt = SYSTEM_PROMPT
+    if preamble:
+        prompt = f"{SYSTEM_PROMPT}\n\n{preamble}"
+
     agent = create_react_agent(
         model=llm,
-        tools=ALL_TOOLS,
-        prompt=SYSTEM_PROMPT,
+        tools=ALL_TOOLS + (memory_tools or []),
+        prompt=prompt,
         post_model_hook=_sanitize_agent_message,
     )
     return agent
