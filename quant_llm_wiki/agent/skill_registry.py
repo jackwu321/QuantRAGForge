@@ -161,25 +161,31 @@ def get_skill(name: str, kb_root: Path | None = None) -> dict:
 
 # ---------------------------------------------------------------------------
 # LangChain @tool wrappers
+#
+# These return JSON *strings*, not dicts: GLM-4.7 (the default agent model)
+# reproducibly emits an empty final answer after receiving a dict-typed
+# ToolMessage, and every other tool in tools.py already returns str.
 # ---------------------------------------------------------------------------
+
+import json  # noqa: E402
 
 from langchain_core.tools import tool  # noqa: E402
 
 
 @tool
-def list_skills() -> dict:
+def list_skills() -> str:
     """List all registered skills (multi-step SOPs).
 
     Returns name / description / triggers / requires_user_decision /
     tools_used for each skill. Match the user's intent against triggers,
     then call read_skill(name) to get the full SOP."""
-    return load_skill_registry()
+    return json.dumps(load_skill_registry(), ensure_ascii=False, indent=2)
 
 
 @tool
-def read_skill(name: str) -> dict:
+def read_skill(name: str) -> str:
     """Read the full SOP markdown of one skill by name (e.g. 'full-ingest').
 
     Returns frontmatter plus the step-by-step body. If the name is unknown,
     returns skill_not_found with the list of available skills."""
-    return get_skill(name)
+    return json.dumps(get_skill(name), ensure_ascii=False, indent=2)

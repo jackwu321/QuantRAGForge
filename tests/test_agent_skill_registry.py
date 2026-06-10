@@ -238,9 +238,15 @@ class TestJsonAndWiring:
     def test_tool_wrapper_wiring(self):
         # QLW_KB_ROOT is monkeypatched by the autouse fixture, so the
         # wrappers' default kb_root resolution stays inside tmp_path.
-        reg = list_skills.invoke({})
+        # Wrappers return JSON strings (GLM-4.7 yields an empty final
+        # answer when a ToolMessage carries a dict).
+        reg_raw = list_skills.invoke({})
+        assert isinstance(reg_raw, str)
+        reg = json.loads(reg_raw)
         assert sorted(s["name"] for s in reg["skills"]) == CORE_SKILLS
-        skill = read_skill.invoke({"name": "full-ingest"})
+        skill_raw = read_skill.invoke({"name": "full-ingest"})
+        assert isinstance(skill_raw, str)
+        skill = json.loads(skill_raw)
         assert skill["name"] == "full-ingest"
         assert "[PAUSE]" in skill["body"]
 

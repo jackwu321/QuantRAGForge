@@ -38,7 +38,26 @@ class TestAgentGraph(unittest.TestCase):
             api_key="test-key",
             base_url="https://test.url/v4",
             temperature=0.1,
+            extra_body=None,
         )
+
+    @patch("quant_llm_wiki.agent.graph.get_llm_config")
+    @patch("quant_llm_wiki.agent.graph.ChatOpenAI")
+    def test_create_agent_disables_thinking_for_zhipu(self, mock_llm_cls, mock_config):
+        # GLM-4.x thinking mode can return the final answer only in
+        # reasoning_content with empty content; thinking is disabled on Zhipu.
+        mock_config.return_value = (
+            "test-key",
+            "https://open.bigmodel.cn/api/paas/v4",
+            "glm-4.7",
+        )
+        mock_llm_cls.return_value = MagicMock()
+
+        from quant_llm_wiki.agent.graph import create_agent
+
+        create_agent()
+        kwargs = mock_llm_cls.call_args.kwargs
+        self.assertEqual(kwargs["extra_body"], {"thinking": {"type": "disabled"}})
 
     def test_all_tools_registered(self):
         from quant_llm_wiki.agent.tools import ALL_TOOLS

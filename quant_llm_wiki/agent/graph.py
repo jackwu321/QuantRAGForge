@@ -69,11 +69,20 @@ def create_agent():
             f"See llm_config.example.env for examples."
         ) from exc
 
+    # Zhipu GLM-4.x thinking models sometimes return the final answer only in
+    # `reasoning_content` with an empty `content` (reproducible on skill
+    # registry queries); langchain-openai drops reasoning_content, so the user
+    # would see an empty reply. Disabling thinking forces content output.
+    # Scoped to Zhipu because `thinking` is a non-standard request param that
+    # other OpenAI-compatible providers may reject.
+    extra_body = {"thinking": {"type": "disabled"}} if "bigmodel.cn" in base_url else None
+
     llm = ChatOpenAI(
         model=model,
         api_key=api_key,
         base_url=base_url,
         temperature=0.1,
+        extra_body=extra_body,
     )
 
     agent = create_react_agent(
