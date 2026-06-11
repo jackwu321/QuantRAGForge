@@ -138,7 +138,7 @@ def set_note_status(note_id: int, status: str) -> str:
         return f"Error: status must be one of {' / '.join(NOTE_STATUSES)}."
     store = _store()
     try:
-        if store.set_note_status(note_id, status):
+        if store.set_note_status(note_id, status, thread_id=_context["thread_id"]):
             return f"Note #{note_id} → {status}."
         return f"Note #{note_id} not found."
     finally:

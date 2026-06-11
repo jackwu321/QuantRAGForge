@@ -98,7 +98,7 @@ def _latest_output_for(query: str, mode: str, output_dir: Path) -> Path | None:
     """Find the freshest output file for this query/mode pair."""
     if not output_dir.exists():
         return None
-    suffix = "ask" if mode == "ask" else "brainstorm"
+    suffix = {"ask": "ask", "brief": "brief"}.get(mode, "brainstorm")
     slug = _slugify(query)
     candidates = sorted(
         output_dir.glob(f"*_{slug}_{suffix}.md"),
@@ -130,7 +130,11 @@ def append_query_log(
         return None
 
     output_md = output_md_path.read_text(encoding="utf-8")
-    sources = _parse_retrieved_sources(output_md)
+    # Untrusted (conversation-authored) outputs must not record citations at
+    # all: run_maintenance(apply=True) aggregates cited_concepts from every
+    # query log into state.json retrieval hints, so logging them would launder
+    # the trust boundary one maintenance run later.
+    sources = _parse_retrieved_sources(output_md) if update_state else []
     cited_concepts: set[str] = set()
     cited_sources: set[str] = set()
     for src in sources:
@@ -150,6 +154,13 @@ def append_query_log(
     queries_dir = kb_root / "wiki" / "queries"
     queries_dir.mkdir(parents=True, exist_ok=True)
     log_path = queries_dir / f"{today}_{slug}_{mode}.md"
+    if not update_state:
+        # Conversation-authored records are never overwritten — keep one log
+        # per saved brief (mirrors the brief filename's -N suffixing).
+        n = 2
+        while log_path.exists():
+            log_path = queries_dir / f"{today}_{slug}_{mode}-{n}.md"
+            n += 1
 
     fm_lines = [
         "---",

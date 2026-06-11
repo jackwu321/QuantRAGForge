@@ -736,13 +736,23 @@ def save_strategy_brief(topic: str, content: str) -> str:
     from quant_llm_wiki.agent.memory.tools import get_memory_context
     from quant_llm_wiki.query.brainstorm import slugify
 
+    # Control characters would crash Path operations (NUL) or let the topic
+    # inject extra markdown lines into the brief header zone.
+    topic = re.sub(r"[\x00-\x1f\x7f]+", " ", topic)
     if not topic.strip() or not content.strip():
         return "Error: topic and content must both be non-empty."
 
     kb_root = resolve_kb_root(None)
     date_part = datetime.now().strftime("%Y-%m-%d")
-    path = kb_root / "outputs" / "brainstorms" / f"{date_part}_{slugify(topic)}_brief.md"
-    path.parent.mkdir(parents=True, exist_ok=True)
+    out_dir = kb_root / "outputs" / "brainstorms"
+    out_dir.mkdir(parents=True, exist_ok=True)
+    # Re-converging on the same topic the same day must not clobber the
+    # earlier brief — uniquify with -2/-3/... suffixes.
+    path = out_dir / f"{date_part}_{slugify(topic)}_brief.md"
+    n = 2
+    while path.exists():
+        path = out_dir / f"{date_part}_{slugify(topic)}_brief-{n}.md"
+        n += 1
     thread_id = get_memory_context()["thread_id"]
     header = "\n".join([
         f"# Strategy Brief: {topic}",
@@ -757,8 +767,10 @@ def save_strategy_brief(topic: str, content: str) -> str:
     try:
         from quant_llm_wiki.wiki.maintain import append_query_log
         append_query_log(kb_root, topic, "brief", output_path=path, update_state=False)
-    except Exception:
-        pass  # non-critical: query log write failure
+    except Exception as exc:  # non-critical, but never silent
+        import sys
+        print(f"[qlw-agent] warning: brief query log write failed "
+              f"({type(exc).__name__}: {exc})", file=sys.stderr)
 
     return f"Strategy brief saved: {path}"
 

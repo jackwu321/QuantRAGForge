@@ -310,14 +310,24 @@ class MemoryStore:
             )
         return cur.lastrowid
 
-    def set_note_status(self, note_id: int, status: str) -> bool:
+    def set_note_status(self, note_id: int, status: str,
+                        thread_id: str | None = None) -> bool:
+        """``thread_id=None`` updates by bare id (CLI: explicit user action).
+        Agent tools pass their session thread so a hallucinated id can never
+        touch another thread's notes."""
         if status not in NOTE_STATUSES:
             raise ValueError(f"status must be one of {NOTE_STATUSES}")
         with self.conn:
-            cur = self.conn.execute(
-                "UPDATE notes SET status=?, updated_at=? WHERE id=?",
-                (status, _now(), note_id),
-            )
+            if thread_id is None:
+                cur = self.conn.execute(
+                    "UPDATE notes SET status=?, updated_at=? WHERE id=?",
+                    (status, _now(), note_id),
+                )
+            else:
+                cur = self.conn.execute(
+                    "UPDATE notes SET status=?, updated_at=? WHERE id=? AND thread_id=?",
+                    (status, _now(), note_id, thread_id),
+                )
         return cur.rowcount > 0
 
     def open_notes(self, thread_id: str, limit: int = 5) -> list[sqlite3.Row]:

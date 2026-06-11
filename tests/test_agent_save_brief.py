@@ -62,6 +62,27 @@ class TestSaveStrategyBrief:
             state = json.loads(state_path.read_text(encoding="utf-8"))
             assert state.get("concepts", {}) == {}
 
+    def test_same_day_same_topic_does_not_clobber_earlier_brief(self, tmp_path):
+        save_strategy_brief.invoke({"topic": "动量方向", "content": "第一版结论"})
+        save_strategy_brief.invoke({"topic": "动量方向", "content": "第二版结论"})
+        briefs = sorted((tmp_path / "outputs" / "brainstorms").glob("*_brief*.md"))
+        assert len(briefs) == 2
+        texts = [b.read_text(encoding="utf-8") for b in briefs]
+        assert any("第一版结论" in t for t in texts)
+        assert any("第二版结论" in t for t in texts)
+        logs = list((tmp_path / "wiki" / "queries").glob("*_brief*.md"))
+        assert len(logs) == 2
+
+    def test_control_chars_in_topic_are_sanitized_not_crashing(self, tmp_path):
+        out = save_strategy_brief.invoke({"topic": "动量\x00方向\n## 假标题", "content": "body"})
+        assert isinstance(out, str) and not out.startswith("Error")
+        briefs = list((tmp_path / "outputs" / "brainstorms").glob("*_brief.md"))
+        assert len(briefs) == 1
+        first_line = briefs[0].read_text(encoding="utf-8").splitlines()[0]
+        assert first_line.startswith("# Strategy Brief: ")
+        assert "\x00" not in briefs[0].name
+        assert "## 假标题" not in first_line or "\n" not in first_line
+
     def test_brief_with_retrieved_sources_never_bumps_wiki_state(self, tmp_path):
         # Brief content is conversation-authored: even a well-formed Retrieved
         # Sources section citing a real concept must not mutate state.json.

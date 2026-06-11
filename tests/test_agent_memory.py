@@ -220,6 +220,16 @@ class TestMemoryTools:
         assert store.open_tasks("main") == []
         store.close()
 
+    def test_set_note_status_tool_cannot_touch_other_threads(self, tmp_path):
+        record_note.invoke({"text": "main 线程的在研方向", "kind": "direction"})
+        set_memory_context("other-thread", None)
+        out = set_note_status.invoke({"note_id": 1, "status": "rejected"})
+        assert "not found" in out
+        set_memory_context("main", None)
+        store = MemoryStore(tmp_path)
+        assert store.all_notes("main")[0]["status"] == "open"
+        store.close()
+
     def test_set_note_status_tool(self, tmp_path):
         record_note.invoke({"text": "假设 X", "kind": "hypothesis"})
         out = set_note_status.invoke({"note_id": 1, "status": "rejected"})

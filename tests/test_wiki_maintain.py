@@ -68,9 +68,42 @@ class QueryFeedbackTests(unittest.TestCase):
             )
             self.assertIsNotNone(log_path)
             assert log_path is not None
-            self.assertIn('cited_concepts: ["etf-rotation"]', log_path.read_text(encoding="utf-8"))
+            # Untrusted citations must not be recorded at all — otherwise
+            # run_maintenance(apply=True) would launder them into state.json.
+            self.assertIn("cited_concepts: []", log_path.read_text(encoding="utf-8"))
             after = state_path.read_text(encoding="utf-8") if state_path.exists() else None
             self.assertEqual(before, after)
+
+    def test_maintenance_apply_ignores_untrusted_brief_logs(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp:
+            root = Path(tmp)
+            out_dir = self._setup_kb(root)
+            concept_path = root / "wiki" / "concepts" / "etf-rotation.md"
+            # Seed the concept into state so the maintenance apply step has a
+            # target to poison (mirrors a compiled KB).
+            from quant_llm_wiki.wiki.state import ConceptEntry, save_wiki_state
+            state_path = root / "wiki" / "state.json"
+            state = load_wiki_state(state_path)
+            state.concepts["etf-rotation"] = ConceptEntry(status="stable")
+            save_wiki_state(state, state_path)
+            out = self._write_output(out_dir, "2026-06-11_p_brief.md", [str(concept_path)])
+            wiki_maintain.append_query_log(
+                root, query="poison hint", mode="brief", output_path=out, update_state=False
+            )
+            wiki_maintain.run_maintenance(root, apply=True, write_report=False)
+            state = load_wiki_state(state_path)
+            entry = state.concepts["etf-rotation"]
+            self.assertFalse(any("poison" in h for h in entry.retrieval_hints))
+
+    def test_latest_output_for_brief_mode_never_binds_brainstorm_file(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp:
+            root = Path(tmp)
+            out_dir = self._setup_kb(root)
+            self._write_output(out_dir, "2026-06-11_q_brainstorm.md", [])
+            found = wiki_maintain._latest_output_for("q", "brief", out_dir)
+            self.assertIsNone(found)
+            brief = self._write_output(out_dir, "2026-06-11_q_brief.md", [])
+            self.assertEqual(wiki_maintain._latest_output_for("q", "brief", out_dir), brief)
 
     def test_returns_none_when_no_output_file(self) -> None:
         with tempfile.TemporaryDirectory() as tmp:
