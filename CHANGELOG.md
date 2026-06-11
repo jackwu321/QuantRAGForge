@@ -20,6 +20,19 @@ Multi-turn fuzzy strategy conversations: tell the agent a vague strategy directi
 - `append_query_log` gains `update_state` (default `True`): brief saves log the query but never mutate `state.json` — conversation-authored Retrieved Sources are not pipeline-trusted, so they get no importance bump or retrieval hints.
 - Skill triggering hardened for fuzzy strategy openers (found in GLM-4.7 live smoke: the agent answered with `query_knowledge_base` directly and never consulted the skill registry): the `query_knowledge_base` tool docstring now routes fuzzy/directional strategy conversations to the strategy-brainstorm skill first, and system prompt skill rule 1 lists 模糊策略方向的多轮脑暴 among the known skill-shaped patterns.
 
+### Fixed (pre-release adversarial review, Claude + Codex)
+
+- Brief query logs no longer record `cited_concepts` at all: `run_maintenance(apply=True)` aggregates citations from every query log into `state.json` retrieval hints, which would have laundered the untrusted brief citations one maintenance run later.
+- Re-converging on the same topic the same day no longer clobbers the earlier brief or its query log — filenames get `-2`/`-3` suffixes on collision.
+- `set_note_status` (agent tool) is now thread-scoped: a hallucinated note id can no longer fold/reject another thread's notes. CLI `qlw memory note-status` keeps bare-id semantics (explicit user action).
+- Control characters in a brief topic are sanitized (NUL previously crashed the tool; newlines could inject extra markdown into the brief header).
+- Brief query-log write failures now warn on stderr instead of passing silently.
+- `_latest_output_for(mode="brief")` no longer falls back to the latest brainstorm output (latent footgun for future callers omitting `output_path`).
+
+### Known limitations
+
+- `qlw agent --no-memory` still routes fuzzy strategy openers to the strategy-brainstorm SOP, whose steps reference memory tools that are not registered in stateless mode (tracked in TODOS.md, P2).
+
 ## [0.6.0] - 2026-06-10
 
 Agent workflow memory: the agent now resumes prior context across sessions. Memory is workflow state (handoff, tasks, decisions, research notes, procedure drafts) and stays strictly separated from the wiki KB.
