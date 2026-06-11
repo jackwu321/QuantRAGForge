@@ -78,6 +78,7 @@ class TestAgentGraph(unittest.TestCase):
             "read_wiki",
             "list_skills",
             "read_skill",
+            "save_strategy_brief",
         }
         self.assertEqual(tool_names, expected)
 

@@ -377,3 +377,8 @@ class TestMemorySession:
         wf.write_section(tmp_path, "Current Handoff", "人工改的，别动")
         session.on_session_end()
         assert wf.read_sections(tmp_path)["Current Handoff"] == "人工改的，别动"
+
+    def test_v070_write_tools_count_as_significant(self):
+        from quant_llm_wiki.agent.memory.hooks import SIGNIFICANT_TOOL_NAMES
+        assert "save_strategy_brief" in SIGNIFICANT_TOOL_NAMES
+        assert "set_note_status" in SIGNIFICANT_TOOL_NAMES

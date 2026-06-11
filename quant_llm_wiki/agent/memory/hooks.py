@@ -21,6 +21,7 @@ from quant_llm_wiki.agent.memory.recall import compose_preamble
 KB_WRITE_TOOL_NAMES = {
     "ingest_article", "enrich_articles", "set_article_status",
     "set_concept_status", "compile_wiki", "embed_knowledge",
+    "save_strategy_brief",
 }
 SIGNIFICANT_TOOL_NAMES = KB_WRITE_TOOL_NAMES | MEMORY_WRITE_TOOL_NAMES
 
