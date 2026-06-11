@@ -23,7 +23,10 @@ Quant_LLM_Wiki turns WeChat articles, web pages, and research PDFs into an LLM-b
 - **Rethink Layer** — post-generation novelty (vector similarity) + quality (LLM-as-judge) scoring on brainstormed ideas
 - **Schema-enforced wiki** — `wiki_lint` checks required frontmatter, sections, and source anchors on every run; `--fix` auto-repairs via LLM
 - **Query → wiki feedback** — every `ask`/`brainstorm` logs back into the wiki; `lint --maintain` distills logs into gap-filling suggestions
-- **Interactive agent** — LangGraph ReAct agent with 12 tools and real-time progress streaming
+- **Interactive agent** — LangGraph ReAct agent with 15 tools (plus 7 memory tools) and real-time progress streaming
+- **Agent skills** — multi-step workflows (full ingest, concept review, KB health check, wiki explanation, strategy brainstorm) codified as on-disk SOPs the agent matches by trigger and follows, pausing wherever a step needs your decision
+- **Workflow memory** — the agent resumes prior context across sessions: handoff notes, tasks, decisions, and per-thread research notes, kept strictly out of the wiki
+- **Strategy conversations** — bring a fuzzy strategy direction; the agent clarifies, maps wiki coverage, proposes ideas with sources and failure modes, and converges into a strategy brief on disk
 - **Provider-agnostic** — any OpenAI-compatible LLM (Zhipu GLM, DeepSeek, Moonshot, Qwen, OpenAI, Ollama, etc.)
 - **Local-first** — all data as Markdown + ChromaDB on disk
 
@@ -125,9 +128,14 @@ qlw lint --maintain --apply    # apply query-derived state updates (idempotent)
 qlw agent                                       # interactive REPL
 qlw agent --query "list all articles"           # one-shot
 qlw agent --query "brainstorm: factor timing + risk parity"
+qlw agent --thread futures                      # resume a named memory thread
+qlw agent --no-memory                           # fully stateless run
+qlw memory show                                 # inspect workflow memory
 ```
 
-The agent dispatches the 12 tools listed in [docs/architecture.md#agent-layer](docs/architecture.md#agent-layer) — ingest, enrich, list/review, embed, query, compile, audit, and read.
+The agent dispatches the 15 tools listed in [docs/architecture.md#agent-layer](docs/architecture.md#agent-layer), plus 7 workflow-memory tools when memory is enabled (the default). Multi-step workflows — full ingest, concept review, KB health check, wiki explanation, strategy brainstorm — run as **skills**: on-disk SOPs the agent matches by trigger and follows, pausing wherever a step needs your decision. `qlw memory promote-procedure <id>` turns your own recurring flows into KB-level skills.
+
+**Workflow memory** (`<kb_root>/.qlw/memory/`) gives sessions continuity: a human-editable `workflow.md` plus a SQLite store of sessions, tasks, decisions, and per-thread research notes, all inspectable via `qlw memory`. Open a session with a fuzzy strategy direction ("想看看宏观周期和商品期限结构有没有结合点") and the agent clarifies constraints, maps wiki coverage, proposes candidates with sources and failure modes, and — only on your explicit go-ahead — converges the conversation into a strategy brief under `outputs/brainstorms/`.
 
 ## Configuration
 

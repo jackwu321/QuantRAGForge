@@ -23,7 +23,10 @@ Quant_LLM_Wiki 把公众号文章、网页和研究 PDF 喂进来，由 LLM 编�
 - **Rethink Layer**：对头脑风暴输出做事后新颖性（向量相似度）+ 质量（LLM-as-judge）打分
 - **Schema 强约束**：`wiki_lint` 每次运行都检查 frontmatter / 章节 / source 锚点；`--fix` 由 LLM 自动修复
 - **Query → wiki 回流**：每次 `ask`/`brainstorm` 都回写到 wiki；`lint --maintain` 把查询日志蒸馏成补洞建议
-- **交互式 Agent**：基于 LangGraph ReAct，提供 12 个工具，实时流式进度
+- **交互式 Agent**：基于 LangGraph ReAct，提供 15 个工具（外加 7 个记忆工具），实时流式进度
+- **Agent skills**：多步 workflow（一条龙入库、概念审核、库健康检查、概念解释、策略脑暴）固化为磁盘上的 SOP，agent 按 trigger 匹配并逐步执行，需要你决策的地方会停下等待
+- **工作记忆**：agent 跨会话续接上下文——交接记录、任务、决定、按 thread 隔离的研究笔记，严格不进 wiki
+- **策略对话**：带着一个模糊的策略方向来即可；agent 负责澄清、盘点 wiki 覆盖、给出带来源和失败模式的候选想法，最终收敛成落盘的策略简报
 - **Provider 无关**：支持任意 OpenAI-compatible LLM（智谱 GLM、DeepSeek、月之暗面、通义、OpenAI、Ollama 等）
 - **Local-first**：所有数据以 Markdown + ChromaDB 形式保存在本地
 
@@ -125,9 +128,14 @@ qlw lint --maintain --apply    # 把查询驱动的 state 更新落盘（幂等�
 qlw agent                                          # 交互式 REPL
 qlw agent --query "list all articles"              # 一次性
 qlw agent --query "brainstorm: 因子择时 + 风险平价"
+qlw agent --thread futures                         # 续接一个具名记忆 thread
+qlw agent --no-memory                              # 完全无状态运行
+qlw memory show                                    # 查看工作记忆
 ```
 
-Agent 会调度 [docs/architecture.md#agent-layer](docs/architecture.md#agent-layer) 列出的 12 个工具：ingest、enrich、list/review、embed、query、compile、audit、read。
+Agent 会调度 [docs/architecture.md#agent-layer](docs/architecture.md#agent-layer) 列出的 15 个工具，记忆启用时（默认开启）再加 7 个工作记忆工具。多步 workflow——一条龙入库、概念审核、库健康检查、概念解释、策略脑暴——以 **skill** 形式运行：agent 按 trigger 匹配磁盘上的 SOP 并逐步执行，需要你决策的地方会停下等待。`qlw memory promote-procedure <id>` 可以把你自己的常用流程升级为 KB 级 skill。
+
+**工作记忆**（`<kb_root>/.qlw/memory/`）让会话有连续性：一份可手改的 `workflow.md`，加一个存放会话 / 任务 / 决定 / 按 thread 隔离的研究笔记的 SQLite 库，均可通过 `qlw memory` 查看管理。带着一个模糊的策略方向开场（"想看看宏观周期和商品期限结构有没有结合点"），agent 会澄清约束、盘点 wiki 覆盖、给出带来源和失败模式的候选想法，并且——只在你明确示意后——把对话收敛成 `outputs/brainstorms/` 下的策略简报。
 
 ## 配置项
 
