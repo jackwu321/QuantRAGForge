@@ -38,3 +38,26 @@ class TestSaveStrategyBrief:
 
     def test_registered_in_all_tools(self):
         assert "save_strategy_brief" in [t.name for t in ALL_TOOLS]
+
+    @pytest.mark.parametrize("evil_topic, expected_slug_part", [
+        ("../../etc/passwd", "etc_passwd"),
+        ("...", "result"),
+    ])
+    def test_topic_cannot_escape_output_dir(self, tmp_path, evil_topic, expected_slug_part):
+        out = save_strategy_brief.invoke({"topic": evil_topic, "content": "body"})
+        briefs = list((tmp_path / "outputs" / "brainstorms").glob("*_brief.md"))
+        assert len(briefs) == 1
+        resolved = briefs[0].resolve()
+        assert resolved.parent == (tmp_path / "outputs" / "brainstorms").resolve()
+        assert expected_slug_part in resolved.name
+        assert str(briefs[0]) in out
+
+    def test_query_log_written_and_wiki_state_untouched(self, tmp_path):
+        save_strategy_brief.invoke({"topic": "动量方向", "content": "## 简报\n无来源章节。"})
+        logs = list((tmp_path / "wiki" / "queries").glob("*_brief.md"))
+        assert len(logs) == 1
+        state_path = tmp_path / "wiki" / "state.json"
+        if state_path.exists():
+            import json
+            state = json.loads(state_path.read_text(encoding="utf-8"))
+            assert state.get("concepts", {}) == {}
