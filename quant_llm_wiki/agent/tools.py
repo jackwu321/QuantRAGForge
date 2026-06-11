@@ -484,7 +484,13 @@ def query_knowledge_base(
 ) -> str:
     """Query the knowledge base. mode='ask' for factual Q&A, mode='brainstorm'
     for idea generation by combining insights across articles.
-    Returns the LLM response with source attributions."""
+    Returns the LLM response with source attributions.
+
+    NOTE: this is a single-shot retrieval tool. When the user opens a fuzzy /
+    directional strategy conversation (脑暴 / 聊聊策略方向 / "X 和 Y 有没有结合点"),
+    do NOT answer with this tool directly — call list_skills first and follow
+    the strategy-brainstorm skill SOP (which invokes this tool at the right
+    stage)."""
     from quant_llm_wiki.query.brainstorm import (
         retrieve_blocks,
         format_context,

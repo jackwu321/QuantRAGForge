@@ -18,6 +18,7 @@ Multi-turn fuzzy strategy conversations: tell the agent a vague strategy directi
 - System prompt: two tool lines, `save_strategy_brief` added to the write-authorization rule, memory rule 3 extended with the fold/reject-on-convergence flow.
 - `save_strategy_brief` and `set_note_status` count as significant write actions for the workflow.md session-log gate.
 - `append_query_log` gains `update_state` (default `True`): brief saves log the query but never mutate `state.json` — conversation-authored Retrieved Sources are not pipeline-trusted, so they get no importance bump or retrieval hints.
+- Skill triggering hardened for fuzzy strategy openers (found in GLM-4.7 live smoke: the agent answered with `query_knowledge_base` directly and never consulted the skill registry): the `query_knowledge_base` tool docstring now routes fuzzy/directional strategy conversations to the strategy-brainstorm skill first, and system prompt skill rule 1 lists 模糊策略方向的多轮脑暴 among the known skill-shaped patterns.
 
 ## [0.6.0] - 2026-06-10
 
