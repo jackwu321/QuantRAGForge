@@ -2,6 +2,37 @@
 
 All notable changes to this project will be documented in this file.
 
+## [0.7.0] - 2026-06-11
+
+Multi-turn fuzzy strategy conversations: tell the agent a vague strategy direction and it clarifies, maps wiki coverage, proposes candidate ideas, refines over multiple turns, and converges into a strategy brief on disk. Process state lives in workflow memory; nothing conversation-born enters the wiki.
+
+### Added
+
+- **`strategy-brainstorm` package skill**: entry-routed 5-stage SOP (clarify → orient → propose → refine → converge). Stages are a state library, not a pipeline — the agent enters at the latest viable stage; memory state (decisions / notes / prior briefs) counts as completed prior stages. Clarification budget ≤1 round / ≤2 questions; direction notes are written only once a direction takes shape.
+- **`save_strategy_brief` agent tool** (`ALL_TOOLS` 14 → 15): persists the converged brief to `outputs/brainstorms/<date>_<slug>_brief.md`; fires only on the user's explicit convergence instruction.
+- **`set_note_status` agent tool** (7th memory tool): fold/park/reject research notes from conversation when the user settles their fate; CLI `qlw memory note-status` remains available.
+- **`rejected` note status**: directions the user explicitly declined are excluded from open notes and recorded with the rejection decision.
+
+### Changed
+
+- System prompt: two tool lines, `save_strategy_brief` added to the write-authorization rule, memory rule 3 extended with the fold/reject-on-convergence flow.
+- `save_strategy_brief` and `set_note_status` count as significant write actions for the workflow.md session-log gate.
+- `append_query_log` gains `update_state` (default `True`): brief saves log the query but never mutate `state.json` — conversation-authored Retrieved Sources are not pipeline-trusted, so they get no importance bump or retrieval hints.
+- Skill triggering hardened for fuzzy strategy openers (found in GLM-4.7 live smoke: the agent answered with `query_knowledge_base` directly and never consulted the skill registry): the `query_knowledge_base` tool docstring now routes fuzzy/directional strategy conversations to the strategy-brainstorm skill first, and system prompt skill rule 1 lists 模糊策略方向的多轮脑暴 among the known skill-shaped patterns.
+
+### Fixed (pre-release adversarial review, Claude + Codex)
+
+- Brief query logs no longer record `cited_concepts` at all: `run_maintenance(apply=True)` aggregates citations from every query log into `state.json` retrieval hints, which would have laundered the untrusted brief citations one maintenance run later.
+- Re-converging on the same topic the same day no longer clobbers the earlier brief or its query log — filenames get `-2`/`-3` suffixes on collision.
+- `set_note_status` (agent tool) is now thread-scoped: a hallucinated note id can no longer fold/reject another thread's notes. CLI `qlw memory note-status` keeps bare-id semantics (explicit user action).
+- Control characters in a brief topic are sanitized (NUL previously crashed the tool; newlines could inject extra markdown into the brief header).
+- Brief query-log write failures now warn on stderr instead of passing silently.
+- `_latest_output_for(mode="brief")` no longer falls back to the latest brainstorm output (latent footgun for future callers omitting `output_path`).
+
+### Known limitations
+
+- `qlw agent --no-memory` still routes fuzzy strategy openers to the strategy-brainstorm SOP, whose steps reference memory tools that are not registered in stateless mode (tracked in TODOS.md, P2).
+
 ## [0.6.0] - 2026-06-10
 
 Agent workflow memory: the agent now resumes prior context across sessions. Memory is workflow state (handoff, tasks, decisions, research notes, procedure drafts) and stays strictly separated from the wiki KB.

@@ -484,7 +484,13 @@ def query_knowledge_base(
 ) -> str:
     """Query the knowledge base. mode='ask' for factual Q&A, mode='brainstorm'
     for idea generation by combining insights across articles.
-    Returns the LLM response with source attributions."""
+    Returns the LLM response with source attributions.
+
+    NOTE: this is a single-shot retrieval tool. When the user opens a fuzzy /
+    directional strategy conversation (脑暴 / 聊聊策略方向 / "X 和 Y 有没有结合点"),
+    do NOT answer with this tool directly — call list_skills first and follow
+    the strategy-brainstorm skill SOP (which invokes this tool at the right
+    stage)."""
     from quant_llm_wiki.query.brainstorm import (
         retrieve_blocks,
         format_context,
@@ -712,6 +718,64 @@ def read_wiki(target: str) -> str:
 
 
 # ---------------------------------------------------------------------------
+# Tool 13: save_strategy_brief
+# ---------------------------------------------------------------------------
+
+
+@tool
+def save_strategy_brief(topic: str, content: str) -> str:
+    """Save the converged brief of a multi-turn strategy conversation to
+    outputs/brainstorms/<date>_<slug>_brief.md.
+
+    Call ONLY when the user has explicitly asked to converge ("出简报" /
+    "收敛吧") — never self-initiate. `topic` is a short direction title;
+    `content` is the full markdown body (方向与约束 / 候选想法含来源与
+    failure modes / 已否定方向及理由 / 选定方向 / 依据概念 / 下一步建议)."""
+    from datetime import datetime
+
+    from quant_llm_wiki.agent.memory.tools import get_memory_context
+    from quant_llm_wiki.query.brainstorm import slugify
+
+    # Control characters would crash Path operations (NUL) or let the topic
+    # inject extra markdown lines into the brief header zone.
+    topic = re.sub(r"[\x00-\x1f\x7f]+", " ", topic)
+    if not topic.strip() or not content.strip():
+        return "Error: topic and content must both be non-empty."
+
+    kb_root = resolve_kb_root(None)
+    date_part = datetime.now().strftime("%Y-%m-%d")
+    out_dir = kb_root / "outputs" / "brainstorms"
+    out_dir.mkdir(parents=True, exist_ok=True)
+    # Re-converging on the same topic the same day must not clobber the
+    # earlier brief — uniquify with -2/-3/... suffixes.
+    path = out_dir / f"{date_part}_{slugify(topic)}_brief.md"
+    n = 2
+    while path.exists():
+        path = out_dir / f"{date_part}_{slugify(topic)}_brief-{n}.md"
+        n += 1
+    thread_id = get_memory_context()["thread_id"]
+    header = "\n".join([
+        f"# Strategy Brief: {topic}",
+        "",
+        f"Date: {date_part}",
+        f"Thread: {thread_id}",
+        "",
+        "",
+    ])
+    path.write_text(header + content.strip() + "\n", encoding="utf-8")
+
+    try:
+        from quant_llm_wiki.wiki.maintain import append_query_log
+        append_query_log(kb_root, topic, "brief", output_path=path, update_state=False)
+    except Exception as exc:  # non-critical, but never silent
+        import sys
+        print(f"[qlw-agent] warning: brief query log write failed "
+              f"({type(exc).__name__}: {exc})", file=sys.stderr)
+
+    return f"Strategy brief saved: {path}"
+
+
+# ---------------------------------------------------------------------------
 # All tools for registration
 # ---------------------------------------------------------------------------
 
@@ -730,6 +794,7 @@ ALL_TOOLS = [
     list_concepts,
     set_concept_status,
     read_wiki,
+    save_strategy_brief,
     list_skills,
     read_skill,
 ]

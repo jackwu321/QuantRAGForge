@@ -17,7 +17,8 @@ from quant_llm_wiki.agent.skill_registry import (  # noqa: E402
     read_skill,
 )
 
-CORE_SKILLS = ["concept-review", "full-ingest", "kb-health-check", "wiki-explanation"]
+CORE_SKILLS = ["concept-review", "full-ingest", "kb-health-check",
+               "strategy-brainstorm", "wiki-explanation"]
 
 VALID_KB_SKILL = textwrap.dedent("""\
     ---
@@ -68,14 +69,14 @@ class TestLoader:
     def test_missing_kb_skills_dir_is_skipped(self, tmp_path):
         assert not (tmp_path / ".qlw").exists()
         reg = load_skill_registry(tmp_path)
-        assert len(reg["skills"]) == 4
+        assert len(reg["skills"]) == len(CORE_SKILLS)
         assert reg["_errors"] == []
 
     def test_kb_overrides_package_by_name(self, tmp_path):
         write_kb_skill(tmp_path, "full-ingest")
         reg = load_skill_registry(tmp_path)
         entries = {s["name"]: s for s in reg["skills"]}
-        assert len(reg["skills"]) == 4  # overridden package version not duplicated
+        assert len(reg["skills"]) == len(CORE_SKILLS)  # overridden package version not duplicated
         fi = entries["full-ingest"]
         assert fi["source"] == "kb"
         assert fi["overrides"] == "package:full-ingest.md"
@@ -207,9 +208,13 @@ class TestReadSkillBoundaries:
 class TestCoreSkillSanity:
     @pytest.mark.parametrize("name", CORE_SKILLS)
     def test_tools_used_all_exist(self, tmp_path, name):
+        from quant_llm_wiki.agent.memory.tools import MEMORY_TOOLS
         from quant_llm_wiki.agent.tools import ALL_TOOLS
 
-        tool_names = {t.name for t in ALL_TOOLS}
+        # Memory tools are registered conditionally (graph.py: ALL_TOOLS +
+        # memory_tools when memory is enabled), so the legal universe for
+        # skill tools_used is the union, not ALL_TOOLS alone.
+        tool_names = {t.name for t in ALL_TOOLS} | {t.name for t in MEMORY_TOOLS}
         skill = get_skill(name, tmp_path)
         assert set(skill["frontmatter"]["tools_used"]) <= tool_names
 

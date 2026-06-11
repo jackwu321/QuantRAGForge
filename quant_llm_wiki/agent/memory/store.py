@@ -71,7 +71,7 @@ CREATE TABLE IF NOT EXISTS notes(
     thread_id TEXT NOT NULL,
     kind TEXT NOT NULL DEFAULT 'observation',  -- 'hypothesis' | 'direction' | 'observation'
     text TEXT NOT NULL,
-    status TEXT NOT NULL DEFAULT 'open',       -- 'open' | 'parked' | 'folded'
+    status TEXT NOT NULL DEFAULT 'open',       -- 'open' | 'parked' | 'folded' | 'rejected'
     created_at TEXT NOT NULL,
     updated_at TEXT NOT NULL
 );
@@ -119,7 +119,7 @@ END;
 """
 
 NOTE_KINDS = ("hypothesis", "direction", "observation")
-NOTE_STATUSES = ("open", "parked", "folded")
+NOTE_STATUSES = ("open", "parked", "folded", "rejected")
 DEFAULT_THREAD = "main"
 
 
@@ -310,14 +310,24 @@ class MemoryStore:
             )
         return cur.lastrowid
 
-    def set_note_status(self, note_id: int, status: str) -> bool:
+    def set_note_status(self, note_id: int, status: str,
+                        thread_id: str | None = None) -> bool:
+        """``thread_id=None`` updates by bare id (CLI: explicit user action).
+        Agent tools pass their session thread so a hallucinated id can never
+        touch another thread's notes."""
         if status not in NOTE_STATUSES:
             raise ValueError(f"status must be one of {NOTE_STATUSES}")
         with self.conn:
-            cur = self.conn.execute(
-                "UPDATE notes SET status=?, updated_at=? WHERE id=?",
-                (status, _now(), note_id),
-            )
+            if thread_id is None:
+                cur = self.conn.execute(
+                    "UPDATE notes SET status=?, updated_at=? WHERE id=?",
+                    (status, _now(), note_id),
+                )
+            else:
+                cur = self.conn.execute(
+                    "UPDATE notes SET status=?, updated_at=? WHERE id=? AND thread_id=?",
+                    (status, _now(), note_id, thread_id),
+                )
         return cur.rowcount > 0
 
     def open_notes(self, thread_id: str, limit: int = 5) -> list[sqlite3.Row]:
@@ -329,7 +339,7 @@ class MemoryStore:
     def all_notes(self, thread_id: str | None = None, limit: int = 200) -> list[sqlite3.Row]:
         if thread_id is None:
             return self.conn.execute(
-                "SELECT * FROM notes ORDER BY updated_at DESC LIMIT ?", (limit,)).fetchall()
+                "SELECT * FROM notes ORDER BY updated_at DESC, id DESC LIMIT ?", (limit,)).fetchall()
         return self.conn.execute(
-            "SELECT * FROM notes WHERE thread_id=? ORDER BY updated_at DESC LIMIT ?",
+            "SELECT * FROM notes WHERE thread_id=? ORDER BY updated_at DESC, id DESC LIMIT ?",
             (thread_id, limit)).fetchall()

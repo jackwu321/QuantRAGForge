@@ -1,4 +1,4 @@
-"""Six memory agent tools. Thin: validation + atomic SQL + ack. No LLM calls.
+"""Seven memory agent tools. Thin: validation + atomic SQL + ack. No LLM calls.
 
 All tools return plain strings (GLM-4.7 yields empty final answers on
 dict-typed ToolMessages — see skill_registry.py).
@@ -14,7 +14,7 @@ from typing import Optional
 
 from langchain_core.tools import tool
 
-from quant_llm_wiki.agent.memory.store import DEFAULT_THREAD, NOTE_KINDS, MemoryStore
+from quant_llm_wiki.agent.memory.store import DEFAULT_THREAD, NOTE_KINDS, NOTE_STATUSES, MemoryStore
 from quant_llm_wiki.paths import resolve_kb_root
 
 _context: dict = {"thread_id": DEFAULT_THREAD, "session_id": None}
@@ -126,6 +126,25 @@ def record_note(text: str, kind: str = "observation") -> str:
         store.close()
 
 
+@tool
+def set_note_status(note_id: int, status: str) -> str:
+    """Set a research note's status: 'open' | 'parked' | 'folded' | 'rejected'.
+
+    Use only when the user explicitly settles a note's fate in conversation —
+    e.g. a direction absorbed into a strategy brief (folded) or rejected by
+    the user (rejected). Only call with a note id visible this session
+    (preamble '#id' lines or a record_note ack); never guess ids."""
+    if status not in NOTE_STATUSES:
+        return f"Error: status must be one of {' / '.join(NOTE_STATUSES)}."
+    store = _store()
+    try:
+        if store.set_note_status(note_id, status, thread_id=_context["thread_id"]):
+            return f"Note #{note_id} → {status}."
+        return f"Note #{note_id} not found."
+    finally:
+        store.close()
+
+
 MEMORY_TOOLS = [
     record_decision,
     add_task,
@@ -133,10 +152,12 @@ MEMORY_TOOLS = [
     list_open_tasks,
     propose_procedure,
     record_note,
+    set_note_status,
 ]
 
 # Memory tools that count as "significant" write actions for the
 # workflow.md session-log gate (see hooks.py).
 MEMORY_WRITE_TOOL_NAMES = {
     "record_decision", "add_task", "complete_task", "propose_procedure", "record_note",
+    "set_note_status",
 }

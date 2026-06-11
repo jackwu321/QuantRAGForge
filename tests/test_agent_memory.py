@@ -21,6 +21,7 @@ from quant_llm_wiki.agent.memory.tools import (  # noqa: E402
     propose_procedure,
     record_decision,
     record_note,
+    set_note_status,
     set_memory_context,
 )
 from quant_llm_wiki.paths import memory_root  # noqa: E402
@@ -91,6 +92,10 @@ class TestStore:
         assert [r["id"] for r in store.open_notes("main")] == [nid]
         assert store.set_note_status(nid, "folded")
         assert store.open_notes("main") == []
+        nid2 = store.record_note("动量+宏观组合方向", "main", kind="direction")
+        assert store.set_note_status(nid2, "rejected")
+        assert store.open_notes("main") == []
+        assert store.all_notes("main")[0]["status"] == "rejected"
         with pytest.raises(ValueError):
             store.record_note("x", "main", kind="banana")
         with pytest.raises(ValueError):
@@ -175,10 +180,11 @@ class TestWorkflowMd:
 
 
 class TestMemoryTools:
-    def test_six_tools_registered(self):
+    def test_seven_tools_registered(self):
         assert [t.name for t in MEMORY_TOOLS] == [
             "record_decision", "add_task", "complete_task",
-            "list_open_tasks", "propose_procedure", "record_note"]
+            "list_open_tasks", "propose_procedure", "record_note",
+            "set_note_status"]
 
     def test_tools_return_strings_and_write_sqlite(self, tmp_path):
         out = record_decision.invoke({"text": "决定 A", "rationale": "因为 B"})
@@ -213,6 +219,31 @@ class TestMemoryTools:
         assert store.open_tasks("strategy-a")[0]["text"] == "thread scoped"
         assert store.open_tasks("main") == []
         store.close()
+
+    def test_set_note_status_tool_cannot_touch_other_threads(self, tmp_path):
+        record_note.invoke({"text": "main 线程的在研方向", "kind": "direction"})
+        set_memory_context("other-thread", None)
+        out = set_note_status.invoke({"note_id": 1, "status": "rejected"})
+        assert "not found" in out
+        set_memory_context("main", None)
+        store = MemoryStore(tmp_path)
+        assert store.all_notes("main")[0]["status"] == "open"
+        store.close()
+
+    def test_set_note_status_tool(self, tmp_path):
+        record_note.invoke({"text": "假设 X", "kind": "hypothesis"})
+        out = set_note_status.invoke({"note_id": 1, "status": "rejected"})
+        assert isinstance(out, str) and "rejected" in out
+        assert set_note_status.invoke({"note_id": 999, "status": "folded"}) == "Note #999 not found."
+        assert set_note_status.invoke({"note_id": 1, "status": "banana"}).startswith("Error")
+        store = MemoryStore(tmp_path)
+        assert store.open_notes("main") == []
+        assert store.all_notes("main")[0]["status"] == "rejected"
+        store.close()
+
+    def test_set_note_status_in_write_tool_names(self):
+        from quant_llm_wiki.agent.memory.tools import MEMORY_WRITE_TOOL_NAMES
+        assert "set_note_status" in MEMORY_WRITE_TOOL_NAMES
 
 
 # ---------------------------------------------------------------------------
@@ -356,3 +387,8 @@ class TestMemorySession:
         wf.write_section(tmp_path, "Current Handoff", "人工改的，别动")
         session.on_session_end()
         assert wf.read_sections(tmp_path)["Current Handoff"] == "人工改的，别动"
+
+    def test_v070_write_tools_count_as_significant(self):
+        from quant_llm_wiki.agent.memory.hooks import SIGNIFICANT_TOOL_NAMES
+        assert "save_strategy_brief" in SIGNIFICANT_TOOL_NAMES
+        assert "set_note_status" in SIGNIFICANT_TOOL_NAMES
