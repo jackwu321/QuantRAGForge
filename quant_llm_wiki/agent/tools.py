@@ -750,7 +750,7 @@ def save_strategy_brief(topic: str, content: str) -> str:
 
     try:
         from quant_llm_wiki.wiki.maintain import append_query_log
-        append_query_log(kb_root, topic, "brief", output_path=path)
+        append_query_log(kb_root, topic, "brief", output_path=path, update_state=False)
     except Exception:
         pass  # non-critical: query log write failure
 

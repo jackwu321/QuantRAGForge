@@ -17,6 +17,7 @@ Multi-turn fuzzy strategy conversations: tell the agent a vague strategy directi
 
 - System prompt: two tool lines, `save_strategy_brief` added to the write-authorization rule, memory rule 3 extended with the fold/reject-on-convergence flow.
 - `save_strategy_brief` and `set_note_status` count as significant write actions for the workflow.md session-log gate.
+- `append_query_log` gains `update_state` (default `True`): brief saves log the query but never mutate `state.json` — conversation-authored Retrieved Sources are not pipeline-trusted, so they get no importance bump or retrieval hints.
 
 ## [0.6.0] - 2026-06-10
 

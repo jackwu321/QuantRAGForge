@@ -114,10 +114,15 @@ def append_query_log(
     mode: str,
     output_path: Path | None = None,
     importance_bump: float = 0.05,
+    update_state: bool = True,
 ) -> Path | None:
     """Write wiki/queries/<date>_<slug>.md and bump importance on cited concepts.
 
     Returns the written log path, or None if no matching output file was found.
+
+    ``update_state=False`` writes the log file but skips all state.json mutation
+    — used for conversation-authored outputs (strategy briefs) whose Retrieved
+    Sources section is not pipeline-trusted.
     """
     output_dir = kb_root / "outputs" / "brainstorms"
     output_md_path = output_path or _latest_output_for(query, mode, output_dir)
@@ -167,6 +172,9 @@ def append_query_log(
         "",
     ]
     log_path.write_text("\n".join(fm_lines) + "\n".join(body), encoding="utf-8")
+
+    if not update_state:
+        return log_path
 
     # Update state.json: bump importance + append retrieval_hints
     state_path = kb_root / "wiki" / "state.json"

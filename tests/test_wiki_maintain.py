@@ -55,6 +55,23 @@ class QueryFeedbackTests(unittest.TestCase):
             self.assertGreater(entry.importance, 0.0)
             self.assertTrue(any("rotation" in h for h in entry.retrieval_hints))
 
+    def test_update_state_false_writes_log_but_leaves_state_untouched(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp:
+            root = Path(tmp)
+            out_dir = self._setup_kb(root)
+            concept_path = root / "wiki" / "concepts" / "etf-rotation.md"
+            out = self._write_output(out_dir, "2026-06-11_b_brief.md", [str(concept_path)])
+            state_path = root / "wiki" / "state.json"
+            before = state_path.read_text(encoding="utf-8") if state_path.exists() else None
+            log_path = wiki_maintain.append_query_log(
+                root, query="rotation?", mode="brief", output_path=out, update_state=False
+            )
+            self.assertIsNotNone(log_path)
+            assert log_path is not None
+            self.assertIn('cited_concepts: ["etf-rotation"]', log_path.read_text(encoding="utf-8"))
+            after = state_path.read_text(encoding="utf-8") if state_path.exists() else None
+            self.assertEqual(before, after)
+
     def test_returns_none_when_no_output_file(self) -> None:
         with tempfile.TemporaryDirectory() as tmp:
             root = Path(tmp)

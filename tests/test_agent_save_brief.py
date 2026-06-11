@@ -61,3 +61,20 @@ class TestSaveStrategyBrief:
             import json
             state = json.loads(state_path.read_text(encoding="utf-8"))
             assert state.get("concepts", {}) == {}
+
+    def test_brief_with_retrieved_sources_never_bumps_wiki_state(self, tmp_path):
+        # Brief content is conversation-authored: even a well-formed Retrieved
+        # Sources section citing a real concept must not mutate state.json.
+        concept = tmp_path / "wiki" / "concepts" / "momentum-strategies.md"
+        concept.parent.mkdir(parents=True)
+        concept.write_text("# Momentum\n", encoding="utf-8")
+        content = (
+            "## 简报\n\n方向已收敛。\n\n"
+            "## Retrieved Sources\n\n"
+            f"- {concept}\n\n"
+            "## 下一步建议\n\n回测。\n"
+        )
+        save_strategy_brief.invoke({"topic": "动量收敛", "content": content})
+        logs = list((tmp_path / "wiki" / "queries").glob("*_brief.md"))
+        assert len(logs) == 1
+        assert not (tmp_path / "wiki" / "state.json").exists()
