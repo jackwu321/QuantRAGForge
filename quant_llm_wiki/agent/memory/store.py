@@ -71,7 +71,7 @@ CREATE TABLE IF NOT EXISTS notes(
     thread_id TEXT NOT NULL,
     kind TEXT NOT NULL DEFAULT 'observation',  -- 'hypothesis' | 'direction' | 'observation'
     text TEXT NOT NULL,
-    status TEXT NOT NULL DEFAULT 'open',       -- 'open' | 'parked' | 'folded'
+    status TEXT NOT NULL DEFAULT 'open',       -- 'open' | 'parked' | 'folded' | 'rejected'
     created_at TEXT NOT NULL,
     updated_at TEXT NOT NULL
 );
@@ -119,7 +119,7 @@ END;
 """
 
 NOTE_KINDS = ("hypothesis", "direction", "observation")
-NOTE_STATUSES = ("open", "parked", "folded")
+NOTE_STATUSES = ("open", "parked", "folded", "rejected")
 DEFAULT_THREAD = "main"
 
 
@@ -329,7 +329,7 @@ class MemoryStore:
     def all_notes(self, thread_id: str | None = None, limit: int = 200) -> list[sqlite3.Row]:
         if thread_id is None:
             return self.conn.execute(
-                "SELECT * FROM notes ORDER BY updated_at DESC LIMIT ?", (limit,)).fetchall()
+                "SELECT * FROM notes ORDER BY updated_at DESC, id DESC LIMIT ?", (limit,)).fetchall()
         return self.conn.execute(
-            "SELECT * FROM notes WHERE thread_id=? ORDER BY updated_at DESC LIMIT ?",
+            "SELECT * FROM notes WHERE thread_id=? ORDER BY updated_at DESC, id DESC LIMIT ?",
             (thread_id, limit)).fetchall()

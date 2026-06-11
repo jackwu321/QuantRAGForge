@@ -91,6 +91,10 @@ class TestStore:
         assert [r["id"] for r in store.open_notes("main")] == [nid]
         assert store.set_note_status(nid, "folded")
         assert store.open_notes("main") == []
+        nid2 = store.record_note("动量+宏观组合方向", "main", kind="direction")
+        assert store.set_note_status(nid2, "rejected")
+        assert store.open_notes("main") == []
+        assert store.all_notes("main")[0]["status"] == "rejected"
         with pytest.raises(ValueError):
             store.record_note("x", "main", kind="banana")
         with pytest.raises(ValueError):

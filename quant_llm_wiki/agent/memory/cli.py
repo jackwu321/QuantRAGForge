@@ -14,6 +14,7 @@ import sys
 from pathlib import Path
 
 from quant_llm_wiki.paths import memory_root, resolve_kb_root
+from quant_llm_wiki.agent.memory.store import NOTE_STATUSES
 
 
 def _store(args):
@@ -259,7 +260,7 @@ def register(parser: argparse.ArgumentParser) -> None:
 
     p = sub.add_parser("note-status", help="Set a note's status.")
     p.add_argument("id", type=int)
-    p.add_argument("status", choices=("open", "parked", "folded"))
+    p.add_argument("status", choices=NOTE_STATUSES)
     p.set_defaults(func=_cmd_note_status)
 
     p = sub.add_parser("recall", help="Search tasks + decisions + notes.")
