@@ -83,7 +83,7 @@ A post-generation validation layer that runs automatically in brainstorm mode:
 
 ## Agent Layer
 
-The LangGraph ReAct agent provides 12 tools:
+The LangGraph ReAct agent provides 15 tools (plus 7 workflow-memory tools when memory is enabled, the default):
 
 | Tool | Description |
 |------|-------------|
@@ -99,6 +99,24 @@ The LangGraph ReAct agent provides 12 tools:
 | `list_concepts` | List wiki concepts by status (stable / proposed / deprecated) |
 | `set_concept_status` | Override: approve/deprecate/delete a concept (escape hatch) |
 | `read_wiki` | Read INDEX.md / a concept article / a source summary |
+| `save_strategy_brief` | Persist the converged brief of a multi-turn strategy conversation to `outputs/brainstorms/<date>_<slug>_brief.md`; fires only on the user's explicit convergence instruction. Its query log never mutates `wiki/state.json` — conversation-authored citations are not pipeline-trusted |
+| `list_skills` | List registered skill SOPs (name / description / triggers / tools_used) |
+| `read_skill` | Read one skill's full SOP markdown by name |
+
+### Skills
+
+Multi-step workflows are codified as SOP markdown files ("skills") with frontmatter (triggers, `tools_used`, `[PAUSE]` gates where the agent must stop for a user decision). Five ship inside the package (`quant_llm_wiki/agent/skills/`): `full-ingest`, `concept-review`, `kb-health-check`, `wiki-explanation`, `strategy-brainstorm`. KB-level skills in `<kb_root>/.qlw/skills/` override package skills by name; `qlw memory promote-procedure <id>` generates them from conversationally captured procedure drafts. The skill registry is the only runtime SOP system — the system prompt holds rules, not workflows.
+
+`strategy-brainstorm` is an entry-routed 5-stage SOP (clarify → orient → propose → refine → converge): stages are a state library, not a pipeline — the agent enters at the latest viable stage, with memory state (decisions / open notes / prior briefs) counting as completed prior stages.
+
+### Workflow memory
+
+Enabled by default; `--no-memory` runs are fully stateless. Two substrates under `<kb_root>/.qlw/memory/`:
+
+- `workflow.md` — human-editable narrative (Current Handoff / Next Steps / Blockers / Recent Sessions). Hand-edits always win; Recent Sessions only logs sessions with significant write actions.
+- `memory.sqlite` — sessions, tasks, decisions, research notes (hypothesis / direction / observation, per thread), procedure drafts, with FTS5 search.
+
+Seven agent tools (`record_decision`, `add_task`, `complete_task`, `list_open_tasks`, `record_note`, `set_note_status`, `propose_procedure`) and the `qlw memory` CLI manage it. Sessions open with a token-budgeted preamble (handoff, open tasks, recent decisions, open notes for the active thread). Research notes hold unstable process state and never enter the wiki; the wiki holds stable knowledge only.
 
 ## File structure
 
@@ -110,7 +128,7 @@ Quant_LLM_Wiki/
 ├── README.md / README.zh-CN.md
 ├── LICENSE
 ├── quant_llm_wiki/                 # Installable Python package (all functionality here)
-│   ├── cli.py                      # `qlw` dispatcher (9 subcommands)
+│   ├── cli.py                      # `qlw` dispatcher (10 subcommands)
 │   ├── shared.py                   # Shared utilities, LLM HTTP client, frontmatter
 │   ├── paths.py                    # KB root resolution (resolve_kb_root)
 │   ├── enrich.py                   # LLM enrichment pipeline
@@ -119,7 +137,7 @@ Quant_LLM_Wiki/
 │   ├── ingest/                     # WeChat / web / PDF / HTML extractors
 │   ├── wiki/                       # compile, lint, maintain, schemas, state, index, seed
 │   ├── query/                      # brainstorm (wiki-first retrieval) + rethink
-│   ├── agent/                      # LangGraph ReAct agent
+│   ├── agent/                      # LangGraph ReAct agent (tools, skills/ SOPs, memory/)
 │   └── templates/                  # research-note / strategy-note article templates
 ├── raw/                            # Incoming source articles (gitignored — user data)
 ├── wiki/                           # LLM-built Markdown memory (gitignored — user data)
