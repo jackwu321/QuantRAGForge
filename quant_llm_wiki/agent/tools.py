@@ -712,6 +712,52 @@ def read_wiki(target: str) -> str:
 
 
 # ---------------------------------------------------------------------------
+# Tool 13: save_strategy_brief
+# ---------------------------------------------------------------------------
+
+
+@tool
+def save_strategy_brief(topic: str, content: str) -> str:
+    """Save the converged brief of a multi-turn strategy conversation to
+    outputs/brainstorms/<date>_<slug>_brief.md.
+
+    Call ONLY when the user has explicitly asked to converge ("出简报" /
+    "收敛吧") — never self-initiate. `topic` is a short direction title;
+    `content` is the full markdown body (方向与约束 / 候选想法含来源与
+    failure modes / 已否定方向及理由 / 选定方向 / 依据概念 / 下一步建议)."""
+    from datetime import datetime
+
+    from quant_llm_wiki.agent.memory.tools import get_memory_context
+    from quant_llm_wiki.query.brainstorm import slugify
+
+    if not topic.strip() or not content.strip():
+        return "Error: topic and content must both be non-empty."
+
+    kb_root = resolve_kb_root(None)
+    date_part = datetime.now().strftime("%Y-%m-%d")
+    path = kb_root / "outputs" / "brainstorms" / f"{date_part}_{slugify(topic)}_brief.md"
+    path.parent.mkdir(parents=True, exist_ok=True)
+    thread_id = get_memory_context()["thread_id"]
+    header = "\n".join([
+        f"# Strategy Brief: {topic}",
+        "",
+        f"Date: {date_part}",
+        f"Thread: {thread_id}",
+        "",
+        "",
+    ])
+    path.write_text(header + content.strip() + "\n", encoding="utf-8")
+
+    try:
+        from quant_llm_wiki.wiki.maintain import append_query_log
+        append_query_log(kb_root, topic, "brief", output_path=path)
+    except Exception:
+        pass  # non-critical: query log write failure
+
+    return f"Strategy brief saved: {path}"
+
+
+# ---------------------------------------------------------------------------
 # All tools for registration
 # ---------------------------------------------------------------------------
 
@@ -730,6 +776,7 @@ ALL_TOOLS = [
     list_concepts,
     set_concept_status,
     read_wiki,
+    save_strategy_brief,
     list_skills,
     read_skill,
 ]
