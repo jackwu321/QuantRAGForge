@@ -2,6 +2,12 @@
 
 All notable changes to this project will be documented in this file.
 
+## [0.7.1] - 2026-06-12
+
+### Fixed
+
+- **Skills referencing unregistered tools no longer break `--no-memory` runs** (P2 deferred from v0.7.0): the strategy-brainstorm SOP calls memory tools (`record_note`, `record_decision`, `set_note_status`, `add_task`) that are only registered when workflow memory is enabled, so `qlw agent --no-memory` (and the corrupt-sqlite degraded mode) hit tool-not-found mid-conversation. `create_agent` now publishes the session's tool set to the skill registry; `list_skills` annotates every skill with `unavailable_tools`, and `read_skill` adds a `degraded_note` instructing the agent to skip the steps that call them. The strategy-brainstorm SOP (version 2) carries a matching degraded-mode note. Skills are annotated rather than hidden — the SOP remains usable without memory, minus the memory writes.
+
 ## [0.7.0] - 2026-06-11
 
 Multi-turn fuzzy strategy conversations: tell the agent a vague strategy direction and it clarifies, maps wiki coverage, proposes candidate ideas, refines over multiple turns, and converges into a strategy brief on disk. Process state lives in workflow memory; nothing conversation-born enters the wiki.

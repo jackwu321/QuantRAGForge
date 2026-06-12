@@ -7,6 +7,7 @@ from langchain_openai import ChatOpenAI
 from langgraph.prebuilt import create_react_agent
 
 from quant_llm_wiki.agent.prompts import SYSTEM_PROMPT
+from quant_llm_wiki.agent.skill_registry import set_runtime_tool_names
 from quant_llm_wiki.agent.tools import ALL_TOOLS
 from quant_llm_wiki.shared import _sanitize_response_strings, get_llm_config
 
@@ -93,9 +94,16 @@ def create_agent(memory_tools: list | None = None, preamble: str | None = None):
     if preamble:
         prompt = f"{SYSTEM_PROMPT}\n\n{preamble}"
 
+    tools = ALL_TOOLS + (memory_tools or [])
+    # Skills whose SOP references conditionally-registered tools (memory
+    # tools under --no-memory / corrupt-sqlite degraded mode) get annotated
+    # by list_skills/read_skill so the agent skips those steps instead of
+    # hitting tool-not-found mid-conversation.
+    set_runtime_tool_names({t.name for t in tools})
+
     agent = create_react_agent(
         model=llm,
-        tools=ALL_TOOLS + (memory_tools or []),
+        tools=tools,
         prompt=prompt,
         post_model_hook=_sanitize_agent_message,
     )

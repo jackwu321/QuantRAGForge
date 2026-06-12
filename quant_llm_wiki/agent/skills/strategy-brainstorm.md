@@ -1,7 +1,7 @@
 ---
 name: strategy-brainstorm
 description: 模糊策略方向的多轮沟通 SOP：入口路由 → 澄清 → 知识库定向 → 提案 → 细化 → 收敛落盘简报
-version: 1
+version: 2
 triggers:
   - 策略方向
   - 脑暴
@@ -75,6 +75,10 @@ tools_used:
      （"好的 / 继续"这类泛确认不算）
 
 ## Notes
+- **降级模式（无 memory 工具）**：read_skill 返回的 degraded_note 列出本会话未注册的工具
+  （`--no-memory` 或 memory 损坏降级）时，跳过所有调用它们的步骤——record_note /
+  record_decision / set_note_status / add_task 一律不调用、不替代；其余步骤照常，
+  约束与中间结论靠对话上下文维持，save_strategy_brief 收敛简报仍可用。
 - **direction note 延迟写**：开场不写。方向"成形"才记——用户在澄清后继续推进（进入
   阶段 2/3）、或带具体方向直接进入阶段 3/4、或明确要求记下。闲聊式开场不留 memory 残留。
 - 不编造回测结果；每个想法标注来源；wiki 未覆盖如实说，不要硬凑。

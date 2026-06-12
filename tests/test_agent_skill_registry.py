@@ -15,6 +15,7 @@ from quant_llm_wiki.agent.skill_registry import (  # noqa: E402
     list_skills,
     load_skill_registry,
     read_skill,
+    set_runtime_tool_names,
 )
 
 CORE_SKILLS = ["concept-review", "full-ingest", "kb-health-check",
@@ -225,6 +226,70 @@ class TestCoreSkillSanity:
             assert "[PAUSE]" in skill["body"]
         else:
             assert "[PAUSE]" not in skill["body"]
+
+
+# ---------------------------------------------------------------------------
+# 5b. Runtime tool availability (--no-memory / degraded mode)
+#     Memory tools are registered conditionally; skills referencing them must
+#     be annotated so the agent skips those steps instead of hitting
+#     tool-not-found mid-conversation.
+# ---------------------------------------------------------------------------
+
+
+MEMORYLESS_TOOLS = {
+    "ingest_article", "enrich_articles", "list_articles", "review_articles",
+    "set_article_status", "embed_knowledge", "query_knowledge_base",
+    "compile_wiki", "audit_wiki", "list_concepts", "set_concept_status",
+    "read_wiki", "save_strategy_brief", "list_skills", "read_skill",
+}
+
+
+class TestRuntimeToolAvailability:
+    def test_get_skill_marks_unavailable_memory_tools(self, tmp_path):
+        skill = get_skill("strategy-brainstorm", tmp_path, available_tools=MEMORYLESS_TOOLS)
+        assert skill["unavailable_tools"] == [
+            "record_note", "record_decision", "set_note_status", "add_task",
+        ]
+        assert "degraded_note" in skill
+        # The note must tell the agent to skip, and name the missing tools.
+        assert "record_note" in skill["degraded_note"]
+
+    def test_get_skill_full_tool_set_has_no_unavailable(self, tmp_path):
+        full = MEMORYLESS_TOOLS | {
+            "record_decision", "add_task", "complete_task", "list_open_tasks",
+            "propose_procedure", "record_note", "set_note_status",
+        }
+        skill = get_skill("strategy-brainstorm", tmp_path, available_tools=full)
+        assert skill["unavailable_tools"] == []
+        assert "degraded_note" not in skill
+
+    def test_get_skill_default_assumes_all_available(self, tmp_path):
+        skill = get_skill("strategy-brainstorm", tmp_path)
+        assert skill["unavailable_tools"] == []
+
+    def test_registry_annotates_unavailable_tools(self, tmp_path):
+        reg = load_skill_registry(tmp_path, available_tools=MEMORYLESS_TOOLS)
+        entries = {s["name"]: s for s in reg["skills"]}
+        assert entries["strategy-brainstorm"]["unavailable_tools"] == [
+            "record_note", "record_decision", "set_note_status", "add_task",
+        ]
+        assert entries["full-ingest"]["unavailable_tools"] == []
+
+    def test_tool_wrappers_respect_runtime_tool_names(self, tmp_path):
+        set_runtime_tool_names(MEMORYLESS_TOOLS)
+        try:
+            reg = json.loads(list_skills.invoke({}))
+            entries = {s["name"]: s for s in reg["skills"]}
+            assert entries["strategy-brainstorm"]["unavailable_tools"] != []
+            skill = json.loads(read_skill.invoke({"name": "strategy-brainstorm"}))
+            assert "degraded_note" in skill
+        finally:
+            set_runtime_tool_names(None)
+
+    def test_wrappers_default_to_no_annotation(self, tmp_path):
+        reg = json.loads(list_skills.invoke({}))
+        entries = {s["name"]: s for s in reg["skills"]}
+        assert entries["strategy-brainstorm"]["unavailable_tools"] == []
 
 
 # ---------------------------------------------------------------------------
