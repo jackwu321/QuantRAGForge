@@ -59,6 +59,33 @@ class TestAgentGraph(unittest.TestCase):
         kwargs = mock_llm_cls.call_args.kwargs
         self.assertEqual(kwargs["extra_body"], {"thinking": {"type": "disabled"}})
 
+    @patch("quant_llm_wiki.agent.graph.get_llm_config")
+    @patch("quant_llm_wiki.agent.graph.ChatOpenAI")
+    def test_create_agent_publishes_runtime_tool_names(self, mock_llm_cls, mock_config):
+        # Skills referencing conditionally-registered memory tools are
+        # annotated via the runtime tool set; create_agent must publish it.
+        mock_config.return_value = ("fake-key", "https://fake.url/v4", "glm-4.7")
+        mock_llm_cls.return_value = MagicMock()
+
+        import quant_llm_wiki.agent.skill_registry as skill_registry
+        from quant_llm_wiki.agent.graph import create_agent
+        from quant_llm_wiki.agent.memory.tools import MEMORY_TOOLS
+        from quant_llm_wiki.agent.tools import ALL_TOOLS
+
+        try:
+            create_agent()
+            self.assertEqual(
+                skill_registry._RUNTIME_TOOL_NAMES,
+                {t.name for t in ALL_TOOLS},
+            )
+            create_agent(memory_tools=MEMORY_TOOLS)
+            self.assertEqual(
+                skill_registry._RUNTIME_TOOL_NAMES,
+                {t.name for t in ALL_TOOLS} | {t.name for t in MEMORY_TOOLS},
+            )
+        finally:
+            skill_registry.set_runtime_tool_names(None)
+
     def test_all_tools_registered(self):
         from quant_llm_wiki.agent.tools import ALL_TOOLS
 

@@ -131,14 +131,30 @@ def _load_all(kb_root: Path | None = None) -> tuple[dict[str, dict], list[dict]]
     return merged, errors
 
 
-def load_skill_registry(kb_root: Path | None = None) -> dict:
+def _unavailable_tools(tools_used: list[str], available_tools: set[str] | None) -> list[str]:
+    """Tools the skill references but the current session did not register.
+
+    available_tools=None means availability is unknown (e.g. direct library
+    use outside an agent run) — assume everything is available."""
+    if available_tools is None:
+        return []
+    return [t for t in tools_used if t not in available_tools]
+
+
+def load_skill_registry(kb_root: Path | None = None,
+                        available_tools: set[str] | None = None) -> dict:
     """Final effective registry: overridden package versions are omitted."""
     merged, errors = _load_all(kb_root)
-    skills = [{k: v for k, v in entry.items() if k != "body"} for entry in merged.values()]
+    skills = []
+    for entry in merged.values():
+        skill = {k: v for k, v in entry.items() if k != "body"}
+        skill["unavailable_tools"] = _unavailable_tools(entry["tools_used"], available_tools)
+        skills.append(skill)
     return {"skills": skills, "_errors": errors}
 
 
-def get_skill(name: str, kb_root: Path | None = None) -> dict:
+def get_skill(name: str, kb_root: Path | None = None,
+              available_tools: set[str] | None = None) -> dict:
     """Full SOP for one skill. Lookup is by registry key only — the name is
     never joined into a filesystem path, so traversal-style names
     (``../x``, absolute paths, ``foo.md``) all fall into skill_not_found."""
@@ -150,13 +166,22 @@ def get_skill(name: str, kb_root: Path | None = None) -> dict:
         k: entry[k]
         for k in ("description", "triggers", "requires_user_decision", "tools_used", "version")
     }
-    return {
+    result = {
         "name": entry["name"],
         "source": entry["source"],
         "path": entry["path"],
         "frontmatter": frontmatter,
+        "unavailable_tools": _unavailable_tools(entry["tools_used"], available_tools),
         "body": entry["body"],
     }
+    if result["unavailable_tools"]:
+        result["degraded_note"] = (
+            "DEGRADED MODE: these tools are NOT registered in this session: "
+            + ", ".join(result["unavailable_tools"])
+            + ". Skip every SOP step that calls them (do not attempt the call); "
+            "all other steps still apply."
+        )
+    return result
 
 
 # ---------------------------------------------------------------------------
@@ -171,15 +196,29 @@ import json  # noqa: E402
 
 from langchain_core.tools import tool  # noqa: E402
 
+# Tool names registered for the current agent run, published by
+# graph.create_agent (memory tools are conditional: --no-memory and the
+# corrupt-sqlite degraded mode run without them). None = unknown/all.
+# Set here rather than imported from .tools to avoid the circular dependency
+# noted in the module docstring.
+_RUNTIME_TOOL_NAMES: set[str] | None = None
+
+
+def set_runtime_tool_names(names: set[str] | None) -> None:
+    """Publish the tool set of the current agent session (None to reset)."""
+    global _RUNTIME_TOOL_NAMES
+    _RUNTIME_TOOL_NAMES = set(names) if names is not None else None
+
 
 @tool
 def list_skills() -> str:
     """List all registered skills (multi-step SOPs).
 
     Returns name / description / triggers / requires_user_decision /
-    tools_used for each skill. Match the user's intent against triggers,
-    then call read_skill(name) to get the full SOP."""
-    return json.dumps(load_skill_registry(), ensure_ascii=False, indent=2)
+    tools_used / unavailable_tools for each skill. Match the user's intent
+    against triggers, then call read_skill(name) to get the full SOP."""
+    return json.dumps(load_skill_registry(available_tools=_RUNTIME_TOOL_NAMES),
+                      ensure_ascii=False, indent=2)
 
 
 @tool
@@ -187,5 +226,8 @@ def read_skill(name: str) -> str:
     """Read the full SOP markdown of one skill by name (e.g. 'full-ingest').
 
     Returns frontmatter plus the step-by-step body. If the name is unknown,
-    returns skill_not_found with the list of available skills."""
-    return json.dumps(get_skill(name), ensure_ascii=False, indent=2)
+    returns skill_not_found with the list of available skills. If the SOP
+    references tools not registered in this session, a degraded_note says
+    which steps to skip."""
+    return json.dumps(get_skill(name, available_tools=_RUNTIME_TOOL_NAMES),
+                      ensure_ascii=False, indent=2)
