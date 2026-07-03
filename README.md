@@ -111,7 +111,7 @@ qlw ask --query "What momentum factors are discussed?"
 qlw brainstorm --query "Combine momentum and volatility timing for ETF rotation"
 ```
 
-Ingestion auto-runs `compile` and `embed` after success. Each URL has a 120 s ceiling; each LLM enrichment has 360 s. Override with `INGEST_URL_TIMEOUT` / `LLM_ARTICLE_TIMEOUT`.
+Ingestion auto-runs `enrich` → `compile` → `embed` after success. Use `--no-enrich` to skip enrichment (compile still runs); `--no-compile` writes raw only (skips enrich, compile, and embed). If `LLM_API_KEY` is unset, raw is written but enrich/compile/embed are skipped with a message. Each URL has a 120 s ceiling; each LLM enrichment has 360 s. Override with `INGEST_URL_TIMEOUT` / `LLM_ARTICLE_TIMEOUT`.
 
 ### Wiki maintenance
 

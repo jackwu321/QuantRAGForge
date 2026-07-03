@@ -111,7 +111,7 @@ qlw ask --query "讨论了哪些动量因子？"
 qlw brainstorm --query "把动量和波动率择时结合，做 ETF 轮动"
 ```
 
-`ingest` 成功后会自动跑 `compile` 和 `embed`。每个 URL 有 120 秒上限，每篇 LLM 补全有 360 秒上限，可通过 `INGEST_URL_TIMEOUT` / `LLM_ARTICLE_TIMEOUT` 覆盖。
+Ingest 成功后自动运行 `enrich` → `compile` → `embed`。用 `--no-enrich` 跳过富化（仍会 compile）；`--no-compile` 只写 raw（跳过 enrich、compile、embed）。若未设置 `LLM_API_KEY`，则只写 raw，并跳过 enrich/compile/embed 并给出提示。每个 URL 有 120 秒上限，每篇 LLM 补全有 360 秒上限，可通过 `INGEST_URL_TIMEOUT` / `LLM_ARTICLE_TIMEOUT` 覆盖。
 
 ### Wiki 维护
 
