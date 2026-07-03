@@ -484,6 +484,8 @@ def _run(args) -> int:
     print(report.summary())
     if report.lint_summary:
         print(f"lint: {report.lint_summary}")
+    for w in report.warnings:
+        print(f"  warning: {w}", file=sys.stderr)
     if report.errors:
         for e in report.errors:
             print(f"  error: {e}", file=sys.stderr)

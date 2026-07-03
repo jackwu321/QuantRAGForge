@@ -492,6 +492,9 @@ class CompileGateTests(unittest.TestCase):
             m_assign.assert_not_called()
             self.assertEqual(report.skipped_unenriched, 1)
             self.assertEqual(report.sources_written, 0)
+            self.assertEqual(len(report.warnings), 1)
+            self.assertIn("idea_blocks", report.warnings[0])
+            self.assertIn("2026-07-03_raw_article", report.warnings[0])
 
     def test_enriched_article_processed(self) -> None:
         from unittest.mock import patch
@@ -499,8 +502,8 @@ class CompileGateTests(unittest.TestCase):
         with tempfile.TemporaryDirectory() as tmp:
             root = Path(tmp)
             self._make(root, "2026-07-03_enriched",
-                       "title: E\ncontent_type: methodology\nstatus: reviewed\n"
-                       "idea_blocks: [Idea A, Idea B]\n")
+                       'title: E\ncontent_type: methodology\nstatus: reviewed\n'
+                       'idea_blocks: ["Idea A", "Idea B"]\n')
             assignment = cl.ConceptAssignment(existing_concepts=["momentum-strategies"],
                                               proposed_new_concepts=[])
             recompile = cl.RecompileResult(
