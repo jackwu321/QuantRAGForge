@@ -2,6 +2,25 @@
 
 All notable changes to this project will be documented in this file.
 
+## [0.8.0] - 2026-07-03
+
+LLM enrichment now runs automatically as part of `qlw ingest`, and compile refuses to synthesize concept pages from un-enriched articles. Before this, `qlw ingest` auto-ran `compile → embed` but **skipped the `enrich` step entirely** — so articles reached the concept synthesizer carrying only ingest-time heuristic placeholders (first-sentence `summary`/`core_hypothesis`, per-`content_type` template `signal_framework`, placeholder `research_question`, and no `idea_blocks`). Compile, which synthesizes concept sections almost entirely from `idea_blocks`, then produced concept pages whose list fields were overwhelmingly empty. The pipeline did "pattern-match + copy first sentence" instead of genuine understanding — because the step that does the understanding never ran.
+
+### Changed
+
+- **`qlw ingest` now runs `enrich` → `compile` → `embed`** (previously `compile` → `embed`). The freshly-ingested `raw/` articles are LLM-enriched before compile reads them, so `idea_blocks` and the other structured fields exist by the time the wiki is built.
+- **`--no-enrich`** skips only enrichment (compile still runs); **`--no-compile`** now writes raw only (skips enrich, compile, and embed) — the "raw-only" escape hatch. `--no-compile` help text updated accordingly.
+- **Missing `LLM_API_KEY` fails fast and cleanly**: `qlw ingest` writes `raw/`, then (unless `--no-compile`) prints a message and exits `3` instead of letting enrich/compile fail article-by-article. The key precheck governs the whole downstream, so `--no-enrich` without a key also halts cleanly rather than running a compile that needs the key anyway.
+
+### Added
+
+- **Compile enrichment gate**: `compile_wiki` skips any article with no `idea_blocks` (i.e. un-enriched), counting it in `CompileReport.skipped_unenriched` and emitting an actionable warning (surfaced in `qlw compile` output) instead of feeding placeholders to the synthesizer and writing an empty concept page.
+
+### Fixed
+
+- **Enrichment now reaches web/PDF article frontmatter.** `update_frontmatter` previously only *replaced* frontmatter keys that already existed, so web/PDF-ingested articles (whose frontmatter lacks `idea_blocks`) were enriched only in `source.json`; the compile gate reads `article.md` frontmatter and would have skipped every web/PDF source permanently. Missing enrichment keys are now appended to the frontmatter. (WeChat articles were unaffected — their template pre-seeds the keys.)
+- **Body `---` horizontal rules no longer corrupt articles.** `update_frontmatter` now processes only the first frontmatter block; `---` rules in web-extracted markdown bodies are left as ordinary content instead of re-triggering key injection mid-body.
+
 ## [0.7.1] - 2026-06-12
 
 ### Fixed
