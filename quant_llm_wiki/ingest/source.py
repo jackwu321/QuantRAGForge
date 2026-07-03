@@ -322,7 +322,7 @@ def run_ingest_source(
         )
         return 2
 
-    if not no_enrich:
+    if not no_enrich and not no_compile:
         import sys
         from quant_llm_wiki import enrich as _enrich
         from quant_llm_wiki.shared import get_llm_config
@@ -392,7 +392,7 @@ def register(parser: argparse.ArgumentParser) -> None:
     parser.add_argument(
         "--no-compile",
         action="store_true",
-        help="Skip the auto compile + embed after writing raw/.",
+        help="Skip the auto enrich + compile + embed after writing raw/.",
     )
     parser.add_argument(
         "--no-enrich",
