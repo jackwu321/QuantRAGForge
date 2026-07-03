@@ -100,6 +100,8 @@ class CompileReport:
     errors: list[str] = field(default_factory=list)
     lint_summary: str = ""
     lint_ok: bool = True
+    skipped_unenriched: int = 0
+    warnings: list[str] = field(default_factory=list)
 
     def summary(self) -> str:
         parts = [
@@ -107,6 +109,8 @@ class CompileReport:
             f"{self.concepts_proposed} proposed",
             f"{self.skipped} skipped",
         ]
+        if self.skipped_unenriched:
+            parts.append(f"{self.skipped_unenriched} un-enriched skipped")
         if self.assign_failed or self.recompile_failed:
             parts.append(f"{self.assign_failed} assignment failed, {self.recompile_failed} recompile failed")
         if self.errors:

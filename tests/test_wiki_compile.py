@@ -459,5 +459,15 @@ class IndexTextNotBuiltOnNoOpCompileTests(unittest.TestCase):
                     self.assertEqual(spy_idx.call_count, 0)
 
 
+class CompileReportFieldsTests(unittest.TestCase):
+    def test_report_has_skipped_unenriched_and_warnings(self) -> None:
+        report = wiki_compile.CompileReport()
+        self.assertEqual(report.skipped_unenriched, 0)
+        self.assertEqual(report.warnings, [])
+        report.skipped_unenriched += 1
+        report.warnings.append("x: skipped")
+        self.assertIn("1 un-enriched skipped", report.summary())
+
+
 if __name__ == "__main__":
     unittest.main()
