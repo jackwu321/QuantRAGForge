@@ -192,5 +192,32 @@ class EnrichFrontmatterAppendTests(unittest.TestCase):
             )
             self.assertIn("Idea A", str(fm.get("idea_blocks")))
 
+class UpdateFrontmatterBodyRuleTests(unittest.TestCase):
+    def test_body_horizontal_rule_not_treated_as_frontmatter(self) -> None:
+        from quant_llm_wiki import enrich
+        md = (
+            "---\n"
+            "title: T\n"
+            "content_type: methodology\n"
+            "status: raw\n"
+            "---\n\n"
+            "## Main Content\n\n"
+            "First part.\n\n"
+            "---\n\n"           # first horizontal rule in BODY
+            "Second part.\n\n"
+            "---\n\n"           # second horizontal rule in BODY (would trigger re-injection with buggy code)
+            "Third part.\n"
+        )
+        enhancement = enrich.validate_enhancement_data(
+            {"idea_blocks": ["Idea A", "Idea B"], "summary": "S"}, "methodology"
+        )
+        out = enrich.update_frontmatter(md, enhancement)
+        # idea_blocks must be injected EXACTLY once (in the real frontmatter),
+        # never a second time around body horizontal rules.
+        self.assertEqual(out.count("idea_blocks:"), 1)
+        # Both body horizontal rules and text after them must survive intact.
+        self.assertIn("Second part.", out)
+        self.assertIn("Third part.", out)
+
 if __name__ == "__main__":
     unittest.main()
