@@ -336,17 +336,19 @@ def run_ingest_source(
                 file=sys.stderr,
             )
             return 3
-        raw_dirs = _enrich.discover_article_dirs(
-            article_dir=None, articles_root=kb_root / "raw", limit=None,
-        )
         try:
-            _enrich.run_enrich_batch(
+            raw_dirs = _enrich.discover_article_dirs(
+                article_dir=None, articles_root=kb_root / "raw", limit=None,
+            )
+            results = _enrich.run_enrich_batch(
                 raw_dirs,
                 status_filter="raw",
                 force=False,
                 dry_run=False,
                 concurrency=_enrich.get_concurrency(None),
             )
+            ok = sum(1 for r in results if r.success)
+            print(f"Enriched: {ok}/{len(results)}")
         except Exception as exc:  # enrich failures must not abort the pipeline
             print(f"enrich step encountered an error, continuing: {exc}", file=sys.stderr)
 

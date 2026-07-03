@@ -92,7 +92,7 @@ class IngestPipelineEnrichTests(unittest.TestCase):
             rc = ingest_source.run_ingest_source(
                 self._kb_root, url="https://example.com/x", no_enrich=False,
             )
-        self.assertNotEqual(rc, 0)
+        self.assertEqual(rc, 3)
         m_enrich.assert_not_called()
         m_compile.assert_not_called()
 
