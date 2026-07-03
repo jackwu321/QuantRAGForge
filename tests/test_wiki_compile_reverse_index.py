@@ -16,7 +16,7 @@ def _write_article(kb_root: Path, slug: str, body: str) -> Path:
     ad = kb_root / "raw" / slug
     ad.mkdir(parents=True, exist_ok=True)
     (ad / "article.md").write_text(
-        f"---\ntitle: {slug}\ncontent_type: paper\nmain_topic: {_CONCEPT_SLUG}\n---\n{body}\n",
+        f"---\ntitle: {slug}\ncontent_type: paper\nmain_topic: {_CONCEPT_SLUG}\nidea_blocks: [Idea]\n---\n{body}\n",
         encoding="utf-8",
     )
     return ad
@@ -93,7 +93,7 @@ class ReverseIndexMultiSourceTests(unittest.TestCase):
 
                 # Modify art-b → its content hash changes
                 (b / "article.md").write_text(
-                    f"---\ntitle: art-b\ncontent_type: paper\nmain_topic: {_CONCEPT_SLUG}\n"
+                    f"---\ntitle: art-b\ncontent_type: paper\nmain_topic: {_CONCEPT_SLUG}\nidea_blocks: [Idea]\n"
                     "---\ncontent B v2 — CHANGED\n",
                     encoding="utf-8",
                 )

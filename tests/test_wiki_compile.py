@@ -469,5 +469,50 @@ class CompileReportFieldsTests(unittest.TestCase):
         self.assertIn("1 un-enriched skipped", report.summary())
 
 
+class CompileGateTests(unittest.TestCase):
+    def _make(self, root: Path, name: str, fm_lines: str) -> None:
+        from quant_llm_wiki.wiki.seed import bootstrap_wiki
+        bootstrap_wiki(root / "wiki")
+        d = root / "raw" / name
+        d.mkdir(parents=True, exist_ok=True)
+        (d / "article.md").write_text(
+            "---\n" + fm_lines + "---\n\n## Main Content\n\nBody.\n",
+            encoding="utf-8",
+        )
+
+    def test_unenriched_article_skipped(self) -> None:
+        from unittest.mock import patch
+        with tempfile.TemporaryDirectory() as tmp:
+            root = Path(tmp)
+            # No idea_blocks in frontmatter => un-enriched
+            self._make(root, "2026-07-03_raw_article",
+                       "title: Raw\ncontent_type: methodology\nstatus: reviewed\n")
+            with patch("quant_llm_wiki.wiki.compile.assign_concepts") as m_assign:
+                report = wiki_compile.compile_wiki(kb_root=root, mode="incremental")
+            m_assign.assert_not_called()
+            self.assertEqual(report.skipped_unenriched, 1)
+            self.assertEqual(report.sources_written, 0)
+
+    def test_enriched_article_processed(self) -> None:
+        from unittest.mock import patch
+        from quant_llm_wiki.wiki import compile_llm as cl
+        with tempfile.TemporaryDirectory() as tmp:
+            root = Path(tmp)
+            self._make(root, "2026-07-03_enriched",
+                       "title: E\ncontent_type: methodology\nstatus: reviewed\n"
+                       "idea_blocks: [Idea A, Idea B]\n")
+            assignment = cl.ConceptAssignment(existing_concepts=["momentum-strategies"],
+                                              proposed_new_concepts=[])
+            recompile = cl.RecompileResult(
+                synthesis="S", definition="D", key_idea_blocks=["k"], variants=[],
+                common_combinations=[], transfer_targets=[], failure_modes=[],
+                open_questions=[], related_concepts=[])
+            with patch("quant_llm_wiki.wiki.compile.assign_concepts", return_value=assignment) as m_assign, \
+                 patch("quant_llm_wiki.wiki.compile.recompile_concept", return_value=recompile):
+                report = wiki_compile.compile_wiki(kb_root=root, mode="incremental")
+            m_assign.assert_called_once()
+            self.assertEqual(report.skipped_unenriched, 0)
+
+
 if __name__ == "__main__":
     unittest.main()

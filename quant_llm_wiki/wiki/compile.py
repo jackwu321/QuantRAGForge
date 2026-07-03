@@ -313,6 +313,13 @@ def compile_wiki(
             report.errors.append(f"{article_dir}: read failed — {exc}")
             continue
 
+        if not _top_idea_blocks(fm):
+            report.skipped_unenriched += 1
+            report.warnings.append(
+                f"{article_dir}: skipped — un-enriched (no idea_blocks); run `qlw enrich` first"
+            )
+            continue
+
         if index_text is None:
             _t_idx_start = time.perf_counter()
             index_text = _build_index_text(wiki_dir)
