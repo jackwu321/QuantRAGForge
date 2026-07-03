@@ -72,5 +72,58 @@ class WriteWebArticleTests(unittest.TestCase):
             self.assertIn("extraction_quality: full", text)
 
 
+class IngestPipelineEnrichTests(unittest.TestCase):
+    def setUp(self) -> None:
+        self._tmp = tempfile.TemporaryDirectory()
+        self._kb_root = Path(self._tmp.name)
+
+    def tearDown(self) -> None:
+        self._tmp.cleanup()
+
+    def _patch_ingest(self):
+        # ingest "succeeds" without touching the network/disk beyond a fake dir
+        return patch.object(ingest_source, "_run_with_timeout", return_value="/fake/dir")
+
+    def test_no_llm_key_writes_raw_but_skips_enrich_and_compile(self) -> None:
+        with self._patch_ingest(), \
+             patch("quant_llm_wiki.shared.get_llm_config", side_effect=RuntimeError("no key")), \
+             patch("quant_llm_wiki.enrich.run_enrich_batch") as m_enrich, \
+             patch("quant_llm_wiki.wiki.compile.compile_wiki") as m_compile:
+            rc = ingest_source.run_ingest_source(
+                self._kb_root, url="https://example.com/x", no_enrich=False,
+            )
+        self.assertNotEqual(rc, 0)
+        m_enrich.assert_not_called()
+        m_compile.assert_not_called()
+
+    def test_enrich_runs_before_compile_when_key_present(self) -> None:
+        report = MagicMock(errors=[])
+        with self._patch_ingest(), \
+             patch("quant_llm_wiki.shared.get_llm_config", return_value=("k", "url", "model")), \
+             patch("quant_llm_wiki.enrich.discover_article_dirs", return_value=[]), \
+             patch("quant_llm_wiki.enrich.run_enrich_batch") as m_enrich, \
+             patch("quant_llm_wiki.wiki.compile.compile_wiki", return_value=report) as m_compile, \
+             patch("quant_llm_wiki.embed.run_embed", return_value=0):
+            rc = ingest_source.run_ingest_source(
+                self._kb_root, url="https://example.com/x", no_enrich=False,
+            )
+        self.assertEqual(rc, 0)
+        m_enrich.assert_called_once()
+        m_compile.assert_called_once()
+
+    def test_no_enrich_flag_skips_enrich_but_still_compiles(self) -> None:
+        report = MagicMock(errors=[])
+        with self._patch_ingest(), \
+             patch("quant_llm_wiki.enrich.run_enrich_batch") as m_enrich, \
+             patch("quant_llm_wiki.wiki.compile.compile_wiki", return_value=report) as m_compile, \
+             patch("quant_llm_wiki.embed.run_embed", return_value=0):
+            rc = ingest_source.run_ingest_source(
+                self._kb_root, url="https://example.com/x", no_enrich=True,
+            )
+        self.assertEqual(rc, 0)
+        m_enrich.assert_not_called()
+        m_compile.assert_called_once()
+
+
 if __name__ == "__main__":
     unittest.main()

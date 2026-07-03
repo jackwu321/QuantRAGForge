@@ -274,6 +274,7 @@ def run_ingest_source(
     content_type: str | None = None,
     force: bool = False,
     no_compile: bool = False,
+    no_enrich: bool = False,
 ) -> int:
     """Business logic for `qlw ingest`. kb_root must be already resolved."""
     if url:
@@ -321,6 +322,34 @@ def run_ingest_source(
         )
         return 2
 
+    if not no_enrich:
+        import sys
+        from quant_llm_wiki import enrich as _enrich
+        from quant_llm_wiki.shared import get_llm_config
+        try:
+            get_llm_config()
+        except RuntimeError as exc:
+            print(
+                "raw written, but LLM is not configured — skipping enrich + compile + embed.\n"
+                f"{exc}\n"
+                "After configuring LLM_API_KEY, run: qlw enrich && qlw compile",
+                file=sys.stderr,
+            )
+            return 3
+        raw_dirs = _enrich.discover_article_dirs(
+            article_dir=None, articles_root=kb_root / "raw", limit=None,
+        )
+        try:
+            _enrich.run_enrich_batch(
+                raw_dirs,
+                status_filter="raw",
+                force=False,
+                dry_run=False,
+                concurrency=_enrich.get_concurrency(None),
+            )
+        except Exception as exc:  # enrich failures must not abort the pipeline
+            print(f"enrich step encountered an error, continuing: {exc}", file=sys.stderr)
+
     if not no_compile:
         from quant_llm_wiki.wiki.compile import compile_wiki
         from quant_llm_wiki.embed import run_embed
@@ -346,6 +375,7 @@ def _run(args) -> int:
         content_type=args.content_type,
         force=args.force,
         no_compile=args.no_compile,
+        no_enrich=args.no_enrich,
     )
 
 
@@ -363,5 +393,10 @@ def register(parser: argparse.ArgumentParser) -> None:
         "--no-compile",
         action="store_true",
         help="Skip the auto compile + embed after writing raw/.",
+    )
+    parser.add_argument(
+        "--no-enrich",
+        action="store_true",
+        help="Skip the auto LLM enrich pass before compile.",
     )
     parser.set_defaults(func=_run)
