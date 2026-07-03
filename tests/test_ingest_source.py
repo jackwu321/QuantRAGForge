@@ -114,6 +114,7 @@ class IngestPipelineEnrichTests(unittest.TestCase):
     def test_no_enrich_flag_skips_enrich_but_still_compiles(self) -> None:
         report = MagicMock(errors=[])
         with self._patch_ingest(), \
+             patch("quant_llm_wiki.shared.get_llm_config", return_value=("k", "url", "model")), \
              patch("quant_llm_wiki.enrich.run_enrich_batch") as m_enrich, \
              patch("quant_llm_wiki.wiki.compile.compile_wiki", return_value=report) as m_compile, \
              patch("quant_llm_wiki.embed.run_embed", return_value=0):
@@ -123,6 +124,16 @@ class IngestPipelineEnrichTests(unittest.TestCase):
         self.assertEqual(rc, 0)
         m_enrich.assert_not_called()
         m_compile.assert_called_once()
+
+    def test_no_enrich_without_key_still_halts(self) -> None:
+        with self._patch_ingest(), \
+             patch("quant_llm_wiki.shared.get_llm_config", side_effect=RuntimeError("no key")), \
+             patch("quant_llm_wiki.wiki.compile.compile_wiki") as m_compile:
+            rc = ingest_source.run_ingest_source(
+                self._kb_root, url="https://example.com/x", no_enrich=True,
+            )
+        self.assertEqual(rc, 3)
+        m_compile.assert_not_called()
 
 
 if __name__ == "__main__":

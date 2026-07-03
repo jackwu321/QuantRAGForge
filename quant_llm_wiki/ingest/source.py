@@ -322,9 +322,8 @@ def run_ingest_source(
         )
         return 2
 
-    if not no_enrich and not no_compile:
+    if not no_compile:
         import sys
-        from quant_llm_wiki import enrich as _enrich
         from quant_llm_wiki.shared import get_llm_config
         try:
             get_llm_config()
@@ -336,23 +335,25 @@ def run_ingest_source(
                 file=sys.stderr,
             )
             return 3
-        try:
-            raw_dirs = _enrich.discover_article_dirs(
-                article_dir=None, articles_root=kb_root / "raw", limit=None,
-            )
-            results = _enrich.run_enrich_batch(
-                raw_dirs,
-                status_filter="raw",
-                force=False,
-                dry_run=False,
-                concurrency=_enrich.get_concurrency(None),
-            )
-            ok = sum(1 for r in results if r.success)
-            print(f"Enriched: {ok}/{len(results)}")
-        except Exception as exc:  # enrich failures must not abort the pipeline
-            print(f"enrich step encountered an error, continuing: {exc}", file=sys.stderr)
 
-    if not no_compile:
+        if not no_enrich:
+            from quant_llm_wiki import enrich as _enrich
+            try:
+                raw_dirs = _enrich.discover_article_dirs(
+                    article_dir=None, articles_root=kb_root / "raw", limit=None,
+                )
+                results = _enrich.run_enrich_batch(
+                    raw_dirs,
+                    status_filter="raw",
+                    force=False,
+                    dry_run=False,
+                    concurrency=_enrich.get_concurrency(None),
+                )
+                ok = sum(1 for r in results if r.success)
+                print(f"Enriched: {ok}/{len(results)}")
+            except Exception as exc:  # enrich failures must not abort the pipeline
+                print(f"enrich step encountered an error, continuing: {exc}", file=sys.stderr)
+
         from quant_llm_wiki.wiki.compile import compile_wiki
         from quant_llm_wiki.embed import run_embed
         report = compile_wiki(kb_root, mode="incremental", dry_run=False, verbose=False)
