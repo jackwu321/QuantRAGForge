@@ -152,5 +152,45 @@ signal_framework:
             self.assertIn("a	timeout	Read timed out", content)
             self.assertIn("b	json_parse_error	Expecting value: line 1 column 1 (char 0) json decode error", content)
 
+
+class EnrichFrontmatterAppendTests(unittest.TestCase):
+    def test_idea_blocks_appended_to_web_article_frontmatter(self) -> None:
+        from quant_llm_wiki.shared import parse_frontmatter
+        from quant_llm_wiki.wiki.compile import _top_idea_blocks
+
+        with tempfile.TemporaryDirectory() as tmp:
+            d = Path(tmp) / "raw" / "2026-07-03_web_article"
+            d.mkdir(parents=True)
+            # Web/PDF-style article.md: NO idea_blocks key, body is only Main Content
+            (d / "article.md").write_text(
+                "---\ntitle: Oxford Study\nsource_type: web\n"
+                "content_type: methodology\nstatus: raw\n---\n\n"
+                "# Oxford Study\n\n## Main Content\n\nReal body text about energy.\n",
+                encoding="utf-8",
+            )
+            (d / "source.json").write_text(
+                json.dumps({"source_type": "web", "llm_enriched": False}),
+                encoding="utf-8",
+            )
+            fake = mod.EnhancementResult(
+                data={"idea_blocks": ["Idea A", "Idea B"], "summary": "S"},
+                raw_response="{}",
+            )
+            # Mock the LLM call AND the config lookup used when writing source.json metadata.
+            with patch("quant_llm_wiki.enrich.call_llm_enrich", return_value=fake), \
+                 patch("quant_llm_wiki.enrich.get_llm_config", return_value=("k", "url", "model")):
+                result = mod.process_article_dir(
+                    d, status_filter="raw", force=False, dry_run=False,
+                )
+            self.assertTrue(result.success, result.error)
+            md = (d / "article.md").read_text(encoding="utf-8")
+            fm, _ = parse_frontmatter(md)
+            # The compile gate must now see idea_blocks in the frontmatter:
+            self.assertTrue(
+                _top_idea_blocks(fm),
+                "idea_blocks must reach article.md frontmatter so the compile gate passes",
+            )
+            self.assertIn("Idea A", str(fm.get("idea_blocks")))
+
 if __name__ == "__main__":
     unittest.main()

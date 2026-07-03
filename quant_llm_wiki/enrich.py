@@ -343,17 +343,26 @@ def format_yaml_value(value: Any) -> str:
 def update_frontmatter(markdown: str, enhancement: dict[str, Any]) -> str:
     lines = markdown.splitlines()
     in_frontmatter = False
+    seen_keys: set[str] = set()
     updated: list[str] = []
     for line in lines:
         if line.strip() == "---":
+            if in_frontmatter:
+                # Closing delimiter: append any enhancement keys not already
+                # present in the frontmatter (web/PDF articles lack most keys).
+                for key, value in enhancement.items():
+                    if key not in seen_keys:
+                        updated.append(f"{key}: {format_yaml_value(value)}")
             updated.append(line)
             in_frontmatter = not in_frontmatter
             continue
         if in_frontmatter:
             key, sep, _ = line.partition(":")
-            if sep and key in enhancement:
-                updated.append(f"{key}: {format_yaml_value(enhancement[key])}")
-                continue
+            if sep:
+                seen_keys.add(key)
+                if key in enhancement:
+                    updated.append(f"{key}: {format_yaml_value(enhancement[key])}")
+                    continue
         updated.append(line)
     return "\n".join(updated)
 
