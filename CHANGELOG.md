@@ -2,6 +2,16 @@
 
 All notable changes to this project will be documented in this file.
 
+## [0.8.1] - 2026-07-03
+
+### Fixed
+
+- **`enrich` no longer crashes when LLM content starts with digits.** `replace_section` built its `re.sub` replacement as an f-string, splicing enriched content in before the regex engine parsed it; content starting with a digit (e.g. `"1个信号模型..."`) turned `\1` into `\11`, which `re.sub` read as a backreference to a nonexistent 11th capture group and raised `invalid group reference 11`. The replacement is now a callable, which `re.sub` never backreference-parses.
+
+### Added
+
+- **GitHub Releases are now created automatically** on `vX.Y.Z` tag push (`.github/workflows/release.yml`), alongside the existing PyPI publish. Previously only PyPI got the tagged release; the GitHub Release list had stalled at v0.4.0 through v0.8.0.
+
 ## [0.8.0] - 2026-07-03
 
 LLM enrichment now runs automatically as part of `qlw ingest`, and compile refuses to synthesize concept pages from un-enriched articles. Before this, `qlw ingest` auto-ran `compile → embed` but **skipped the `enrich` step entirely** — so articles reached the concept synthesizer carrying only ingest-time heuristic placeholders (first-sentence `summary`/`core_hypothesis`, per-`content_type` template `signal_framework`, placeholder `research_question`, and no `idea_blocks`). Compile, which synthesizes concept sections almost entirely from `idea_blocks`, then produced concept pages whose list fields were overwhelmingly empty. The pipeline did "pattern-match + copy first sentence" instead of genuine understanding — because the step that does the understanding never ran.
