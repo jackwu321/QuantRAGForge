@@ -375,8 +375,8 @@ def update_frontmatter(markdown: str, enhancement: dict[str, Any]) -> str:
 
 def replace_section(markdown: str, heading: str, content: str) -> str:
     pattern = rf"(## {re.escape(heading)}\n\n)(.*?)(?=\n## |\Z)"
-    replacement = rf"\1{content.strip() if content.strip() else '待补充。'}\n"
-    return re.sub(pattern, replacement, markdown, flags=re.S)
+    body = content.strip() if content.strip() else "待补充。"
+    return re.sub(pattern, lambda m: f"{m.group(1)}{body}\n", markdown, flags=re.S)
 
 
 def list_to_bullets(items: list[str], empty_text: str = "待补充。") -> str:

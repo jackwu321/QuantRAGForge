@@ -46,6 +46,12 @@ class EnrichArticlesWithLlmTests(unittest.TestCase):
         parsed = mod.parse_json_response(raw)
         self.assertEqual(parsed["summary"], "x")
 
+    def test_replace_section_content_starting_with_digits(self) -> None:
+        markdown = "## Summary\n\n待生成。\n\n## Next\n\n占位\n"
+        content = "1个信号模型，基于多因子体系构建。"
+        result = mod.replace_section(markdown, "Summary", content)
+        self.assertIn(f"## Summary\n\n{content}\n", result)
+
     def test_apply_markdown_updates_replaces_sections(self) -> None:
         markdown = """---
 summary:
