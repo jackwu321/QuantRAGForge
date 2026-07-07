@@ -98,6 +98,7 @@ class TestAgentGraph(unittest.TestCase):
             "set_article_status",
             "embed_knowledge",
             "query_knowledge_base",
+            "deep_brainstorm",
             "compile_wiki",
             "audit_wiki",
             "list_concepts",

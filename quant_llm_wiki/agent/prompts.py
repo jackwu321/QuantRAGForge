@@ -15,6 +15,7 @@ SYSTEM_PROMPT = """你是量化投研知识库管理助手。你管理一个完�
 **索引与检索**
 - embed_knowledge       — 重建/更新 ChromaDB 向量索引（同时索引 wiki/）
 - query_knowledge_base  — 问答(ask) / 脑暴(brainstorm)。用户聊模糊/方向性的策略想法时，不要直接用它作答——先按 Skill 规则 1 匹配 strategy-brainstorm
+- deep_brainstorm       — 多轮演化脑暴（生成→批判→精炼自动 K 轮）。strategy-brainstorm 阶段 3 的提案用它，不再用 query_knowledge_base 的 brainstorm 模式
 - save_strategy_brief   — 多轮策略沟通收敛后落盘简报（仅在用户明确示意收敛时调用）
 
 **Wiki 概念层**

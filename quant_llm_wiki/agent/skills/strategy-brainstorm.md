@@ -1,7 +1,7 @@
 ---
 name: strategy-brainstorm
 description: 模糊策略方向的多轮沟通 SOP：入口路由 → 澄清 → 知识库定向 → 提案 → 细化 → 收敛落盘简报
-version: 2
+version: 3
 triggers:
   - 策略方向
   - 脑暴
@@ -15,6 +15,7 @@ tools_used:
   - list_concepts
   - read_wiki
   - query_knowledge_base
+  - deep_brainstorm
   - record_note
   - record_decision
   - set_note_status
@@ -55,8 +56,13 @@ tools_used:
    - [PAUSE] 等用户选切入点
 3. **提案**（跳过条件：用户已锁定具体想法、只要细化）
    - 若该方向尚无 direction note → record_note(kind='direction')
-   - 把方向 + 已确认约束组合成精炼 query → query_knowledge_base(query=..., mode='brainstorm')
-   - 呈现 2-3 个候选想法，逐个带来源引用和 failure modes
+   - 把方向 + 已确认约束组合成精炼 query → deep_brainstorm(query=...)
+     （内部自动多轮"生成→批判→精炼"，产出已带证据引用与演化日志；
+     结果里的 ⚠️ 降级标注原样告知用户）
+   - 呈现幸存的候选想法，逐个带来源引用、所受批判与 failure modes；
+     全灭时如实呈现各死因，回到阶段 2 换切入点或建议放宽方向
+   - 用户明确要求快/省（"快速来一版"）时可退回单发：
+     query_knowledge_base(mode='brainstorm')，并说明未经批判循环
    - [PAUSE] 等反馈
 4. **细化**（可循环）
    - 按用户反馈换角度重组 query 再检索，或 read_wiki 深挖具体概念
@@ -73,6 +79,9 @@ tools_used:
    - 已吸收进简报的 notes → set_note_status(status='folded')
    - 后续待办：先向用户提出具体 task 文本，用户对**该文本**确认后才 add_task
      （"好的 / 继续"这类泛确认不算）
+   - 若 KB 配置了 handoff schema（.qlw/handoff_schema.json），save_strategy_brief
+     会自动同时产出经校验的 .yaml（handoff 双产物）；yaml 产出失败只影响 yaml，
+     md 简报为兜底真相，把返回串里的 warning 如实告知用户
 
 ## Notes
 - **降级模式（无 memory 工具）**：read_skill 返回的 degraded_note 列出本会话未注册的工具

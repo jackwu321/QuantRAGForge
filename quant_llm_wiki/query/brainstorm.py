@@ -116,6 +116,10 @@ def register_ask(parser: argparse.ArgumentParser) -> None:
 def register_brainstorm(parser: argparse.ArgumentParser) -> None:
     """Attach brainstorm subcommand flags to `parser`. Called by quant_llm_wiki.cli."""
     _add_common_args(parser)
+    parser.add_argument("--deep", action="store_true",
+                        help="多轮演化脑暴：生成→批判→精炼自动跑 K 轮（约 20 次 LLM 调用）。")
+    parser.add_argument("--rounds", type=int, default=3, help="--deep 的轮数上限。")
+    parser.add_argument("--max-ideas", type=int, default=5, help="--deep 的候选上限。")
     parser.set_defaults(func=_run_brainstorm)
 
 
@@ -303,6 +307,19 @@ def _run_ask(args) -> int:
 
 def _run_brainstorm(args) -> int:
     """Arg-marshalling shim: unpack CLI args and delegate to run_brainstorm."""
+    if getattr(args, "deep", False):
+        from quant_llm_wiki.ideation.deep import run_deep_brainstorm
+        result = run_deep_brainstorm(
+            args.query,
+            kb_root=resolve_kb_root(getattr(args, "kb_root", None)),
+            rounds=args.rounds,
+            max_ideas=args.max_ideas,
+            source_dir=args.source_dir,
+            retrieval=args.retrieval,
+            top_k=args.top_k,
+        )
+        print(result.summary_text())
+        return 0
     return run_brainstorm(
         resolve_kb_root(getattr(args, "kb_root", None)),
         query=args.query,

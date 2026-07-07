@@ -730,7 +730,9 @@ def save_strategy_brief(topic: str, content: str) -> str:
     Call ONLY when the user has explicitly asked to converge ("出简报" /
     "收敛吧") — never self-initiate. `topic` is a short direction title;
     `content` is the full markdown body (方向与约束 / 候选想法含来源与
-    failure modes / 已否定方向及理由 / 选定方向 / 依据概念 / 下一步建议)."""
+    failure modes / 已否定方向及理由 / 选定方向 / 依据概念 / 下一步建议).
+    若 KB 配置了 `.qlw/handoff_schema.json`，会同时产出经 schema 校验的
+    同名 `.yaml`。"""
     from datetime import datetime
 
     from quant_llm_wiki.agent.memory.tools import get_memory_context
@@ -764,6 +766,21 @@ def save_strategy_brief(topic: str, content: str) -> str:
     ])
     path.write_text(header + content.strip() + "\n", encoding="utf-8")
 
+    handoff_note = ""
+    try:
+        from quant_llm_wiki.handoff import HandoffError, load_handoff_schema, render_handoff_yaml
+        schema = load_handoff_schema(kb_root)
+        if schema is not None:
+            try:
+                yaml_text = render_handoff_yaml(topic, content, schema)
+                ypath = path.with_suffix(".yaml")
+                ypath.write_text(yaml_text, encoding="utf-8")
+                handoff_note = f"; handoff yaml: {ypath}"
+            except HandoffError as exc:
+                handoff_note = f"; warning: handoff yaml 未产出（{exc}），md 为兜底"
+    except HandoffError as exc:  # load 阶段坏 schema
+        handoff_note = f"; warning: handoff schema 不可用（{exc}），仅落盘 md 为兜底"
+
     try:
         from quant_llm_wiki.wiki.maintain import append_query_log
         append_query_log(kb_root, topic, "brief", output_path=path, update_state=False)
@@ -772,7 +789,22 @@ def save_strategy_brief(topic: str, content: str) -> str:
         print(f"[qlw-agent] warning: brief query log write failed "
               f"({type(exc).__name__}: {exc})", file=sys.stderr)
 
-    return f"Strategy brief saved: {path}"
+    return f"Strategy brief saved: {path}{handoff_note}"
+
+
+@tool
+def deep_brainstorm(query: str, rounds: int = 3, max_ideas: int = 5) -> str:
+    """多轮演化脑暴：生成→检索驱动批判→精炼/淘汰→打分筛选，自动跑至多
+    `rounds` 轮，返回幸存想法与演化日志路径。比 query_knowledge_base 的
+    brainstorm 模式更慢更贵（约 20 次 LLM 调用），用于 strategy-brainstorm
+    阶段 3 的提案生成。全灭是合法输出（附各候选死因）。"""
+    from quant_llm_wiki.ideation.deep import run_deep_brainstorm
+
+    try:
+        result = run_deep_brainstorm(query, rounds=rounds, max_ideas=max_ideas)
+    except Exception as exc:
+        return f"Error: 深化脑暴失败（{type(exc).__name__}: {exc}）。"
+    return result.summary_text()
 
 
 # ---------------------------------------------------------------------------
@@ -789,6 +821,7 @@ ALL_TOOLS = [
     set_article_status,
     embed_knowledge,
     query_knowledge_base,
+    deep_brainstorm,
     compile_wiki,
     audit_wiki,
     list_concepts,
