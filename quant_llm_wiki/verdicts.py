@@ -215,3 +215,53 @@ def retrieve_similar_verdicts(
     ]
     hits.sort(key=lambda h: h["score"], reverse=True)
     return hits[:top_k]
+
+
+# ---------------------------------------------------------------------------
+# CLI: qlw verdict add|list
+# ---------------------------------------------------------------------------
+
+def run_add(source: Path, kb_root: Path, vector_store_dir: Path | None = None) -> int:
+    try:
+        record = load_verdict(Path(source))
+    except (VerdictError, OSError) as exc:
+        print(f"error: {exc}")
+        return 2
+    path = save_verdict(kb_root, record)
+    store = vector_store_dir or (Path(kb_root) / "vector_store")
+    try:
+        embed_verdict(record, store)
+        embedded = "embedded"
+    except Exception as exc:
+        embedded = (f"warning: 嵌入失败（{type(exc).__name__}: {exc}），"
+                    "yaml 已落盘；下次 embed_knowledge 重建会补上")
+    print(f"verdict saved: {path} ({embedded})")
+    return 0
+
+
+def run_list(kb_root: Path, verdict: str | None) -> int:
+    records = list_verdicts(kb_root, verdict=verdict)
+    if not records:
+        print("no verdicts")
+        return 0
+    for r in records:
+        print(f"{r.date}  {r.verdict:　<6}  {r.id}  {r.direction}")
+    return 0
+
+
+def register(parser) -> None:
+    """Attach verdict subcommands. Called by quant_llm_wiki.cli."""
+    from quant_llm_wiki.paths import resolve_kb_root
+
+    sub = parser.add_subparsers(dest="verdict_cmd", required=True)
+    p_add = sub.add_parser("add", help="校验并写入一条实验判决（幂等，即时嵌入）")
+    p_add.add_argument("source", help="判决 YAML 文件路径")
+    p_add.add_argument("--kb-root", default=None)
+    p_add.set_defaults(func=lambda a: run_add(
+        Path(a.source), resolve_kb_root(a.kb_root)))
+    p_list = sub.add_parser("list", help="列出实验判决")
+    p_list.add_argument("--verdict", default=None,
+                        help="按判决级别过滤（成立/暂不成立/被证伪/需要更多数据）")
+    p_list.add_argument("--kb-root", default=None)
+    p_list.set_defaults(func=lambda a: run_list(
+        resolve_kb_root(a.kb_root), a.verdict))

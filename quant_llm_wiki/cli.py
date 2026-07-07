@@ -4,6 +4,7 @@ from __future__ import annotations
 import argparse
 
 from quant_llm_wiki import enrich, embed, sync
+from quant_llm_wiki import verdicts as verdicts_mod
 from quant_llm_wiki.ingest import source as ingest_source
 from quant_llm_wiki.query import brainstorm
 from quant_llm_wiki.agent import cli as agent_cli
@@ -24,6 +25,7 @@ def main(argv=None) -> int:
     brainstorm.register_brainstorm(sub.add_parser("brainstorm", help="Generate brainstorm ideas with Rethink validation."))
     agent_cli.register(sub.add_parser("agent", help="Run the LangGraph agent (interactive or one-shot)."))
     memory_cli.register(sub.add_parser("memory", help="Inspect/manage agent workflow memory (.qlw/memory/)."))
+    verdicts_mod.register(sub.add_parser("verdict", help="实验判决层：StraMuse 回测判决的写入与查询。"))
     wiki_lint_mod.register(sub.add_parser("lint", help="Schema + health audit of the wiki."))
     wiki_compile_mod.register(sub.add_parser("compile", help="Compile concept pages and source summaries from raw/."))
 
