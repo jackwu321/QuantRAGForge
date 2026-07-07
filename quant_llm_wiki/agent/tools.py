@@ -730,7 +730,9 @@ def save_strategy_brief(topic: str, content: str) -> str:
     Call ONLY when the user has explicitly asked to converge ("出简报" /
     "收敛吧") — never self-initiate. `topic` is a short direction title;
     `content` is the full markdown body (方向与约束 / 候选想法含来源与
-    failure modes / 已否定方向及理由 / 选定方向 / 依据概念 / 下一步建议)."""
+    failure modes / 已否定方向及理由 / 选定方向 / 依据概念 / 下一步建议).
+    若 KB 配置了 `.qlw/handoff_schema.json`，会同时产出经 schema 校验的
+    同名 `.yaml`。"""
     from datetime import datetime
 
     from quant_llm_wiki.agent.memory.tools import get_memory_context
@@ -764,6 +766,21 @@ def save_strategy_brief(topic: str, content: str) -> str:
     ])
     path.write_text(header + content.strip() + "\n", encoding="utf-8")
 
+    handoff_note = ""
+    try:
+        from quant_llm_wiki.handoff import HandoffError, load_handoff_schema, render_handoff_yaml
+        schema = load_handoff_schema(kb_root)
+        if schema is not None:
+            try:
+                yaml_text = render_handoff_yaml(topic, content, schema)
+                ypath = path.with_suffix(".yaml")
+                ypath.write_text(yaml_text, encoding="utf-8")
+                handoff_note = f"; handoff yaml: {ypath}"
+            except HandoffError as exc:
+                handoff_note = f"; warning: handoff yaml 未产出（{exc}），md 为兜底"
+    except HandoffError as exc:  # load 阶段坏 schema
+        handoff_note = f"; warning: handoff schema 不可用（{exc}），仅落盘 md 为兜底"
+
     try:
         from quant_llm_wiki.wiki.maintain import append_query_log
         append_query_log(kb_root, topic, "brief", output_path=path, update_state=False)
@@ -772,7 +789,7 @@ def save_strategy_brief(topic: str, content: str) -> str:
         print(f"[qlw-agent] warning: brief query log write failed "
               f"({type(exc).__name__}: {exc})", file=sys.stderr)
 
-    return f"Strategy brief saved: {path}"
+    return f"Strategy brief saved: {path}{handoff_note}"
 
 
 # ---------------------------------------------------------------------------
