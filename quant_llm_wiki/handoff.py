@@ -1,6 +1,6 @@
 """通用 handoff schema 机制（设计 D5）：KB 配置注入一份 JSON Schema，
 收敛落盘时同时产出按该 schema 校验的 yaml。qlw 对 schema 内容零假设——
-下游（如 StraMuse）把自己的子集 schema 放进 .qlw/ 即启用。
+任何下游工具（回测引擎、执行系统等）把自己的 schema 放进 .qlw/ 即启用。
 jsonschema 只做结构校验；字段语义（如 qlib 表达式正确性）由下游兜底。
 """
 from __future__ import annotations
