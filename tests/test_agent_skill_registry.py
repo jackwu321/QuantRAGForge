@@ -239,6 +239,7 @@ class TestCoreSkillSanity:
 MEMORYLESS_TOOLS = {
     "ingest_article", "enrich_articles", "list_articles", "review_articles",
     "set_article_status", "embed_knowledge", "query_knowledge_base",
+    "deep_brainstorm",
     "compile_wiki", "audit_wiki", "list_concepts", "set_concept_status",
     "read_wiki", "save_strategy_brief", "list_skills", "read_skill",
 }

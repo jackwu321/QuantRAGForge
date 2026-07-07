@@ -792,6 +792,21 @@ def save_strategy_brief(topic: str, content: str) -> str:
     return f"Strategy brief saved: {path}{handoff_note}"
 
 
+@tool
+def deep_brainstorm(query: str, rounds: int = 3, max_ideas: int = 5) -> str:
+    """多轮演化脑暴：生成→检索驱动批判→精炼/淘汰→打分筛选，自动跑至多
+    `rounds` 轮，返回幸存想法与演化日志路径。比 query_knowledge_base 的
+    brainstorm 模式更慢更贵（约 20 次 LLM 调用），用于 strategy-brainstorm
+    阶段 3 的提案生成。全灭是合法输出（附各候选死因）。"""
+    from quant_llm_wiki.ideation.deep import run_deep_brainstorm
+
+    try:
+        result = run_deep_brainstorm(query, rounds=rounds, max_ideas=max_ideas)
+    except Exception as exc:
+        return f"Error: 深化脑暴失败（{type(exc).__name__}: {exc}）。"
+    return result.summary_text()
+
+
 # ---------------------------------------------------------------------------
 # All tools for registration
 # ---------------------------------------------------------------------------
@@ -806,6 +821,7 @@ ALL_TOOLS = [
     set_article_status,
     embed_knowledge,
     query_knowledge_base,
+    deep_brainstorm,
     compile_wiki,
     audit_wiki,
     list_concepts,
