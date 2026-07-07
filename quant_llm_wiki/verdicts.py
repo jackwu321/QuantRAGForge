@@ -12,6 +12,8 @@ from typing import Any
 
 import yaml
 
+from quant_llm_wiki.shared import embed_text
+
 VALID_VERDICTS: tuple[str, ...] = ("成立", "暂不成立", "被证伪", "需要更多数据")
 KB_LAYER_VERDICT = "verdict"
 
@@ -135,3 +137,81 @@ def verdict_embed_text(record: VerdictRecord) -> str:
     if record.failure_summary:
         parts.append(f"失败原因：{record.failure_summary}")
     return "\n".join(parts)
+
+
+# ---------------------------------------------------------------------------
+# 向量层：kb_layer="verdict"，与文章/wiki 同 collection 不同层
+# ---------------------------------------------------------------------------
+
+def _verdict_block_id(record: VerdictRecord) -> str:
+    from quant_llm_wiki.query.brainstorm import slugify
+    return f"verdict__{slugify(record.id)}"
+
+
+def embed_verdict(record: VerdictRecord, vector_store_dir: Path) -> None:
+    """单条判决即时嵌入（`qlw verdict add` 路径）。失败抛异常，调用方警告。"""
+    from quant_llm_wiki.embed import open_collection
+
+    Path(vector_store_dir).mkdir(parents=True, exist_ok=True)
+    collection = open_collection(Path(vector_store_dir))
+    text = verdict_embed_text(record)
+    collection.upsert(
+        ids=[_verdict_block_id(record)],
+        documents=[text],
+        metadatas=[{
+            "kb_layer": KB_LAYER_VERDICT,
+            "verdict_id": record.id,
+            "verdict": record.verdict,
+            "date": record.date,
+            "direction": record.direction,
+        }],
+        embeddings=[embed_text(text)],
+    )
+
+
+def embed_all_verdicts(kb_root: Path, vector_store_dir: Path) -> int:
+    """全量重建路径（embed_knowledge 收尾调用）。返回成功条数。"""
+    count = 0
+    for record in list_verdicts(kb_root):
+        try:
+            embed_verdict(record, vector_store_dir)
+            count += 1
+        except Exception:
+            continue  # 单条失败不拖垮重建；失败条目下次重建再试
+    return count
+
+
+def retrieve_similar_verdicts(
+    query_text: str, vector_store_dir: Path, top_k: int = 3
+) -> list[dict]:
+    """按语义相似度检索判决。任何失败都返回 []（批判步的显式降级路径）。"""
+    try:
+        from quant_llm_wiki.embed import open_collection
+
+        collection = open_collection(Path(vector_store_dir))
+        if collection.count() <= 0:
+            return []
+        results = collection.query(
+            query_embeddings=[embed_text(query_text)],
+            n_results=min(top_k * 2, collection.count()),
+            where={"kb_layer": {"$eq": KB_LAYER_VERDICT}},
+            include=["documents", "metadatas", "distances"],
+        )
+    except Exception:
+        return []
+    docs = results.get("documents", [[]])[0]
+    metas = results.get("metadatas", [[]])[0]
+    dists = results.get("distances", [[]])[0]
+    hits = [
+        {
+            "id": str(m.get("verdict_id", "")),
+            "verdict": str(m.get("verdict", "")),
+            "date": str(m.get("date", "")),
+            "direction": str(m.get("direction", "")),
+            "text": str(d),
+            "score": max(0.0, 1.0 - float(dist)),
+        }
+        for d, m, dist in zip(docs, metas, dists)
+    ]
+    hits.sort(key=lambda h: h["score"], reverse=True)
+    return hits[:top_k]

@@ -269,6 +269,13 @@ def run_embed(
             except Exception as exc:
                 failures.append({"article_dir": str(block.note.article_dir), "error": str(exc)})
 
+    # Index verdicts/ (experiment verdict layer; best-effort like wiki)
+    if not dry_run and collection is not None:
+        from quant_llm_wiki.verdicts import embed_all_verdicts
+        n_verdicts = embed_all_verdicts(kb_root, vector_store_dir)
+        if n_verdicts:
+            print(f"verdict layer: {n_verdicts} record(s) embedded")
+
     failure_list_path = kb_root / FAILURE_LIST_PATH_SUFFIX
     if not dry_run:
         save_manifest(manifest_path, manifest)
